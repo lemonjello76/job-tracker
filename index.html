@@ -1,0 +1,1317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Job Report Builder</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #111318;
+    --surface: #1a1d26;
+    --input: #242836;
+    --border: #333849;
+    --text: #e8eaf0;
+    --dim: #8b90a0;
+    --accent: #4f8cff;
+    --green: #22c55e;
+    --green-hover: #16a34a;
+    --red: #ef4444;
+    --yellow: #fbbf24;
+    --radius: 8px;
+  }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* Header bar */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  .header h1 { font-size: 20px; font-weight: 700; }
+  .header h1 span { color: var(--accent); }
+  .header-btn {
+    padding: 8px 16px;
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .header-btn:hover { border-color: var(--accent); }
+
+  .main { max-width: 900px; margin: 0 auto; padding: 20px; }
+  h2 {
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--dim);
+    margin-bottom: 12px;
+  }
+
+  /* Sections */
+  .section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  /* Form grid */
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+  .form-row.three { grid-template-columns: 1fr 1fr 1fr; }
+  .field { display: flex; flex-direction: column; }
+  .field label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dim);
+    margin-bottom: 5px;
+  }
+  .field input, .field select, .field textarea {
+    padding: 10px 12px;
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    outline: none;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
+  .field textarea { resize: vertical; min-height: 60px; }
+
+  /* Big action buttons */
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+  .action-btn {
+    padding: 18px;
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    text-align: center;
+  }
+  .action-btn:hover { border-color: var(--accent); background: var(--input); }
+  .action-btn .icon { font-size: 28px; display: block; margin-bottom: 4px; }
+  .action-btn-sm {
+    padding: 10px 16px;
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--dim);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-block;
+    margin-bottom: 12px;
+  }
+  .action-btn-sm:hover { border-color: var(--accent); color: var(--text); }
+
+  /* Photo grid */
+  .photo-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  .photo-card {
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: relative;
+  }
+  .photo-card img {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    display: block;
+    cursor: pointer;
+  }
+  .photo-card textarea {
+    width: 100%;
+    padding: 8px 10px;
+    background: transparent;
+    border: none;
+    border-top: 1px solid var(--border);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    resize: vertical;
+    min-height: 50px;
+  }
+  .photo-card textarea::placeholder { color: var(--dim); }
+  .remove-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0,0,0,0.7);
+    color: var(--red);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Receipt cards - vertical layout */
+  .receipt-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+  .receipt-card {
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    position: relative;
+  }
+  .receipt-card img {
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+    display: block;
+    cursor: pointer;
+  }
+  .receipt-card .r-fields { padding: 10px; }
+  .receipt-card .r-fields input,
+  .receipt-card .r-fields select {
+    width: 100%;
+    padding: 7px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    margin-bottom: 6px;
+  }
+  .receipt-card .r-fields input:focus,
+  .receipt-card .r-fields select:focus { border-color: var(--accent); }
+  .expense-total {
+    padding: 14px 20px;
+    background: var(--input);
+    border-radius: var(--radius);
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .expense-total span { color: var(--green); }
+
+  /* Hours & mileage */
+  .hours-total {
+    margin-top: 14px;
+    padding: 14px 20px;
+    background: var(--input);
+    border-radius: var(--radius);
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+  }
+  .hours-total span { color: var(--accent); }
+  .odo-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 12px;
+  }
+  .odo-card {
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    text-align: center;
+  }
+  .odo-card img {
+    width: 100%;
+    height: 140px;
+    object-fit: cover;
+    display: block;
+  }
+  .odo-card .odo-placeholder {
+    height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    color: var(--dim);
+    font-size: 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  .odo-card .odo-placeholder:hover { color: var(--accent); }
+  .odo-card .odo-info { padding: 10px; }
+  .odo-card .odo-info input {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 15px;
+    font-family: inherit;
+    outline: none;
+    text-align: center;
+  }
+  .odo-card .odo-stamp {
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 4px;
+  }
+  .mileage-total {
+    padding: 10px 20px;
+    background: var(--input);
+    border-radius: var(--radius);
+    font-size: 16px;
+    font-weight: 700;
+    text-align: center;
+    margin-top: 8px;
+  }
+  .mileage-total span { color: var(--accent); }
+  .trip-block {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 12px;
+    position: relative;
+  }
+  .trip-block .trip-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--dim);
+    margin-bottom: 8px;
+  }
+
+  /* Notes */
+  .note-card {
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 10px;
+    position: relative;
+  }
+  .note-card input {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
+    outline: none;
+    margin-bottom: 8px;
+  }
+  .note-card textarea {
+    width: 100%;
+    padding: 8px 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    resize: vertical;
+    min-height: 80px;
+  }
+  .note-card input:focus, .note-card textarea:focus { border-color: var(--accent); }
+
+  /* Job files */
+  .file-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+  }
+  .file-row .file-icon { font-size: 22px; flex-shrink: 0; }
+  .file-row .file-name { flex: 1; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-row .file-size { font-size: 12px; color: var(--dim); flex-shrink: 0; }
+  .file-row img { width: 44px; height: 44px; object-fit: cover; border-radius: 4px; flex-shrink: 0; cursor: pointer; }
+
+  /* Bottom buttons */
+  .bottom-btns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 16px;
+  }
+  .generate-btn {
+    width: 100%;
+    padding: 22px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--green);
+    color: #fff;
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .generate-btn:hover { background: var(--green-hover); }
+  .send-btn {
+    width: 100%;
+    padding: 22px;
+    border: none;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: #fff;
+    font-size: 20px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+    letter-spacing: 0.5px;
+  }
+  .send-btn:hover { background: #6fa0ff; }
+
+  /* Sidebar */
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 90;
+  }
+  .sidebar-overlay.open { display: block; }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    right: -360px;
+    width: 340px;
+    max-width: 90vw;
+    height: 100vh;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    z-index: 100;
+    transition: right 0.25s ease;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+  .sidebar.open { right: 0; }
+  .sidebar-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .sidebar-header h2 { margin: 0; font-size: 16px; font-weight: 700; color: var(--text); text-transform: none; letter-spacing: 0; }
+  .sidebar-close {
+    background: none;
+    border: none;
+    color: var(--dim);
+    font-size: 24px;
+    cursor: pointer;
+  }
+  .sidebar-body { padding: 12px; flex: 1; overflow-y: auto; }
+  .sidebar-item {
+    padding: 12px 14px;
+    background: var(--input);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .sidebar-item:hover { border-color: var(--accent); }
+  .sidebar-item .si-client { font-weight: 700; font-size: 15px; }
+  .sidebar-item .si-meta { font-size: 13px; color: var(--dim); margin-top: 2px; }
+  .sidebar-item .si-actions { margin-top: 8px; display: flex; gap: 8px; }
+  .sidebar-empty { color: var(--dim); font-size: 14px; text-align: center; padding: 40px 20px; }
+
+  /* Dialog */
+  .dialog-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    z-index: 200;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .dialog-overlay.open { display: flex; }
+  .dialog {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 28px;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+  }
+  .dialog h3 { font-size: 18px; margin-bottom: 10px; }
+  .dialog p { font-size: 14px; color: var(--dim); margin-bottom: 20px; }
+  .dialog-btns { display: flex; gap: 10px; justify-content: center; }
+  .dialog-btns button {
+    padding: 12px 24px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .btn-green { background: var(--green); color: #fff; }
+  .btn-green:hover { background: var(--green-hover); }
+  .btn-dim { background: var(--input); color: var(--dim); border: 1px solid var(--border) !important; }
+  .btn-dim:hover { color: var(--text); }
+  .btn-red { background: rgba(239,68,68,0.15); color: var(--red); }
+  .btn-red:hover { background: rgba(239,68,68,0.25); }
+
+  .hidden { display: none; }
+
+  /* Prevent auto-zoom on mobile inputs */
+  @media (max-width: 768px) {
+    input, select, textarea { font-size: 16px !important; }
+  }
+  @media (max-width: 700px) {
+    .main { padding: 12px; }
+    .header h1 { font-size: 17px; }
+    .section { padding: 14px; }
+    .actions { gap: 10px; }
+    .action-btn { padding: 14px 10px; font-size: 13px; }
+    .action-btn .icon { font-size: 26px; }
+    .form-row, .form-row.three { grid-template-columns: 1fr; }
+    .photo-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+    .receipt-grid { grid-template-columns: 1fr; }
+    .odo-pair { grid-template-columns: 1fr; }
+    .generate-btn, .send-btn { padding: 16px; font-size: 16px; }
+    .bottom-btns { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 400px) {
+    .actions { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <h1><span>Mist</span>America</h1>
+  <button class="header-btn" onclick="openSidebar()">Completed Jobs (<span id="completedCount">0</span>)</button>
+</div>
+
+<div class="main">
+
+<!-- JOB INFO -->
+<div class="section">
+  <h2>Job Info</h2>
+  <div class="form-row">
+    <div class="field"><label>Client Name</label><input type="text" id="client" placeholder="Chick-fil-A #1234"></div>
+    <div class="field"><label>City</label><input type="text" id="city" placeholder="Phoenix"></div>
+  </div>
+  <div class="form-row three">
+    <div class="field"><label>State</label><input type="text" id="state" placeholder="AZ" maxlength="2" style="text-transform:uppercase"></div>
+    <div class="field"><label>Date Started</label><input type="date" id="dateStart"></div>
+    <div class="field"><label>Date Completed</label><input type="date" id="dateEnd"></div>
+  </div>
+</div>
+
+<!-- 5 BIG BUTTONS -->
+<div class="actions">
+  <button class="action-btn" onclick="document.getElementById('photoInput').click()">
+    <span class="icon">📷</span> UPLOAD PHOTOS
+  </button>
+  <button class="action-btn" onclick="toggleSection('hoursSection')">
+    <span class="icon">🕐</span> HOURS &amp; MILEAGE
+  </button>
+  <button class="action-btn" onclick="document.getElementById('receiptInput').click()">
+    <span class="icon">🧾</span> UPLOAD RECEIPTS
+  </button>
+  <button class="action-btn" onclick="document.getElementById('jobFileInput').click()">
+    <span class="icon">📁</span> UPLOAD JOB FILES
+  </button>
+  <button class="action-btn" onclick="toggleSection('notesSection'); addNoteIfEmpty()" style="grid-column: 1 / -1">
+    <span class="icon">📝</span> NOTES
+  </button>
+</div>
+
+<!-- Hidden file inputs -->
+<input type="file" id="photoInput" class="hidden" multiple accept="image/*">
+<input type="file" id="receiptInput" class="hidden" multiple accept="image/*">
+<input type="file" id="jobFileInput" class="hidden" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.txt,.csv">
+<input type="file" id="odoInput" class="hidden" accept="image/*">
+
+<!-- PHOTOS -->
+<div id="photosSection" class="section hidden">
+  <h2>Job Photos (<span id="photoCount">0</span>)</h2>
+  <button class="action-btn-sm" onclick="document.getElementById('photoInput').click()">+ Add More Photos</button>
+  <div class="photo-grid" id="photoGrid"></div>
+</div>
+
+<!-- JOB FILES -->
+<div id="jobFilesSection" class="section hidden">
+  <h2>Job Files (<span id="jobFileCount">0</span>)</h2>
+  <button class="action-btn-sm" onclick="document.getElementById('jobFileInput').click()">+ Add More Files</button>
+  <div id="jobFileList"></div>
+</div>
+
+<!-- HOURS & MILEAGE -->
+<div id="hoursSection" class="section hidden">
+  <h2>Hours</h2>
+  <div class="form-row three">
+    <div class="field"><label>Hours On Site</label><input type="number" id="siteHours" min="0" step="0.5" placeholder="0" oninput="calcHours()"></div>
+    <div class="field"><label>Drive Hours (to job)</label><input type="number" id="driveToHours" min="0" step="0.5" placeholder="0" oninput="calcHours()"></div>
+    <div class="field"><label>Drive Hours (return)</label><input type="number" id="driveBackHours" min="0" step="0.5" placeholder="0" oninput="calcHours()"></div>
+  </div>
+  <div class="hours-total">Total: <span id="totalHours">0</span> hours</div>
+
+  <h2 style="margin-top:24px">Mileage</h2>
+  <div id="mileageList"></div>
+  <button class="action-btn-sm" onclick="addTrip()">+ Add Trip</button>
+  <div class="mileage-total" id="mileageTotalBox" style="display:none">Total Miles: <span id="totalMiles">0</span></div>
+</div>
+
+<!-- RECEIPTS -->
+<div id="receiptsSection" class="section hidden">
+  <h2>Receipts (<span id="receiptCount">0</span>)</h2>
+  <button class="action-btn-sm" onclick="document.getElementById('receiptInput').click()">+ Add More Receipts</button>
+  <div class="receipt-grid" id="receiptGrid"></div>
+  <div class="expense-total">Expense Total: <span id="expenseTotal">$0.00</span></div>
+</div>
+
+<!-- NOTES -->
+<div id="notesSection" class="section hidden">
+  <h2>Notes</h2>
+  <div id="notesList"></div>
+  <button class="action-btn-sm" onclick="addNote()">+ Add Note</button>
+</div>
+
+<!-- GENERATE -->
+<div class="bottom-btns">
+  <button class="generate-btn" onclick="generateReport()">GENERATE REPORT</button>
+  <button class="send-btn" onclick="sendReport()">SEND REPORT ✉</button>
+</div>
+
+</div><!-- /main -->
+
+<!-- Sidebar -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+<div class="sidebar" id="sidebar">
+  <div class="sidebar-header">
+    <h2>Completed Jobs</h2>
+    <button class="sidebar-close" onclick="closeSidebar()">&times;</button>
+  </div>
+  <div class="sidebar-body" id="sidebarBody"></div>
+</div>
+
+<!-- Save dialog -->
+<div class="dialog-overlay" id="saveDialog">
+  <div class="dialog">
+    <h3>Job report generated</h3>
+    <p>Save this job and start a new one?</p>
+    <div class="dialog-btns">
+      <button class="btn-green" onclick="saveAndReset()">Save &amp; New Job</button>
+      <button class="btn-dim" onclick="closeDialog()">Keep Working</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════
+// STATE
+// ═══════════════════════════════
+let photos = [];     // { dataURL, notes }
+let receipts = [];   // { dataURL, amount, vendor, category }
+let jobFiles = [];   // { dataURL, fileName, size, isImage }
+let notes = [];      // { title, text }
+let trips = [];      // { startPhoto, startStamp, startMiles, endPhoto, endStamp, endMiles }
+let db = null;
+let lastReportHTML = '';
+
+// ═══════════════════════════════
+// INDEXEDDB — completed jobs
+// ═══════════════════════════════
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open('MistAmericaJobs', 1);
+    req.onupgradeneeded = e => {
+      e.target.result.createObjectStore('jobs', { keyPath: 'id' });
+    };
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+function dbPut(job) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('jobs', 'readwrite');
+    tx.objectStore('jobs').put(job);
+    tx.oncomplete = () => resolve();
+    tx.onerror = e => reject(e.target.error);
+  });
+}
+function dbGetAll() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('jobs', 'readonly');
+    const req = tx.objectStore('jobs').getAll();
+    req.onsuccess = () => resolve(req.result || []);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+function dbGet(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('jobs', 'readonly');
+    const req = tx.objectStore('jobs').get(id);
+    req.onsuccess = () => resolve(req.result || null);
+    req.onerror = e => reject(e.target.error);
+  });
+}
+function dbDelete(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('jobs', 'readwrite');
+    tx.objectStore('jobs').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = e => reject(e.target.error);
+  });
+}
+
+// ═══════════════════════════════
+// UTILS
+// ═══════════════════════════════
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s || '';
+  return d.innerHTML;
+}
+function fmtDate(d) {
+  if (!d) return '';
+  const [y, m, day] = d.split('-');
+  return `${parseInt(m)}/${parseInt(day)}/${y}`;
+}
+function nowStamp() {
+  const d = new Date();
+  return d.toLocaleDateString('en-US') + ' ' + d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+}
+function toggleSection(id) {
+  document.getElementById(id).classList.toggle('hidden');
+}
+
+// Burn timestamp onto image
+function stampImage(dataURL) {
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.width;
+      c.height = img.height;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const stamp = nowStamp();
+      const fs = Math.max(18, Math.floor(img.width / 22));
+      ctx.font = `bold ${fs}px sans-serif`;
+      const tw = ctx.measureText(stamp).width;
+      ctx.fillStyle = 'rgba(0,0,0,0.65)';
+      ctx.fillRect(0, img.height - fs - 18, tw + 28, fs + 18);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(stamp, 14, img.height - 12);
+      resolve({ dataURL: c.toDataURL('image/jpeg', 0.85), stamp });
+    };
+    img.src = dataURL;
+  });
+}
+
+// ═══════════════════════════════
+// PHOTOS
+// ═══════════════════════════════
+document.getElementById('photoInput').addEventListener('change', function(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      photos.push({ dataURL: ev.target.result, notes: '' });
+      loaded++;
+      if (loaded === files.length) renderPhotos();
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+});
+
+function renderPhotos() {
+  const sec = document.getElementById('photosSection');
+  document.getElementById('photoCount').textContent = photos.length;
+  if (!photos.length) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+  document.getElementById('photoGrid').innerHTML = photos.map((p, i) => `
+    <div class="photo-card">
+      <img src="${p.dataURL}" alt="Photo ${i+1}" onclick="window.open(this.src,'_blank')">
+      <button class="remove-btn" onclick="photos.splice(${i},1);renderPhotos()">×</button>
+      <textarea placeholder="Notes — what does this photo show?" onchange="photos[${i}].notes=this.value">${esc(p.notes)}</textarea>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════
+// JOB FILES
+// ═══════════════════════════════
+document.getElementById('jobFileInput').addEventListener('change', function(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  let loaded = 0;
+  files.forEach(file => {
+    const isImage = file.type.startsWith('image/');
+    const reader = new FileReader();
+    reader.onload = ev => {
+      jobFiles.push({ dataURL: ev.target.result, fileName: file.name, size: file.size, isImage });
+      loaded++;
+      if (loaded === files.length) renderJobFiles();
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+});
+
+function renderJobFiles() {
+  const sec = document.getElementById('jobFilesSection');
+  document.getElementById('jobFileCount').textContent = jobFiles.length;
+  if (!jobFiles.length) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+  document.getElementById('jobFileList').innerHTML = jobFiles.map((f, i) => {
+    const sz = f.size < 1048576 ? (f.size/1024).toFixed(0)+' KB' : (f.size/1048576).toFixed(1)+' MB';
+    const icon = f.isImage ? '' : (f.fileName.toLowerCase().endsWith('.pdf') ? '📕' : '📄');
+    return `<div class="file-row">
+      ${f.isImage ? `<img src="${f.dataURL}" onclick="window.open(this.src,'_blank')">` : `<span class="file-icon">${icon}</span>`}
+      <span class="file-name">${esc(f.fileName)}</span>
+      <span class="file-size">${sz}</span>
+      <button class="remove-btn" style="position:static" onclick="jobFiles.splice(${i},1);renderJobFiles()">×</button>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════
+// HOURS
+// ═══════════════════════════════
+function calcHours() {
+  const s = parseFloat(document.getElementById('siteHours').value) || 0;
+  const t = parseFloat(document.getElementById('driveToHours').value) || 0;
+  const b = parseFloat(document.getElementById('driveBackHours').value) || 0;
+  document.getElementById('totalHours').textContent = (s + t + b).toFixed(1);
+}
+
+// ═══════════════════════════════
+// MILEAGE
+// ═══════════════════════════════
+let odoTarget = null; // { tripIndex, which: 'start'|'end' }
+
+document.getElementById('odoInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  if (!file || !odoTarget) return;
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    const { dataURL, stamp } = await stampImage(ev.target.result);
+    const trip = trips[odoTarget.tripIndex];
+    if (odoTarget.which === 'start') {
+      trip.startPhoto = dataURL;
+      trip.startStamp = stamp;
+    } else {
+      trip.endPhoto = dataURL;
+      trip.endStamp = stamp;
+    }
+    renderMileage();
+  };
+  reader.readAsDataURL(file);
+  e.target.value = '';
+});
+
+function addTrip() {
+  trips.push({ startPhoto: null, startStamp: '', startMiles: '', endPhoto: null, endStamp: '', endMiles: '' });
+  renderMileage();
+}
+
+function removeTrip(i) {
+  trips.splice(i, 1);
+  renderMileage();
+}
+
+function uploadOdo(tripIndex, which) {
+  odoTarget = { tripIndex, which };
+  document.getElementById('odoInput').click();
+}
+
+function updateMiles(tripIndex, which, val) {
+  trips[tripIndex][which === 'start' ? 'startMiles' : 'endMiles'] = val;
+  calcMileage();
+}
+
+function calcMileage() {
+  let total = 0;
+  trips.forEach(t => {
+    const s = parseFloat(t.startMiles) || 0;
+    const e = parseFloat(t.endMiles) || 0;
+    if (e > s) total += e - s;
+  });
+  const box = document.getElementById('mileageTotalBox');
+  box.style.display = trips.length ? '' : 'none';
+  document.getElementById('totalMiles').textContent = total.toLocaleString();
+}
+
+function renderMileage() {
+  document.getElementById('mileageList').innerHTML = trips.map((t, i) => `
+    <div class="trip-block">
+      <div class="trip-label">Trip ${i + 1}
+        <button class="remove-btn" style="position:absolute;top:10px;right:10px" onclick="removeTrip(${i})">×</button>
+      </div>
+      <div class="odo-pair">
+        <div class="odo-card">
+          ${t.startPhoto
+            ? `<img src="${t.startPhoto}" onclick="window.open(this.src,'_blank')">`
+            : `<div class="odo-placeholder" onclick="uploadOdo(${i},'start')">Tap to photograph<br>START odometer</div>`}
+          <div class="odo-info">
+            <input type="number" placeholder="Start miles" value="${t.startMiles}" oninput="updateMiles(${i},'start',this.value)">
+            ${t.startStamp ? `<div class="odo-stamp">${esc(t.startStamp)}</div>` : ''}
+            ${t.startPhoto ? `<button class="action-btn-sm" style="margin:6px 0 0;font-size:12px" onclick="uploadOdo(${i},'start')">Retake</button>` : ''}
+          </div>
+        </div>
+        <div class="odo-card">
+          ${t.endPhoto
+            ? `<img src="${t.endPhoto}" onclick="window.open(this.src,'_blank')">`
+            : `<div class="odo-placeholder" onclick="uploadOdo(${i},'end')">Tap to photograph<br>END odometer</div>`}
+          <div class="odo-info">
+            <input type="number" placeholder="End miles" value="${t.endMiles}" oninput="updateMiles(${i},'end',this.value)">
+            ${t.endStamp ? `<div class="odo-stamp">${esc(t.endStamp)}</div>` : ''}
+            ${t.endPhoto ? `<button class="action-btn-sm" style="margin:6px 0 0;font-size:12px" onclick="uploadOdo(${i},'end')">Retake</button>` : ''}
+          </div>
+        </div>
+      </div>
+      ${(parseFloat(t.endMiles)||0) > (parseFloat(t.startMiles)||0)
+        ? `<div style="text-align:center;font-weight:700;color:var(--accent)">${((parseFloat(t.endMiles)||0)-(parseFloat(t.startMiles)||0)).toLocaleString()} miles</div>`
+        : ''}
+    </div>
+  `).join('');
+  calcMileage();
+}
+
+// ═══════════════════════════════
+// RECEIPTS
+// ═══════════════════════════════
+document.getElementById('receiptInput').addEventListener('change', function(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  let loaded = 0;
+  files.forEach(file => {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      receipts.push({ dataURL: ev.target.result, amount: '', vendor: '', category: 'gas' });
+      loaded++;
+      if (loaded === files.length) renderReceipts();
+    };
+    reader.readAsDataURL(file);
+  });
+  e.target.value = '';
+});
+
+function renderReceipts() {
+  const sec = document.getElementById('receiptsSection');
+  document.getElementById('receiptCount').textContent = receipts.length;
+  if (!receipts.length) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+  document.getElementById('receiptGrid').innerHTML = receipts.map((r, i) => `
+    <div class="receipt-card">
+      <img src="${r.dataURL}" alt="Receipt" onclick="window.open(this.src,'_blank')">
+      <button class="remove-btn" onclick="receipts.splice(${i},1);renderReceipts()">×</button>
+      <div class="r-fields">
+        <input type="number" placeholder="Amount ($)" step="0.01" min="0" value="${r.amount}" onchange="receipts[${i}].amount=this.value;updateExpenseTotal()">
+        <input type="text" placeholder="Vendor" value="${esc(r.vendor)}" onchange="receipts[${i}].vendor=this.value">
+        <select onchange="receipts[${i}].category=this.value">
+          <option value="gas"${r.category==='gas'?' selected':''}>Gas</option>
+          <option value="food"${r.category==='food'?' selected':''}>Food</option>
+          <option value="hotel"${r.category==='hotel'?' selected':''}>Hotel</option>
+          <option value="parts"${r.category==='parts'?' selected':''}>Parts</option>
+          <option value="other"${r.category==='other'?' selected':''}>Other</option>
+        </select>
+      </div>
+    </div>
+  `).join('');
+  updateExpenseTotal();
+}
+
+function updateExpenseTotal() {
+  const total = receipts.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  document.getElementById('expenseTotal').textContent = '$' + total.toFixed(2);
+}
+
+// ═══════════════════════════════
+// NOTES
+// ═══════════════════════════════
+function addNote() {
+  notes.push({ title: '', text: '' });
+  renderNotes();
+}
+function addNoteIfEmpty() {
+  if (!notes.length) addNote();
+}
+function renderNotes() {
+  document.getElementById('notesList').innerHTML = notes.map((n, i) => `
+    <div class="note-card">
+      <button class="remove-btn" onclick="notes.splice(${i},1);renderNotes()">×</button>
+      <input type="text" placeholder="Topic — e.g. Water Quality, Switch Locations, Ladder Needed..." value="${esc(n.title)}" onchange="notes[${i}].title=this.value">
+      <textarea placeholder="Details..." onchange="notes[${i}].text=this.value">${esc(n.text)}</textarea>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════
+// REPORT
+// ═══════════════════════════════
+function generateReport() {
+  const client = document.getElementById('client').value.trim() || 'N/A';
+  const city = document.getElementById('city').value.trim();
+  const state = document.getElementById('state').value.trim().toUpperCase();
+  const dateStart = document.getElementById('dateStart').value;
+  const dateEnd = document.getElementById('dateEnd').value;
+  const location = [city, state].filter(Boolean).join(', ') || 'N/A';
+
+  const siteH = parseFloat(document.getElementById('siteHours').value) || 0;
+  const driveToH = parseFloat(document.getElementById('driveToHours').value) || 0;
+  const driveBackH = parseFloat(document.getElementById('driveBackHours').value) || 0;
+  const totalH = siteH + driveToH + driveBackH;
+
+  const cats = {};
+  let expenseTotal = 0;
+  receipts.forEach(r => {
+    const amt = parseFloat(r.amount) || 0;
+    const cat = r.category || 'other';
+    cats[cat] = (cats[cat] || 0) + amt;
+    expenseTotal += amt;
+  });
+
+  let totalMiles = 0;
+  trips.forEach(t => {
+    const s = parseFloat(t.startMiles) || 0;
+    const e = parseFloat(t.endMiles) || 0;
+    if (e > s) totalMiles += e - s;
+  });
+
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<title>Job Report — ${esc(client)}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111;padding:40px;max-width:850px;margin:0 auto}
+  h1{font-size:22px;border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+  .meta{font-size:14px;color:#444;margin-bottom:2px} .meta strong{color:#111}
+  h2{font-size:15px;text-transform:uppercase;letter-spacing:.5px;color:#333;margin:26px 0 10px;padding-bottom:6px;border-bottom:1px solid #ccc}
+  table{width:100%;border-collapse:collapse;font-size:14px;margin:8px 0 14px}
+  th{text-align:left;padding:7px 10px;background:#f0f0f0;border:1px solid #ddd;font-weight:600}
+  td{padding:7px 10px;border:1px solid #ddd}
+  .total-row td{font-weight:700;background:#f0f0f0}
+  .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:10px 0}
+  .photo-item{break-inside:avoid}
+  .photo-item img{width:100%;height:auto;max-height:240px;object-fit:cover;border:1px solid #ddd;border-radius:4px}
+  .photo-notes{font-size:12px;color:#333;margin-top:4px;padding:6px 8px;background:#f9f9f9;border-radius:4px;font-style:italic}
+  .odo-pair{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+  .odo-box{text-align:center}
+  .odo-box img{width:100%;max-height:180px;object-fit:cover;border:1px solid #ddd;border-radius:4px}
+  .odo-box .odo-label{font-size:12px;color:#555;margin-top:4px}
+  .receipt-row{display:flex;gap:14px;align-items:flex-start;margin:12px 0;page-break-inside:avoid}
+  .receipt-row img{width:180px;height:auto;max-height:200px;object-fit:cover;border:1px solid #ddd;border-radius:4px;flex-shrink:0}
+  .receipt-row .r-details{font-size:14px}
+  .receipt-row .r-details strong{font-size:16px}
+  .note-block{margin:10px 0;page-break-inside:avoid}
+  .note-block h3{font-size:14px;font-weight:700;margin-bottom:4px}
+  .note-block p{font-size:14px;white-space:pre-wrap;color:#333}
+  @media print{body{padding:0}@page{margin:.5in}}
+</style></head><body>`;
+
+  html += `<h1>MistAmerica — Job Report</h1>
+    <p class="meta"><strong>Client:</strong> ${esc(client)}</p>
+    <p class="meta"><strong>Location:</strong> ${esc(location)}</p>
+    <p class="meta"><strong>Dates:</strong> ${fmtDate(dateStart) || 'N/A'}${dateEnd ? ' — ' + fmtDate(dateEnd) : ''}</p>`;
+
+  // Hours
+  if (totalH > 0) {
+    html += `<h2>Hours</h2><table>
+      <thead><tr><th>Category</th><th>Hours</th></tr></thead><tbody>
+      <tr><td>On Site</td><td>${siteH.toFixed(1)}</td></tr>
+      <tr><td>Drive (to job)</td><td>${driveToH.toFixed(1)}</td></tr>
+      <tr><td>Drive (return)</td><td>${driveBackH.toFixed(1)}</td></tr>
+      <tr class="total-row"><td>Total</td><td>${totalH.toFixed(1)}</td></tr>
+      </tbody></table>`;
+  }
+
+  // Mileage
+  if (trips.length > 0) {
+    html += `<h2>Mileage${totalMiles ? ' — ' + totalMiles.toLocaleString() + ' miles total' : ''}</h2>`;
+    trips.forEach((t, i) => {
+      const tm = ((parseFloat(t.endMiles)||0) - (parseFloat(t.startMiles)||0));
+      html += `<p class="meta" style="margin-top:10px"><strong>Trip ${i+1}</strong>${tm > 0 ? ' — ' + tm.toLocaleString() + ' miles' : ''}</p>`;
+      html += `<div class="odo-pair">`;
+      if (t.startPhoto) {
+        html += `<div class="odo-box"><img src="${t.startPhoto}"><div class="odo-label">Start: ${t.startMiles ? t.startMiles.toLocaleString() + ' mi' : 'N/A'}${t.startStamp ? ' — ' + esc(t.startStamp) : ''}</div></div>`;
+      }
+      if (t.endPhoto) {
+        html += `<div class="odo-box"><img src="${t.endPhoto}"><div class="odo-label">End: ${t.endMiles ? t.endMiles.toLocaleString() + ' mi' : 'N/A'}${t.endStamp ? ' — ' + esc(t.endStamp) : ''}</div></div>`;
+      }
+      html += `</div>`;
+    });
+  }
+
+  // Job Files
+  if (jobFiles.length > 0) {
+    html += `<h2>Reference Documents (${jobFiles.length})</h2>`;
+    const imgs = jobFiles.filter(f => f.isImage);
+    const docs = jobFiles.filter(f => !f.isImage);
+    if (docs.length) {
+      html += `<ul style="margin:6px 0 10px 20px;font-size:14px">`;
+      docs.forEach(f => { html += `<li>${esc(f.fileName)}</li>`; });
+      html += `</ul>`;
+    }
+    if (imgs.length) {
+      html += `<div class="photo-grid">`;
+      imgs.forEach(f => { html += `<div class="photo-item"><img src="${f.dataURL}"><div style="font-size:11px;color:#555;margin-top:2px;text-align:center">${esc(f.fileName)}</div></div>`; });
+      html += `</div>`;
+    }
+  }
+
+  // Photos
+  if (photos.length > 0) {
+    html += `<h2>Job Photos (${photos.length})</h2><div class="photo-grid">`;
+    photos.forEach(p => {
+      html += `<div class="photo-item"><img src="${p.dataURL}">`;
+      if (p.notes) html += `<div class="photo-notes">${esc(p.notes)}</div>`;
+      html += `</div>`;
+    });
+    html += `</div>`;
+  }
+
+  // Receipts with images
+  if (receipts.length > 0) {
+    html += `<h2>Receipts (${receipts.length})</h2>`;
+    receipts.forEach(r => {
+      const amt = parseFloat(r.amount) || 0;
+      html += `<div class="receipt-row">
+        <img src="${r.dataURL}">
+        <div class="r-details">
+          <p><strong>$${amt.toFixed(2)}</strong></p>
+          <p>${esc(r.vendor) || 'No vendor'}</p>
+          <p style="color:#666">${(r.category||'other').charAt(0).toUpperCase()+(r.category||'other').slice(1)}</p>
+        </div>
+      </div>`;
+    });
+    html += `<h2>Expense Summary</h2><table><thead><tr><th>Category</th><th style="text-align:right">Total</th></tr></thead><tbody>`;
+    Object.entries(cats).sort().forEach(([cat, total]) => {
+      html += `<tr><td>${cat.charAt(0).toUpperCase()+cat.slice(1)}</td><td style="text-align:right">$${total.toFixed(2)}</td></tr>`;
+    });
+    html += `<tr class="total-row"><td>Grand Total</td><td style="text-align:right">$${expenseTotal.toFixed(2)}</td></tr></tbody></table>`;
+  }
+
+  // Notes
+  const filledNotes = notes.filter(n => n.title || n.text);
+  if (filledNotes.length > 0) {
+    html += `<h2>Notes</h2>`;
+    filledNotes.forEach(n => {
+      html += `<div class="note-block">`;
+      if (n.title) html += `<h3>${esc(n.title)}</h3>`;
+      if (n.text) html += `<p>${esc(n.text)}</p>`;
+      html += `</div>`;
+    });
+  }
+
+  html += `</body></html>`;
+  lastReportHTML = html;
+
+  const w = window.open('', '_blank');
+  w.document.write(html);
+  w.document.close();
+
+  // Show save dialog
+  document.getElementById('saveDialog').classList.add('open');
+}
+
+// ═══════════════════════════════
+// SEND REPORT
+// ═══════════════════════════════
+function sendReport() {
+  // Generate the report first (opens in new tab for Ctrl+P → Save as PDF)
+  generateReport();
+
+  // Build the email subject
+  const client = document.getElementById('client').value.trim() || 'N/A';
+  const city = document.getElementById('city').value.trim();
+  const state = document.getElementById('state').value.trim().toUpperCase();
+  const dateEnd = document.getElementById('dateEnd').value;
+  const location = [city, state].filter(Boolean).join(', ');
+  const subject = `Job Completion Report - ${client} - ${location} - ${fmtDate(dateEnd) || 'In Progress'}`;
+
+  // Build a plain-text summary for the email body
+  const siteH = parseFloat(document.getElementById('siteHours').value) || 0;
+  const driveToH = parseFloat(document.getElementById('driveToHours').value) || 0;
+  const driveBackH = parseFloat(document.getElementById('driveBackHours').value) || 0;
+  const totalH = siteH + driveToH + driveBackH;
+  const expTotal = receipts.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  let totalMiles = 0;
+  trips.forEach(t => {
+    const s = parseFloat(t.startMiles) || 0;
+    const e = parseFloat(t.endMiles) || 0;
+    if (e > s) totalMiles += e - s;
+  });
+
+  let body = `Job Completion Report\n`;
+  body += `Client: ${client}\n`;
+  body += `Location: ${location}\n`;
+  body += `Dates: ${fmtDate(document.getElementById('dateStart').value) || 'N/A'}`;
+  if (dateEnd) body += ` - ${fmtDate(dateEnd)}`;
+  body += `\n\n`;
+  if (totalH > 0) body += `Total Hours: ${totalH.toFixed(1)} (${siteH.toFixed(1)} on site, ${driveToH.toFixed(1)} drive to, ${driveBackH.toFixed(1)} drive back)\n`;
+  if (totalMiles > 0) body += `Total Miles: ${totalMiles.toLocaleString()}\n`;
+  if (expTotal > 0) body += `Total Expenses: $${expTotal.toFixed(2)}\n`;
+  body += `\n---\nFull report with photos and receipts is attached as PDF.\n`;
+  body += `(Save the report tab as PDF using Ctrl+P or Print > Save as PDF, then attach it to this email.)\n`;
+
+  // Open mailto
+  const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  window.location.href = mailto;
+}
+
+// ═══════════════════════════════
+// SAVE / RESET / SIDEBAR
+// ═══════════════════════════════
+function closeDialog() {
+  document.getElementById('saveDialog').classList.remove('open');
+}
+
+async function saveAndReset() {
+  closeDialog();
+  const job = {
+    id: Date.now(),
+    client: document.getElementById('client').value.trim() || 'Untitled',
+    city: document.getElementById('city').value.trim(),
+    state: document.getElementById('state').value.trim().toUpperCase(),
+    dateStart: document.getElementById('dateStart').value,
+    dateEnd: document.getElementById('dateEnd').value,
+    savedAt: new Date().toISOString(),
+    reportHTML: lastReportHTML,
+  };
+  await dbPut(job);
+  clearForm();
+  await refreshSidebar();
+}
+
+function clearForm() {
+  document.getElementById('client').value = '';
+  document.getElementById('city').value = '';
+  document.getElementById('state').value = '';
+  document.getElementById('dateStart').value = '';
+  document.getElementById('dateEnd').value = '';
+  document.getElementById('siteHours').value = '';
+  document.getElementById('driveToHours').value = '';
+  document.getElementById('driveBackHours').value = '';
+  document.getElementById('totalHours').textContent = '0';
+  photos = []; receipts = []; jobFiles = []; notes = []; trips = [];
+  lastReportHTML = '';
+  renderPhotos();
+  renderReceipts();
+  renderJobFiles();
+  renderNotes();
+  renderMileage();
+  document.getElementById('hoursSection').classList.add('hidden');
+  document.getElementById('notesSection').classList.add('hidden');
+  window.scrollTo(0, 0);
+}
+
+function openSidebar() {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebarOverlay').classList.add('open');
+  refreshSidebar();
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebarOverlay').classList.remove('open');
+}
+
+async function refreshSidebar() {
+  const jobs = await dbGetAll();
+  jobs.sort((a, b) => b.id - a.id);
+  document.getElementById('completedCount').textContent = jobs.length;
+  const body = document.getElementById('sidebarBody');
+  if (!jobs.length) {
+    body.innerHTML = '<div class="sidebar-empty">No completed jobs yet.<br>Generate a report to save a job here.</div>';
+    return;
+  }
+  body.innerHTML = jobs.map(j => {
+    const loc = [j.city, j.state].filter(Boolean).join(', ');
+    return `<div class="sidebar-item">
+      <div class="si-client">${esc(j.client)}</div>
+      <div class="si-meta">${esc(loc)}${j.dateStart ? ' — ' + fmtDate(j.dateStart) : ''}</div>
+      <div class="si-actions">
+        <button class="btn-green" style="padding:6px 14px;font-size:13px;border:none;border-radius:var(--radius);cursor:pointer" onclick="event.stopPropagation();viewSavedReport(${j.id})">View Report</button>
+        <button class="btn-red" style="padding:6px 14px;font-size:13px;border:none;border-radius:var(--radius);cursor:pointer" onclick="event.stopPropagation();deleteSavedJob(${j.id})">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function viewSavedReport(id) {
+  const job = await dbGet(id);
+  if (!job) return;
+  const w = window.open('', '_blank');
+  w.document.write(job.reportHTML);
+  w.document.close();
+}
+
+async function deleteSavedJob(id) {
+  if (!confirm('Delete this saved job?')) return;
+  await dbDelete(id);
+  refreshSidebar();
+}
+
+// ═══════════════════════════════
+// INIT
+// ═══════════════════════════════
+(async function init() {
+  try {
+    db = await openDB();
+    const jobs = await dbGetAll();
+    document.getElementById('completedCount').textContent = jobs.length;
+  } catch(e) {
+    console.warn('IndexedDB unavailable:', e);
+  }
+})();
+</script>
+
+</body>
+</html>

@@ -1387,15 +1387,68 @@ async function refreshSidebar() {
   }).join('');
 }
 
+// Inject the action bar into old reports (generated before the feature existed)
+function upgradeReportHTML(html, reportName) {
+  if (!html) return html;
+  if (html.includes('__actionBar')) return html; // already has it
+  const safeName = (reportName || 'job_report').replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'job_report';
+  const injection = `
+<style>
+  .__action-bar{position:fixed;top:0;left:0;right:0;background:#1a1d26;padding:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.2);z-index:1000}
+  .__action-bar button{padding:12px 18px;border:none;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;color:#fff;min-width:110px}
+  .__btn-share{background:#22c55e}
+  .__btn-print{background:#4f8cff}
+  .__btn-dl{background:#8b90a0}
+  body{padding-top:80px !important}
+  @media (max-width:600px){body{padding-top:70px !important}.__action-bar button{padding:10px 12px;font-size:14px;min-width:0;flex:1}}
+  @media print{.__action-bar{display:none !important}body{padding-top:0 !important}}
+</style>
+<div class="__action-bar" id="__actionBar">
+  <button class="__btn-share" onclick="__shareReport()">📤 Share</button>
+  <button class="__btn-print" onclick="window.print()">🖨️ Print / PDF</button>
+  <button class="__btn-dl" onclick="__downloadReport()">💾 Download</button>
+</div>
+<script>
+  const __reportName = ${JSON.stringify(safeName)};
+  async function __shareReport(){
+    const htmlBlob = new Blob([document.documentElement.outerHTML], {type:'text/html'});
+    const file = new File([htmlBlob], __reportName + '.html', {type:'text/html'});
+    try {
+      if (navigator.canShare && navigator.canShare({files:[file]})) {
+        await navigator.share({files:[file], title:'Job Report', text:'MistAmerica Job Report'});
+        return;
+      }
+      if (navigator.share) {
+        await navigator.share({title:'Job Report', text:'MistAmerica Job Report — ' + __reportName, url: location.href});
+        return;
+      }
+    } catch(e) { if (e.name === 'AbortError') return; }
+    __downloadReport();
+    alert('Sharing not supported here — report downloaded instead.');
+  }
+  function __downloadReport(){
+    const htmlBlob = new Blob([document.documentElement.outerHTML], {type:'text/html'});
+    const url = URL.createObjectURL(htmlBlob);
+    const a = document.createElement('a');
+    a.href = url; a.download = __reportName + '.html';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  }
+<\/script>`;
+  if (html.includes('<body>')) return html.replace('<body>', '<body>' + injection);
+  return html + injection;
+}
+
 async function viewSavedReport(id) {
   const job = await dbGet(id);
   if (!job) return;
-  const blob = new Blob([job.reportHTML], { type: 'text/html' });
+  const safeName = (job.client + '_' + (job.city || '') + '_' + (job.state || '')).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'job_report';
+  const upgradedHTML = upgradeReportHTML(job.reportHTML, safeName);
+  const blob = new Blob([upgradedHTML], { type: 'text/html' });
   const url = URL.createObjectURL(blob);
   const w = window.open(url, '_blank');
   if (!w) {
     const a = document.createElement('a');
-    const safeName = (job.client + '_' + (job.city || '') + '_' + (job.state || '')).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'job_report';
     a.href = url;
     a.download = safeName + '.html';
     document.body.appendChild(a);

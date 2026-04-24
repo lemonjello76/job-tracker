@@ -461,6 +461,25 @@
   .sidebar-item .si-meta { font-size: 13px; color: var(--dim); margin-top: 2px; }
   .sidebar-item .si-actions { margin-top: 8px; display: flex; gap: 8px; }
   .sidebar-empty { color: var(--dim); font-size: 14px; text-align: center; padding: 40px 20px; }
+  .sidebar-backup {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .sidebar-backup button {
+    flex: 1;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--input);
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .sidebar-backup button:hover { border-color: var(--accent); }
 
   /* Dialog */
   .dialog-overlay {
@@ -635,8 +654,15 @@
     <h2>Completed Jobs</h2>
     <button class="sidebar-close" onclick="closeSidebar()">&times;</button>
   </div>
+  <div class="sidebar-backup">
+    <button onclick="exportAllJobs()">📤 Backup</button>
+    <button onclick="document.getElementById('importInput').click()">📥 Restore</button>
+  </div>
   <div class="sidebar-body" id="sidebarBody"></div>
 </div>
+
+<!-- Hidden file input for restore -->
+<input type="file" id="importInput" class="hidden" accept=".json,application/json">
 
 <!-- Save dialog -->
 <div class="dialog-overlay" id="saveDialog">
@@ -1385,6 +1411,85 @@ async function deleteSavedJob(id) {
   await dbDelete(id);
   refreshSidebar();
 }
+
+// ═══════════════════════════════
+// BACKUP & RESTORE
+// ═══════════════════════════════
+async function exportAllJobs() {
+  const jobs = await dbGetAll();
+  if (!jobs.length) {
+    alert('No saved jobs to back up yet.');
+    return;
+  }
+  const backup = {
+    app: 'MistAmerica Job Tracker',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    jobCount: jobs.length,
+    jobs: jobs
+  };
+  const json = JSON.stringify(backup);
+  const today = new Date().toISOString().slice(0, 10);
+  const fileName = `mistamerica-jobs-backup-${today}.json`;
+  const blob = new Blob([json], { type: 'application/json' });
+  const file = new File([blob], fileName, { type: 'application/json' });
+
+  // Try native share (lets you email/Drive/Dropbox/etc in one tap on mobile)
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title: 'MistAmerica Jobs Backup',
+        text: `Backup of ${jobs.length} job${jobs.length === 1 ? '' : 's'} — ${today}`
+      });
+      return;
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') return; // user cancelled share — that's fine
+  }
+  // Fallback: download the file
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  alert(`Backup saved: ${fileName}\n\nEmail it to yourself or save it to Google Drive so you have a copy off your phone.`);
+}
+
+document.getElementById('importInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    let backup;
+    try {
+      backup = JSON.parse(ev.target.result);
+    } catch (err) {
+      alert('That file is not a valid backup file.');
+      return;
+    }
+    if (!backup.jobs || !Array.isArray(backup.jobs)) {
+      alert('That file is not a valid MistAmerica Job Tracker backup.');
+      return;
+    }
+    const existing = await dbGetAll();
+    const existingIds = new Set(existing.map(j => j.id));
+    let added = 0, skipped = 0;
+    for (const job of backup.jobs) {
+      if (!job.id) { skipped++; continue; }
+      if (existingIds.has(job.id)) { skipped++; continue; }
+      await dbPut(job);
+      added++;
+    }
+    await refreshSidebar();
+    alert(`Restore complete.\n\nAdded: ${added} job${added === 1 ? '' : 's'}\nSkipped (already on this phone): ${skipped}`);
+  };
+  reader.readAsText(file);
+});
 
 // ═══════════════════════════════
 // INIT

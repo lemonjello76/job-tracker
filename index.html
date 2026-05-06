@@ -569,6 +569,18 @@
   </div>
 </div>
 
+<!-- JOB CLOCK -->
+<div class="section">
+  <h2>Job Clock</h2>
+  <div id="clockDisplay" style="font-size:32px;font-weight:700;text-align:center;padding:14px;background:var(--input);border-radius:var(--radius);margin-bottom:12px;letter-spacing:2px;font-variant-numeric:tabular-nums">0:00:00</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <button id="clockStartBtn" class="action-btn" style="background:var(--green);color:#fff;border-style:solid" onclick="startClock()">▶ START JOB</button>
+    <button id="clockStopBtn" class="action-btn" style="background:var(--red);color:#fff;border-style:solid;display:none" onclick="stopClock()">■ STOP JOB</button>
+    <button class="action-btn-sm" onclick="resetClock()" style="grid-column:1 / -1;margin:0">Reset Clock</button>
+  </div>
+  <div id="clockMeta" style="font-size:12px;color:var(--dim);margin-top:8px;text-align:center"></div>
+</div>
+
 <!-- 5 BIG BUTTONS -->
 <div class="actions">
   <button class="action-btn" onclick="document.getElementById('photoInput').click()">
@@ -583,8 +595,17 @@
   <button class="action-btn" onclick="document.getElementById('jobFileInput').click()">
     <span class="icon">📁</span> UPLOAD JOB FILES
   </button>
-  <button class="action-btn" onclick="toggleSection('notesSection'); addNoteIfEmpty()" style="grid-column: 1 / -1">
+  <button class="action-btn" onclick="toggleSection('notesSection'); addNoteIfEmpty()">
     <span class="icon">📝</span> NOTES
+  </button>
+  <button class="action-btn" onclick="toggleSection('contactsSection'); addContactIfEmpty()">
+    <span class="icon">👥</span> CONTACTS
+  </button>
+  <button class="action-btn" onclick="toggleSection('checklistSection')">
+    <span class="icon">✅</span> CHECKLIST
+  </button>
+  <button class="action-btn" onclick="toggleSection('voiceSection')">
+    <span class="icon">🎙️</span> VOICE MEMOS
   </button>
 </div>
 
@@ -639,10 +660,46 @@
   <button class="action-btn-sm" onclick="addNote()">+ Add Note</button>
 </div>
 
+<!-- CONTACTS -->
+<div id="contactsSection" class="section hidden">
+  <h2>Contacts (<span id="contactCount">0</span>)</h2>
+  <div id="contactsList"></div>
+  <button class="action-btn-sm" onclick="addContact()">+ Add Contact</button>
+</div>
+
+<!-- CHECKLIST -->
+<div id="checklistSection" class="section hidden">
+  <h2>Checklist</h2>
+  <div class="field" style="margin-bottom:12px">
+    <label>Job Type</label>
+    <select id="checklistType" onchange="loadChecklist(this.value)">
+      <option value="">— Pick a job type to load checklist —</option>
+      <option value="new_install">New Install</option>
+      <option value="service_call">Service Call</option>
+      <option value="ro_setup">RO System Setup</option>
+      <option value="warranty">Warranty Work</option>
+    </select>
+  </div>
+  <div id="checklistItems"></div>
+  <button class="action-btn-sm" onclick="addChecklistItem()" id="addChecklistBtn" style="display:none">+ Add Custom Item</button>
+</div>
+
+<!-- VOICE MEMOS -->
+<div id="voiceSection" class="section hidden">
+  <h2>Voice Memos (<span id="voiceCount">0</span>)</h2>
+  <div id="voiceUnsupported" style="display:none;color:var(--yellow);font-size:13px;margin-bottom:10px">
+    ⚠ Voice transcription needs Chrome or Edge. Recording will still work; transcript may be blank.
+  </div>
+  <button class="action-btn-sm" id="recordBtn" onclick="toggleRecord()">🎙️ Start Recording</button>
+  <div id="recordStatus" style="display:none;color:var(--red);font-weight:700;margin:8px 0">● Recording — <span id="recordTimer">0:00</span></div>
+  <div id="voiceList" style="margin-top:12px"></div>
+</div>
+
 <!-- GENERATE -->
 <div class="bottom-btns">
-  <button class="generate-btn" onclick="generateReport()">GENERATE REPORT</button>
-  <button class="send-btn" onclick="sendReport()">SEND REPORT ✉</button>
+  <button class="generate-btn" onclick="generateReport()">FULL REPORT</button>
+  <button class="generate-btn" style="background:var(--yellow);color:#111" onclick="generateSummary()">PROJECT SUMMARY</button>
+  <button class="send-btn" onclick="sendReport()" style="grid-column:1 / -1">SEND REPORT ✉</button>
 </div>
 
 </div><!-- /main -->
@@ -680,13 +737,71 @@
 // ═══════════════════════════════
 // STATE
 // ═══════════════════════════════
-let photos = [];     // { dataURL, notes }
-let receipts = [];   // { dataURL, amount, vendor, category }
+let photos = [];     // { dataURL, notes, gps }
+let receipts = [];   // { dataURL, amount, vendor, category, gps }
 let jobFiles = [];   // { dataURL, fileName, size, isImage }
 let notes = [];      // { title, text }
-let trips = [];      // { startPhoto, startStamp, startMiles, endPhoto, endStamp, endMiles }
+let trips = [];      // { startPhoto, startStamp, startMiles, startGps, endPhoto, endStamp, endMiles, endGps }
+let contacts = [];   // { name, role, phone, discussed }
+let checklist = { type: '', items: [] }; // { label, checked }
+let voiceMemos = []; // { audioURL, transcript, stamp, duration }
+let clockState = { running: false, startedAt: 0, accumulatedMs: 0 };
 let db = null;
 let lastReportHTML = '';
+let lastSummaryHTML = '';
+
+// ═══════════════════════════════
+// CHECKLIST TEMPLATES
+// ═══════════════════════════════
+const CHECKLIST_TEMPLATES = {
+  new_install: [
+    'Confirm site is ready (water, power, mounting)',
+    'Walk site with GC / property manager',
+    'Verify line voltage at supply',
+    'Pressure test water supply',
+    'Mount pump unit, secure to structure',
+    'Run high-pressure line, anchor every 4 ft',
+    'Install nozzles, verify spacing',
+    'Wire pump to switch / thermostat',
+    'Pressurize and check every fitting for leaks',
+    'Operational test — full cycle',
+    'Walk customer through start/stop, maintenance',
+    'Photograph completed install (panel, line, nozzles)',
+    'Collect signature / sign-off'
+  ],
+  service_call: [
+    'Confirm reported issue with customer on arrival',
+    'Inspect pump unit for visible damage',
+    'Check water supply pressure',
+    'Check switch / control wiring',
+    'Test nozzles for clog or leak',
+    'Replace failed parts',
+    'Pressure test repaired system',
+    'Confirm fix with customer, get sign-off',
+    'Photograph repaired components'
+  ],
+  ro_setup: [
+    'Verify incoming TDS reading',
+    'Check inlet pressure (40+ psi)',
+    'Mount RO membrane housing',
+    'Connect inlet, drain, and product lines',
+    'Flush membrane per spec',
+    'Verify outlet TDS reading',
+    'Check ratio of waste to product water',
+    'Photograph TDS readings before/after',
+    'Walk customer through RO maintenance'
+  ],
+  warranty: [
+    'Verify install date and warranty status',
+    'Confirm failure mode with customer',
+    'Document failure with photos before repair',
+    'Replace failed component',
+    'Test repaired system',
+    'Note part number and serial of replacement',
+    'Photograph completed repair',
+    'Customer sign-off'
+  ]
+};
 
 // ═══════════════════════════════
 // INDEXEDDB — completed jobs
@@ -755,8 +870,30 @@ function toggleSection(id) {
   document.getElementById(id).classList.toggle('hidden');
 }
 
-// Burn timestamp onto image
-function stampImage(dataURL) {
+// Try to get current GPS — quick timeout, no big delay if denied or unavailable
+function getGps() {
+  return new Promise(resolve => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
+    );
+  });
+}
+
+function fmtGps(g) {
+  if (!g) return '';
+  return g.lat.toFixed(5) + ', ' + g.lng.toFixed(5);
+}
+
+function gpsMapsLink(g) {
+  if (!g) return '';
+  return 'https://www.google.com/maps?q=' + g.lat + ',' + g.lng;
+}
+
+// Burn timestamp + optional GPS onto image
+function stampImage(dataURL, gps) {
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
@@ -766,13 +903,23 @@ function stampImage(dataURL) {
       const ctx = c.getContext('2d');
       ctx.drawImage(img, 0, 0);
       const stamp = nowStamp();
+      const gpsLine = fmtGps(gps);
       const fs = Math.max(18, Math.floor(img.width / 22));
       ctx.font = `bold ${fs}px sans-serif`;
-      const tw = ctx.measureText(stamp).width;
+      const w1 = ctx.measureText(stamp).width;
+      const w2 = gpsLine ? ctx.measureText(gpsLine).width : 0;
+      const lines = gpsLine ? 2 : 1;
+      const boxH = fs * lines + 8 * lines + 10;
+      const boxW = Math.max(w1, w2) + 28;
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(0, img.height - fs - 18, tw + 28, fs + 18);
+      ctx.fillRect(0, img.height - boxH, boxW, boxH);
       ctx.fillStyle = '#fff';
-      ctx.fillText(stamp, 14, img.height - 12);
+      if (gpsLine) {
+        ctx.fillText(stamp, 14, img.height - fs - 14);
+        ctx.fillText(gpsLine, 14, img.height - 10);
+      } else {
+        ctx.fillText(stamp, 14, img.height - 12);
+      }
       resolve({ dataURL: c.toDataURL('image/jpeg', 0.85), stamp });
     };
     img.src = dataURL;
@@ -782,14 +929,16 @@ function stampImage(dataURL) {
 // ═══════════════════════════════
 // PHOTOS
 // ═══════════════════════════════
-document.getElementById('photoInput').addEventListener('change', function(e) {
+document.getElementById('photoInput').addEventListener('change', async function(e) {
   const files = Array.from(e.target.files);
   if (!files.length) return;
+  const gps = await getGps();
   let loaded = 0;
   files.forEach(file => {
     const reader = new FileReader();
-    reader.onload = ev => {
-      photos.push({ dataURL: ev.target.result, notes: '' });
+    reader.onload = async ev => {
+      const stamped = await stampImage(ev.target.result, gps);
+      photos.push({ dataURL: stamped.dataURL, notes: '', gps, stamp: stamped.stamp });
       loaded++;
       if (loaded === files.length) renderPhotos();
     };
@@ -867,16 +1016,19 @@ let odoTarget = null; // { tripIndex, which: 'start'|'end' }
 document.getElementById('odoInput').addEventListener('change', async function(e) {
   const file = e.target.files[0];
   if (!file || !odoTarget) return;
+  const gps = await getGps();
   const reader = new FileReader();
   reader.onload = async ev => {
-    const { dataURL, stamp } = await stampImage(ev.target.result);
+    const { dataURL, stamp } = await stampImage(ev.target.result, gps);
     const trip = trips[odoTarget.tripIndex];
     if (odoTarget.which === 'start') {
       trip.startPhoto = dataURL;
       trip.startStamp = stamp;
+      trip.startGps = gps;
     } else {
       trip.endPhoto = dataURL;
       trip.endStamp = stamp;
+      trip.endGps = gps;
     }
     renderMileage();
   };
@@ -955,14 +1107,16 @@ function renderMileage() {
 // ═══════════════════════════════
 // RECEIPTS
 // ═══════════════════════════════
-document.getElementById('receiptInput').addEventListener('change', function(e) {
+document.getElementById('receiptInput').addEventListener('change', async function(e) {
   const files = Array.from(e.target.files);
   if (!files.length) return;
+  const gps = await getGps();
   let loaded = 0;
   files.forEach(file => {
     const reader = new FileReader();
-    reader.onload = ev => {
-      receipts.push({ dataURL: ev.target.result, amount: '', vendor: '', category: 'gas' });
+    reader.onload = async ev => {
+      const stamped = await stampImage(ev.target.result, gps);
+      receipts.push({ dataURL: stamped.dataURL, amount: '', vendor: '', category: 'gas', gps, stamp: stamped.stamp });
       loaded++;
       if (loaded === files.length) renderReceipts();
     };
@@ -1017,6 +1171,254 @@ function renderNotes() {
       <button class="remove-btn" onclick="notes.splice(${i},1);renderNotes()">×</button>
       <input type="text" placeholder="Topic — e.g. Water Quality, Switch Locations, Ladder Needed..." value="${esc(n.title)}" onchange="notes[${i}].title=this.value">
       <textarea placeholder="Details..." onchange="notes[${i}].text=this.value">${esc(n.text)}</textarea>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════
+// CONTACTS
+// ═══════════════════════════════
+function addContact() {
+  contacts.push({ name: '', role: '', phone: '', discussed: '' });
+  renderContacts();
+}
+function addContactIfEmpty() { if (!contacts.length) addContact(); }
+
+function renderContacts() {
+  document.getElementById('contactCount').textContent = contacts.length;
+  document.getElementById('contactsList').innerHTML = contacts.map((c, i) => `
+    <div class="note-card">
+      <button class="remove-btn" onclick="contacts.splice(${i},1);renderContacts()">×</button>
+      <div class="form-row">
+        <div class="field"><input type="text" placeholder="Name" value="${esc(c.name)}" onchange="contacts[${i}].name=this.value"></div>
+        <div class="field">
+          <select onchange="contacts[${i}].role=this.value" style="padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:15px;font-family:inherit;outline:none;width:100%">
+            <option value="">— Role —</option>
+            <option value="GC / Superintendent"${c.role==='GC / Superintendent'?' selected':''}>GC / Superintendent</option>
+            <option value="Property Owner"${c.role==='Property Owner'?' selected':''}>Property Owner</option>
+            <option value="Property Manager"${c.role==='Property Manager'?' selected':''}>Property Manager</option>
+            <option value="Franchise Owner"${c.role==='Franchise Owner'?' selected':''}>Franchise Owner</option>
+            <option value="Plumber"${c.role==='Plumber'?' selected':''}>Plumber</option>
+            <option value="Electrician"${c.role==='Electrician'?' selected':''}>Electrician</option>
+            <option value="Other Trade"${c.role==='Other Trade'?' selected':''}>Other Trade</option>
+            <option value="MistAmerica Office"${c.role==='MistAmerica Office'?' selected':''}>MistAmerica Office</option>
+            <option value="Other"${c.role==='Other'?' selected':''}>Other</option>
+          </select>
+        </div>
+      </div>
+      <input type="tel" placeholder="Phone (optional)" value="${esc(c.phone)}" onchange="contacts[${i}].phone=this.value">
+      <textarea placeholder="What was discussed..." onchange="contacts[${i}].discussed=this.value">${esc(c.discussed)}</textarea>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════
+// CHECKLIST
+// ═══════════════════════════════
+function loadChecklist(type) {
+  checklist.type = type;
+  if (type && CHECKLIST_TEMPLATES[type]) {
+    if (!checklist.items.length || confirm('Replace current checklist with the ' + type.replace('_',' ') + ' template?')) {
+      checklist.items = CHECKLIST_TEMPLATES[type].map(label => ({ label, checked: false }));
+    }
+  }
+  renderChecklist();
+}
+
+function addChecklistItem() {
+  checklist.items.push({ label: '', checked: false });
+  renderChecklist();
+}
+
+function renderChecklist() {
+  const list = document.getElementById('checklistItems');
+  document.getElementById('addChecklistBtn').style.display = checklist.type ? '' : 'none';
+  if (!checklist.items.length) { list.innerHTML = ''; return; }
+  list.innerHTML = checklist.items.map((it, i) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
+      <input type="checkbox" ${it.checked?'checked':''} onchange="checklist.items[${i}].checked=this.checked" style="width:20px;height:20px;flex-shrink:0;cursor:pointer">
+      <input type="text" value="${esc(it.label)}" onchange="checklist.items[${i}].label=this.value" style="flex:1;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;outline:none${it.checked?';text-decoration:line-through;color:var(--dim)':''}">
+      <button class="remove-btn" style="position:static" onclick="checklist.items.splice(${i},1);renderChecklist()">×</button>
+    </div>
+  `).join('');
+}
+
+// ═══════════════════════════════
+// JOB CLOCK
+// ═══════════════════════════════
+let clockInterval = null;
+
+function fmtClock(ms) {
+  const total = Math.floor(ms / 1000);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return h + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function clockElapsed() {
+  return clockState.accumulatedMs + (clockState.running ? Date.now() - clockState.startedAt : 0);
+}
+
+function tickClock() {
+  document.getElementById('clockDisplay').textContent = fmtClock(clockElapsed());
+  saveClockToLocal();
+}
+
+function startClock() {
+  if (clockState.running) return;
+  clockState.running = true;
+  clockState.startedAt = Date.now();
+  if (!document.getElementById('dateStart').value) {
+    document.getElementById('dateStart').value = new Date().toISOString().slice(0,10);
+  }
+  document.getElementById('clockStartBtn').style.display = 'none';
+  document.getElementById('clockStopBtn').style.display = '';
+  document.getElementById('clockMeta').textContent = 'Started ' + nowStamp();
+  clockInterval = setInterval(tickClock, 1000);
+  saveClockToLocal();
+}
+
+function stopClock() {
+  if (!clockState.running) return;
+  clockState.accumulatedMs += Date.now() - clockState.startedAt;
+  clockState.running = false;
+  clearInterval(clockInterval); clockInterval = null;
+  document.getElementById('clockStartBtn').style.display = '';
+  document.getElementById('clockStopBtn').style.display = 'none';
+  const hours = clockState.accumulatedMs / 3600000;
+  if (hours > 0 && confirm('Auto-fill ' + hours.toFixed(1) + ' hrs into On-Site Hours?')) {
+    document.getElementById('siteHours').value = hours.toFixed(1);
+    calcHours();
+    document.getElementById('hoursSection').classList.remove('hidden');
+  }
+  if (!document.getElementById('dateEnd').value) {
+    document.getElementById('dateEnd').value = new Date().toISOString().slice(0,10);
+  }
+  document.getElementById('clockMeta').textContent = 'Total: ' + fmtClock(clockState.accumulatedMs);
+  saveClockToLocal();
+}
+
+function resetClock() {
+  if (clockState.accumulatedMs > 0 || clockState.running) {
+    if (!confirm('Reset clock to zero?')) return;
+  }
+  if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
+  clockState = { running: false, startedAt: 0, accumulatedMs: 0 };
+  document.getElementById('clockDisplay').textContent = '0:00:00';
+  document.getElementById('clockStartBtn').style.display = '';
+  document.getElementById('clockStopBtn').style.display = 'none';
+  document.getElementById('clockMeta').textContent = '';
+  saveClockToLocal();
+}
+
+function saveClockToLocal() {
+  try { localStorage.setItem('jobClock', JSON.stringify(clockState)); } catch(e) {}
+}
+
+function restoreClock() {
+  try {
+    const raw = localStorage.getItem('jobClock');
+    if (!raw) return;
+    const s = JSON.parse(raw);
+    if (!s) return;
+    clockState = s;
+    if (clockState.running) {
+      document.getElementById('clockStartBtn').style.display = 'none';
+      document.getElementById('clockStopBtn').style.display = '';
+      document.getElementById('clockMeta').textContent = 'Resumed (was running)';
+      clockInterval = setInterval(tickClock, 1000);
+    } else if (clockState.accumulatedMs > 0) {
+      document.getElementById('clockMeta').textContent = 'Paused at ' + fmtClock(clockState.accumulatedMs);
+    }
+    tickClock();
+  } catch(e) {}
+}
+
+// ═══════════════════════════════
+// VOICE MEMOS
+// ═══════════════════════════════
+let mediaRecorder = null;
+let recordChunks = [];
+let recordStartedAt = 0;
+let recordTimerInterval = null;
+let speechRec = null;
+let liveTranscript = '';
+
+async function toggleRecord() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+    if (speechRec) { try { speechRec.stop(); } catch(e) {} }
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recordChunks = [];
+    liveTranscript = '';
+    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordChunks.push(e.data); };
+    mediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(recordChunks, { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const duration = Math.floor((Date.now() - recordStartedAt) / 1000);
+        voiceMemos.push({
+          audioURL: ev.target.result,
+          transcript: liveTranscript.trim(),
+          stamp: nowStamp(),
+          duration
+        });
+        renderVoiceMemos();
+      };
+      reader.readAsDataURL(blob);
+      document.getElementById('recordBtn').textContent = '🎙️ Start Recording';
+      document.getElementById('recordBtn').style.background = '';
+      document.getElementById('recordStatus').style.display = 'none';
+      clearInterval(recordTimerInterval); recordTimerInterval = null;
+    };
+    mediaRecorder.start();
+    recordStartedAt = Date.now();
+
+    // Web Speech API for live transcription (Chrome/Edge only)
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      speechRec = new SR();
+      speechRec.continuous = true;
+      speechRec.interimResults = false;
+      speechRec.lang = 'en-US';
+      speechRec.onresult = e => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) liveTranscript += e.results[i][0].transcript + ' ';
+        }
+      };
+      speechRec.onerror = () => {};
+      try { speechRec.start(); } catch(e) {}
+    } else {
+      document.getElementById('voiceUnsupported').style.display = '';
+    }
+
+    document.getElementById('recordBtn').textContent = '■ Stop Recording';
+    document.getElementById('recordBtn').style.background = 'var(--red)';
+    document.getElementById('recordBtn').style.color = '#fff';
+    document.getElementById('recordStatus').style.display = '';
+    recordTimerInterval = setInterval(() => {
+      const s = Math.floor((Date.now() - recordStartedAt) / 1000);
+      document.getElementById('recordTimer').textContent = Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+    }, 500);
+  } catch (err) {
+    alert('Could not start microphone: ' + err.message + '\n\nMake sure you granted mic permission.');
+  }
+}
+
+function renderVoiceMemos() {
+  document.getElementById('voiceCount').textContent = voiceMemos.length;
+  document.getElementById('voiceList').innerHTML = voiceMemos.map((v, i) => `
+    <div class="note-card">
+      <button class="remove-btn" onclick="voiceMemos.splice(${i},1);renderVoiceMemos()">×</button>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:6px">${esc(v.stamp)} — ${Math.floor(v.duration/60)}:${String(v.duration%60).padStart(2,'0')}</div>
+      <audio controls src="${v.audioURL}" style="width:100%;margin-bottom:8px"></audio>
+      <textarea placeholder="Transcript (edit if needed)..." onchange="voiceMemos[${i}].transcript=this.value">${esc(v.transcript)}</textarea>
     </div>
   `).join('');
 }
@@ -1217,12 +1619,24 @@ function generateReport() {
     }
   }
 
+  // Checklist
+  if (checklist.items.length > 0) {
+    const labelMap = { new_install: 'New Install', service_call: 'Service Call', ro_setup: 'RO System Setup', warranty: 'Warranty Work' };
+    const done = checklist.items.filter(it => it.checked).length;
+    html += `<h2>Checklist${checklist.type ? ' — ' + esc(labelMap[checklist.type] || checklist.type) : ''} (${done}/${checklist.items.length})</h2><ul style="list-style:none;padding:0;margin:8px 0">`;
+    checklist.items.forEach(it => {
+      html += `<li style="padding:6px 0;font-size:14px${it.checked?';color:#666':''}">${it.checked ? '☑' : '☐'} ${esc(it.label)}</li>`;
+    });
+    html += `</ul>`;
+  }
+
   // Photos
   if (photos.length > 0) {
     html += `<h2>Job Photos (${photos.length})</h2><div class="photo-grid">`;
     photos.forEach(p => {
       html += `<div class="photo-item"><img src="${p.dataURL}">`;
       if (p.notes) html += `<div class="photo-notes">${esc(p.notes)}</div>`;
+      if (p.gps) html += `<div style="font-size:11px;color:#666;margin-top:2px"><a href="${gpsMapsLink(p.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">📍 ${fmtGps(p.gps)}</a></div>`;
       html += `</div>`;
     });
     html += `</div>`;
@@ -1239,6 +1653,7 @@ function generateReport() {
           <p><strong>$${amt.toFixed(2)}</strong></p>
           <p>${esc(r.vendor) || 'No vendor'}</p>
           <p style="color:#666">${(r.category||'other').charAt(0).toUpperCase()+(r.category||'other').slice(1)}</p>
+          ${r.gps ? `<p style="font-size:11px;margin-top:4px"><a href="${gpsMapsLink(r.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">📍 ${fmtGps(r.gps)}</a></p>` : ''}
         </div>
       </div>`;
     });
@@ -1247,6 +1662,29 @@ function generateReport() {
       html += `<tr><td>${cat.charAt(0).toUpperCase()+cat.slice(1)}</td><td style="text-align:right">$${total.toFixed(2)}</td></tr>`;
     });
     html += `<tr class="total-row"><td>Grand Total</td><td style="text-align:right">$${expenseTotal.toFixed(2)}</td></tr></tbody></table>`;
+  }
+
+  // Contacts
+  const filledContacts = contacts.filter(c => c.name || c.role || c.discussed);
+  if (filledContacts.length > 0) {
+    html += `<h2>Contacts (${filledContacts.length})</h2><table>
+      <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Discussed</th></tr></thead><tbody>`;
+    filledContacts.forEach(c => {
+      html += `<tr><td>${esc(c.name) || '—'}</td><td>${esc(c.role) || '—'}</td><td>${esc(c.phone) || '—'}</td><td>${esc(c.discussed) || '—'}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+
+  // Voice memos
+  if (voiceMemos.length > 0) {
+    html += `<h2>Voice Memos (${voiceMemos.length})</h2>`;
+    voiceMemos.forEach((v, i) => {
+      html += `<div class="note-block">
+        <h3>Memo ${i+1} — ${esc(v.stamp)} (${Math.floor(v.duration/60)}:${String(v.duration%60).padStart(2,'0')})</h3>
+        <audio controls src="${v.audioURL}" style="width:100%;margin:6px 0"></audio>
+        ${v.transcript ? `<p>${esc(v.transcript)}</p>` : `<p style="color:#888;font-style:italic">No transcript</p>`}
+      </div>`;
+    });
   }
 
   // Notes
@@ -1290,6 +1728,163 @@ function generateReport() {
 
   // Show save dialog
   document.getElementById('saveDialog').classList.add('open');
+}
+
+// ═══════════════════════════════
+// PROJECT SUMMARY (One-pager)
+// ═══════════════════════════════
+function generateSummary() {
+  const client = document.getElementById('client').value.trim() || 'N/A';
+  const city = document.getElementById('city').value.trim();
+  const state = document.getElementById('state').value.trim().toUpperCase();
+  const dateStart = document.getElementById('dateStart').value;
+  const dateEnd = document.getElementById('dateEnd').value;
+  const location = [city, state].filter(Boolean).join(', ') || 'N/A';
+
+  const siteH = parseFloat(document.getElementById('siteHours').value) || 0;
+  const driveToH = parseFloat(document.getElementById('driveToHours').value) || 0;
+  const driveBackH = parseFloat(document.getElementById('driveBackHours').value) || 0;
+  const totalH = siteH + driveToH + driveBackH;
+
+  let expenseTotal = 0;
+  const cats = {};
+  receipts.forEach(r => {
+    const amt = parseFloat(r.amount) || 0;
+    expenseTotal += amt;
+    const cat = r.category || 'other';
+    cats[cat] = (cats[cat] || 0) + amt;
+  });
+
+  let totalMiles = 0;
+  trips.forEach(t => {
+    const s = parseFloat(t.startMiles) || 0;
+    const e = parseFloat(t.endMiles) || 0;
+    if (e > s) totalMiles += e - s;
+  });
+
+  const heroPhotos = photos.slice(0, 4);
+  const checklistDone = checklist.items.filter(it => it.checked).length;
+  const checklistTotal = checklist.items.length;
+  const status = (dateEnd && checklistTotal > 0 && checklistDone === checklistTotal) ? 'Completed'
+              : (dateEnd ? 'Completed (no checklist)'
+              : (checklistTotal > 0 && checklistDone < checklistTotal) ? 'Punch List Remaining' : 'In Progress');
+
+  const summaryFileBase = (client + '_' + (city || '') + '_' + (state || '') + '_summary').replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'job_summary';
+
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Project Summary — ${esc(client)}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111;padding:30px;max-width:850px;margin:0 auto;padding-top:80px}
+  h1{font-size:22px;border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+  .meta{font-size:14px;color:#444;margin-bottom:2px} .meta strong{color:#111}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:#333;margin:20px 0 8px;padding-bottom:4px;border-bottom:1px solid #ccc}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+  .stat{background:#f6f7fa;padding:14px;border-radius:6px;text-align:center}
+  .stat .v{font-size:22px;font-weight:700;color:#111}
+  .stat .l{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-top:4px}
+  .hero-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin:8px 0}
+  .hero-grid img{width:100%;height:200px;object-fit:cover;border-radius:6px;border:1px solid #ddd;cursor:zoom-in}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}
+  th{text-align:left;padding:6px 10px;background:#f0f0f0;border:1px solid #ddd;font-weight:600}
+  td{padding:6px 10px;border:1px solid #ddd}
+  .total-row td{font-weight:700;background:#f0f0f0}
+  .status-pill{display:inline-block;padding:4px 12px;border-radius:14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+  .status-completed{background:#d1fae5;color:#065f46}
+  .status-punch{background:#fef3c7;color:#78350f}
+  .status-progress{background:#dbeafe;color:#1e3a8a}
+  .__lb{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:2000;padding:20px;cursor:zoom-out}
+  .__lb.__open{display:flex}
+  .__lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px}
+  .__lb-close{position:fixed;top:14px;right:18px;background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:22px;cursor:pointer;line-height:1;font-weight:700}
+  .action-bar{position:fixed;top:0;left:0;right:0;background:#1a1d26;padding:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;z-index:1000}
+  .action-bar button{padding:12px 18px;border:none;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;color:#fff;min-width:110px}
+  .btn-share{background:#22c55e}.btn-print{background:#4f8cff}.btn-dl{background:#8b90a0}
+  @media (max-width:600px){body{padding:20px;padding-top:70px}.stats{grid-template-columns:repeat(2,1fr)}.hero-grid{grid-template-columns:1fr}}
+  @media print{body{padding:0}.action-bar{display:none !important}.__lb{display:none !important}@page{margin:.5in}}
+</style></head><body>
+<div class="action-bar">
+  <button class="btn-share" onclick="__shareReport()">📤 Share</button>
+  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadReport()">💾 Download</button>
+</div>
+<div class="__lb" id="__lightbox" onclick="__closeLB(event)">
+  <button class="__lb-close" onclick="__closeLB(event)" aria-label="Close">✕</button>
+  <img id="__lbImg" alt="">
+</div>
+<script>
+  const __reportName = ${JSON.stringify(summaryFileBase)};
+  function __openLB(src){document.getElementById('__lbImg').src=src;document.getElementById('__lightbox').classList.add('__open');document.body.style.overflow='hidden';}
+  function __closeLB(e){if(e&&e.target&&e.target.id==='__lbImg')return;document.getElementById('__lightbox').classList.remove('__open');document.body.style.overflow='';}
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')__closeLB();});
+  document.addEventListener('click',function(e){const i=e.target;if(!i||i.tagName!=='IMG')return;if(i.closest('.__lb')||i.closest('.action-bar'))return;__openLB(i.src);});
+  async function __shareReport(){const b=new Blob([document.documentElement.outerHTML],{type:'text/html'});const f=new File([b],__reportName+'.html',{type:'text/html'});try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Project Summary',text:'Project Summary'});return;}if(navigator.share){await navigator.share({title:'Project Summary',url:location.href});return;}}catch(e){if(e.name==='AbortError')return;}__downloadReport();}
+  function __downloadReport(){const b=new Blob([document.documentElement.outerHTML],{type:'text/html'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=__reportName+'.html';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(u),60000);}
+<\/script>
+<h1>MistAmerica — Project Summary</h1>
+<p class="meta"><strong>Client:</strong> ${esc(client)}</p>
+<p class="meta"><strong>Location:</strong> ${esc(location)}</p>
+<p class="meta"><strong>Dates:</strong> ${fmtDate(dateStart) || 'N/A'}${dateEnd ? ' — ' + fmtDate(dateEnd) : ''}</p>
+<p class="meta" style="margin-top:6px"><strong>Status:</strong> <span class="status-pill ${status==='Completed'||status.startsWith('Completed')?'status-completed':status.includes('Punch')?'status-punch':'status-progress'}">${status}</span></p>
+
+<div class="stats">
+  <div class="stat"><div class="v">${totalH.toFixed(1)}</div><div class="l">Total Hours</div></div>
+  <div class="stat"><div class="v">${totalMiles.toLocaleString()}</div><div class="l">Total Miles</div></div>
+  <div class="stat"><div class="v">$${expenseTotal.toFixed(2)}</div><div class="l">Total Expenses</div></div>
+  <div class="stat"><div class="v">${photos.length}</div><div class="l">Photos Taken</div></div>
+</div>`;
+
+  if (heroPhotos.length) {
+    html += `<h2>Job Photos (top ${heroPhotos.length} of ${photos.length})</h2><div class="hero-grid">`;
+    heroPhotos.forEach(p => { html += `<img src="${p.dataURL}">`; });
+    html += `</div>`;
+  }
+
+  if (Object.keys(cats).length > 0) {
+    html += `<h2>Cost Breakdown</h2><table><thead><tr><th>Category</th><th style="text-align:right">Total</th></tr></thead><tbody>`;
+    Object.entries(cats).sort().forEach(([cat, total]) => {
+      html += `<tr><td>${cat.charAt(0).toUpperCase()+cat.slice(1)}</td><td style="text-align:right">$${total.toFixed(2)}</td></tr>`;
+    });
+    html += `<tr class="total-row"><td>Grand Total</td><td style="text-align:right">$${expenseTotal.toFixed(2)}</td></tr></tbody></table>`;
+  }
+
+  html += `<h2>Time &amp; Mileage</h2><table><tbody>
+    <tr><td>On Site</td><td style="text-align:right">${siteH.toFixed(1)} hrs</td></tr>
+    <tr><td>Drive (to job)</td><td style="text-align:right">${driveToH.toFixed(1)} hrs</td></tr>
+    <tr><td>Drive (return)</td><td style="text-align:right">${driveBackH.toFixed(1)} hrs</td></tr>
+    <tr class="total-row"><td>Total Hours</td><td style="text-align:right">${totalH.toFixed(1)} hrs</td></tr>
+    <tr class="total-row"><td>Total Miles</td><td style="text-align:right">${totalMiles.toLocaleString()}</td></tr>
+  </tbody></table>`;
+
+  if (checklistTotal > 0) {
+    html += `<h2>Checklist Progress</h2><p>${checklistDone} of ${checklistTotal} items complete</p>`;
+  }
+
+  // Top-line note from first filled note
+  const firstNote = notes.find(n => n.title || n.text);
+  if (firstNote) {
+    html += `<h2>Office Note</h2><p style="font-size:14px">${esc(firstNote.title ? firstNote.title + ': ' : '')}${esc(firstNote.text || '')}</p>`;
+  }
+
+  html += `</body></html>`;
+  lastSummaryHTML = html;
+
+  try {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = summaryFileBase + '.html';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      alert('Popup blocked — summary downloaded instead.');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    alert('Summary could not open: ' + err.message);
+  }
 }
 
 // ═══════════════════════════════
@@ -1355,6 +1950,13 @@ async function saveAndReset() {
     dateEnd: document.getElementById('dateEnd').value,
     savedAt: new Date().toISOString(),
     reportHTML: lastReportHTML,
+    summaryHTML: lastSummaryHTML,
+    contactCount: contacts.filter(c => c.name || c.role || c.discussed).length,
+    voiceMemoCount: voiceMemos.length,
+    checklistType: checklist.type,
+    checklistDone: checklist.items.filter(it => it.checked).length,
+    checklistTotal: checklist.items.length,
+    clockMs: clockState.accumulatedMs,
   };
   await dbPut(job);
   clearForm();
@@ -1372,14 +1974,25 @@ function clearForm() {
   document.getElementById('driveBackHours').value = '';
   document.getElementById('totalHours').textContent = '0';
   photos = []; receipts = []; jobFiles = []; notes = []; trips = [];
+  contacts = []; voiceMemos = [];
+  checklist = { type: '', items: [] };
+  document.getElementById('checklistType').value = '';
+  resetClock();
   lastReportHTML = '';
+  lastSummaryHTML = '';
   renderPhotos();
   renderReceipts();
   renderJobFiles();
   renderNotes();
   renderMileage();
+  renderContacts();
+  renderChecklist();
+  renderVoiceMemos();
   document.getElementById('hoursSection').classList.add('hidden');
   document.getElementById('notesSection').classList.add('hidden');
+  document.getElementById('contactsSection').classList.add('hidden');
+  document.getElementById('checklistSection').classList.add('hidden');
+  document.getElementById('voiceSection').classList.add('hidden');
   window.scrollTo(0, 0);
 }
 
@@ -1609,6 +2222,12 @@ document.getElementById('importInput').addEventListener('change', async function
     document.getElementById('completedCount').textContent = jobs.length;
   } catch(e) {
     console.warn('IndexedDB unavailable:', e);
+  }
+  restoreClock();
+  // Show voice-unsupported warning up front if browser can't transcribe
+  if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) {
+    const el = document.getElementById('voiceUnsupported');
+    if (el) el.style.display = '';
   }
 })();
 </script>

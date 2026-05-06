@@ -1070,14 +1070,19 @@ function generateReport() {
   .total-row td{font-weight:700;background:#f0f0f0}
   .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:10px 0}
   .photo-item{break-inside:avoid}
-  .photo-item img{width:100%;height:auto;max-height:240px;object-fit:cover;border:1px solid #ddd;border-radius:4px}
+  .photo-item img{width:100%;height:auto;max-height:240px;object-fit:cover;border:1px solid #ddd;border-radius:4px;cursor:zoom-in}
   .photo-notes{font-size:12px;color:#333;margin-top:4px;padding:6px 8px;background:#f9f9f9;border-radius:4px;font-style:italic}
   .odo-pair{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
   .odo-box{text-align:center}
-  .odo-box img{width:100%;max-height:180px;object-fit:cover;border:1px solid #ddd;border-radius:4px}
+  .odo-box img{width:100%;max-height:180px;object-fit:cover;border:1px solid #ddd;border-radius:4px;cursor:zoom-in}
   .odo-box .odo-label{font-size:12px;color:#555;margin-top:4px}
   .receipt-row{display:flex;gap:14px;align-items:flex-start;margin:12px 0;page-break-inside:avoid}
-  .receipt-row img{width:180px;height:auto;max-height:200px;object-fit:cover;border:1px solid #ddd;border-radius:4px;flex-shrink:0}
+  .receipt-row img{width:180px;height:auto;max-height:200px;object-fit:cover;border:1px solid #ddd;border-radius:4px;flex-shrink:0;cursor:zoom-in}
+  /* Lightbox */
+  .__lb{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:2000;padding:20px;cursor:zoom-out}
+  .__lb.__open{display:flex}
+  .__lb img{max-width:100%;max-height:100%;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,.6);border-radius:4px}
+  .__lb-close{position:fixed;top:14px;right:18px;background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:22px;cursor:pointer;line-height:1;font-weight:700}
   .receipt-row .r-details{font-size:14px}
   .receipt-row .r-details strong{font-size:16px}
   .note-block{margin:10px 0;page-break-inside:avoid}
@@ -1102,6 +1107,7 @@ function generateReport() {
   @media print{
     body{padding:0}
     .action-bar{display:none !important}
+    .__lb{display:none !important}
     @page{margin:.5in}
   }
 </style></head><body>
@@ -1110,8 +1116,30 @@ function generateReport() {
   <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
   <button class="btn-dl" onclick="__downloadReport()">💾 Download</button>
 </div>
+<div class="__lb" id="__lightbox" onclick="__closeLB(event)">
+  <button class="__lb-close" onclick="__closeLB(event)" aria-label="Close">✕</button>
+  <img id="__lbImg" alt="">
+</div>
 <script>
   const __reportName = ${JSON.stringify(reportFileBase)};
+  function __openLB(src){
+    const lb = document.getElementById('__lightbox');
+    document.getElementById('__lbImg').src = src;
+    lb.classList.add('__open');
+    document.body.style.overflow = 'hidden';
+  }
+  function __closeLB(e){
+    if (e && e.target && e.target.id === '__lbImg') return;
+    document.getElementById('__lightbox').classList.remove('__open');
+    document.body.style.overflow = '';
+  }
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') __closeLB(); });
+  document.addEventListener('click', function(e){
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG') return;
+    if (img.closest('.__lb') || img.closest('.action-bar') || img.closest('.__action-bar')) return;
+    __openLB(img.src);
+  });
   async function __shareReport(){
     const htmlBlob = new Blob([document.documentElement.outerHTML], {type:'text/html'});
     const file = new File([htmlBlob], __reportName + '.html', {type:'text/html'});
@@ -1400,16 +1428,43 @@ function upgradeReportHTML(html, reportName) {
   .__btn-print{background:#4f8cff}
   .__btn-dl{background:#8b90a0}
   body{padding-top:80px !important}
+  body img{cursor:zoom-in}
+  .__lb{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:2000;padding:20px;cursor:zoom-out}
+  .__lb.__open{display:flex}
+  .__lb img{max-width:100%;max-height:100%;object-fit:contain;box-shadow:0 8px 40px rgba(0,0,0,.6);border-radius:4px;cursor:zoom-out}
+  .__lb-close{position:fixed;top:14px;right:18px;background:rgba(255,255,255,.18);color:#fff;border:none;border-radius:50%;width:44px;height:44px;font-size:22px;cursor:pointer;line-height:1;font-weight:700}
   @media (max-width:600px){body{padding-top:70px !important}.__action-bar button{padding:10px 12px;font-size:14px;min-width:0;flex:1}}
-  @media print{.__action-bar{display:none !important}body{padding-top:0 !important}}
+  @media print{.__action-bar{display:none !important}.__lb{display:none !important}body{padding-top:0 !important}body img{cursor:default}}
 </style>
 <div class="__action-bar" id="__actionBar">
   <button class="__btn-share" onclick="__shareReport()">📤 Share</button>
   <button class="__btn-print" onclick="window.print()">🖨️ Print / PDF</button>
   <button class="__btn-dl" onclick="__downloadReport()">💾 Download</button>
 </div>
+<div class="__lb" id="__lightbox" onclick="__closeLB(event)">
+  <button class="__lb-close" onclick="__closeLB(event)" aria-label="Close">✕</button>
+  <img id="__lbImg" alt="">
+</div>
 <script>
   const __reportName = ${JSON.stringify(safeName)};
+  function __openLB(src){
+    const lb = document.getElementById('__lightbox');
+    document.getElementById('__lbImg').src = src;
+    lb.classList.add('__open');
+    document.body.style.overflow = 'hidden';
+  }
+  function __closeLB(e){
+    if (e && e.target && e.target.id === '__lbImg') return;
+    document.getElementById('__lightbox').classList.remove('__open');
+    document.body.style.overflow = '';
+  }
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') __closeLB(); });
+  document.addEventListener('click', function(e){
+    const img = e.target;
+    if (!img || img.tagName !== 'IMG') return;
+    if (img.closest('.__lb') || img.closest('.__action-bar') || img.closest('.action-bar')) return;
+    __openLB(img.src);
+  });
   async function __shareReport(){
     const htmlBlob = new Blob([document.documentElement.outerHTML], {type:'text/html'});
     const file = new File([htmlBlob], __reportName + '.html', {type:'text/html'});

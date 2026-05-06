@@ -550,7 +550,10 @@
 <!-- Header -->
 <div class="header">
   <h1><span>Mist</span>America</h1>
-  <button class="header-btn" onclick="openSidebar()">Completed Jobs (<span id="completedCount">0</span>)</button>
+  <div style="display:flex;gap:8px">
+    <button class="header-btn" onclick="openSettings()" title="Settings">⚙️</button>
+    <button class="header-btn" onclick="openSidebar()">Completed Jobs (<span id="completedCount">0</span>)</button>
+  </div>
 </div>
 
 <div class="main">
@@ -733,6 +736,40 @@
   </div>
 </div>
 
+<!-- Settings dialog -->
+<div class="dialog-overlay" id="settingsDialog">
+  <div class="dialog" style="max-width:520px;text-align:left">
+    <h3 style="text-align:center">Settings</h3>
+    <div style="margin:16px 0">
+      <label style="display:block;font-size:13px;font-weight:600;color:var(--dim);margin-bottom:6px">Anthropic API Key</label>
+      <input type="password" id="apiKeyInput" placeholder="sk-ant-..." style="width:100%;padding:10px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:monospace;outline:none">
+      <p style="font-size:12px;color:var(--dim);margin-top:6px;line-height:1.5">
+        Powers AI contact extraction from uploaded job files. Stored in your browser only — never sent anywhere except to Anthropic.
+        <br>Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent)">console.anthropic.com/settings/keys</a> (~2-3¢ per work order).
+      </p>
+    </div>
+    <div class="dialog-btns" style="margin-top:20px">
+      <button class="btn-green" onclick="saveSettings()">Save</button>
+      <button class="btn-dim" onclick="testApiKey()">Test Key</button>
+      <button class="btn-dim" onclick="closeSettings()">Close</button>
+    </div>
+    <div id="settingsStatus" style="margin-top:12px;font-size:13px;text-align:center;min-height:20px"></div>
+  </div>
+</div>
+
+<!-- Found Contacts dialog -->
+<div class="dialog-overlay" id="foundContactsDialog">
+  <div class="dialog" style="max-width:560px;text-align:left">
+    <h3 style="text-align:center">Found Contacts</h3>
+    <p style="font-size:13px;color:var(--dim);text-align:center;margin-bottom:14px">Pick the ones to add to your Contacts section.</p>
+    <div id="foundContactsList" style="max-height:50vh;overflow-y:auto"></div>
+    <div class="dialog-btns" style="margin-top:16px">
+      <button class="btn-green" onclick="addSelectedContacts()">Add Selected</button>
+      <button class="btn-dim" onclick="document.getElementById('foundContactsDialog').classList.remove('open')">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ═══════════════════════════════
 // STATE
@@ -742,7 +779,8 @@ let receipts = [];   // { dataURL, amount, vendor, category, gps }
 let jobFiles = [];   // { dataURL, fileName, size, isImage }
 let notes = [];      // { title, text }
 let trips = [];      // { startPhoto, startStamp, startMiles, startGps, endPhoto, endStamp, endMiles, endGps }
-let contacts = [];   // { name, role, phone, discussed }
+let contacts = [];   // { name, role, phone, email, discussed }
+let foundContactsBuffer = []; // staged AI-extracted contacts awaiting user confirmation
 let checklist = { type: '', items: [] }; // { label, checked }
 let voiceMemos = []; // { audioURL, transcript, stamp, duration }
 let clockState = { running: false, startedAt: 0, accumulatedMs: 0 };
@@ -988,11 +1026,14 @@ function renderJobFiles() {
   sec.classList.remove('hidden');
   document.getElementById('jobFileList').innerHTML = jobFiles.map((f, i) => {
     const sz = f.size < 1048576 ? (f.size/1024).toFixed(0)+' KB' : (f.size/1048576).toFixed(1)+' MB';
-    const icon = f.isImage ? '' : (f.fileName.toLowerCase().endsWith('.pdf') ? '📕' : '📄');
+    const isPdf = f.fileName.toLowerCase().endsWith('.pdf');
+    const icon = f.isImage ? '' : (isPdf ? '📕' : '📄');
+    const aiBtn = isPdf ? `<button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px" onclick="extractContactsFromFile(${i})" title="Extract contacts using AI">🤖 Extract</button>` : '';
     return `<div class="file-row">
       ${f.isImage ? `<img src="${f.dataURL}" onclick="window.open(this.src,'_blank')">` : `<span class="file-icon">${icon}</span>`}
       <span class="file-name">${esc(f.fileName)}</span>
       <span class="file-size">${sz}</span>
+      ${aiBtn}
       <button class="remove-btn" style="position:static" onclick="jobFiles.splice(${i},1);renderJobFiles()">×</button>
     </div>`;
   }).join('');
@@ -1179,7 +1220,7 @@ function renderNotes() {
 // CONTACTS
 // ═══════════════════════════════
 function addContact() {
-  contacts.push({ name: '', role: '', phone: '', discussed: '' });
+  contacts.push({ name: '', role: '', phone: '', email: '', discussed: '' });
   renderContacts();
 }
 function addContactIfEmpty() { if (!contacts.length) addContact(); }
@@ -1206,7 +1247,10 @@ function renderContacts() {
           </select>
         </div>
       </div>
-      <input type="tel" placeholder="Phone (optional)" value="${esc(c.phone)}" onchange="contacts[${i}].phone=this.value">
+      <div class="form-row">
+        <div class="field"><input type="tel" placeholder="Phone" value="${esc(c.phone)}" onchange="contacts[${i}].phone=this.value"></div>
+        <div class="field"><input type="email" placeholder="Email" value="${esc(c.email||'')}" onchange="contacts[${i}].email=this.value"></div>
+      </div>
       <textarea placeholder="What was discussed..." onchange="contacts[${i}].discussed=this.value">${esc(c.discussed)}</textarea>
     </div>
   `).join('');
@@ -1569,8 +1613,10 @@ function generateReport() {
   }
 <\/script>`;
 
+  const mapsQuery = encodeURIComponent([client, city, state].filter(Boolean).join(' '));
+  const mapsLink = mapsQuery ? `https://www.google.com/maps/search/${mapsQuery}` : '';
   html += `<h1>MistAmerica — Job Report</h1>
-    <p class="meta"><strong>Client:</strong> ${esc(client)}</p>
+    <p class="meta"><strong>Client:</strong> ${mapsLink ? `<a href="${mapsLink}" target="_blank" style="color:#1a56db;text-decoration:none">${esc(client)} 📍</a>` : esc(client)}</p>
     <p class="meta"><strong>Location:</strong> ${esc(location)}</p>
     <p class="meta"><strong>Dates:</strong> ${fmtDate(dateStart) || 'N/A'}${dateEnd ? ' — ' + fmtDate(dateEnd) : ''}</p>`;
 
@@ -1668,9 +1714,12 @@ function generateReport() {
   const filledContacts = contacts.filter(c => c.name || c.role || c.discussed);
   if (filledContacts.length > 0) {
     html += `<h2>Contacts (${filledContacts.length})</h2><table>
-      <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Discussed</th></tr></thead><tbody>`;
+      <thead><tr><th>Name</th><th>Role</th><th>Phone</th><th>Email</th><th>Discussed</th></tr></thead><tbody>`;
     filledContacts.forEach(c => {
-      html += `<tr><td>${esc(c.name) || '—'}</td><td>${esc(c.role) || '—'}</td><td>${esc(c.phone) || '—'}</td><td>${esc(c.discussed) || '—'}</td></tr>`;
+      const phoneClean = (c.phone || '').replace(/[^0-9+]/g, '');
+      const phoneCell = phoneClean ? `<a href="tel:${phoneClean}" style="color:#1a56db;text-decoration:none">${esc(c.phone)}</a>` : '—';
+      const emailCell = c.email ? `<a href="mailto:${esc(c.email)}" style="color:#1a56db;text-decoration:none">${esc(c.email)}</a>` : '—';
+      html += `<tr><td>${esc(c.name) || '—'}</td><td>${esc(c.role) || '—'}</td><td>${phoneCell}</td><td>${emailCell}</td><td>${esc(c.discussed) || '—'}</td></tr>`;
     });
     html += `</tbody></table>`;
   }
@@ -1823,7 +1872,7 @@ function generateSummary() {
   function __downloadReport(){const b=new Blob([document.documentElement.outerHTML],{type:'text/html'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=__reportName+'.html';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(u),60000);}
 <\/script>
 <h1>MistAmerica — Project Summary</h1>
-<p class="meta"><strong>Client:</strong> ${esc(client)}</p>
+<p class="meta"><strong>Client:</strong> ${(() => { const q = encodeURIComponent([client, city, state].filter(Boolean).join(' ')); return q ? `<a href="https://www.google.com/maps/search/${q}" target="_blank" style="color:#1a56db;text-decoration:none">${esc(client)} 📍</a>` : esc(client); })()}</p>
 <p class="meta"><strong>Location:</strong> ${esc(location)}</p>
 <p class="meta"><strong>Dates:</strong> ${fmtDate(dateStart) || 'N/A'}${dateEnd ? ' — ' + fmtDate(dateEnd) : ''}</p>
 <p class="meta" style="margin-top:6px"><strong>Status:</strong> <span class="status-pill ${status==='Completed'||status.startsWith('Completed')?'status-completed':status.includes('Punch')?'status-punch':'status-progress'}">${status}</span></p>
@@ -2211,6 +2260,245 @@ document.getElementById('importInput').addEventListener('change', async function
   };
   reader.readAsText(file);
 });
+
+// ═══════════════════════════════
+// SETTINGS — API key for AI extraction
+// ═══════════════════════════════
+function openSettings() {
+  document.getElementById('apiKeyInput').value = localStorage.getItem('anthropicApiKey') || '';
+  document.getElementById('settingsStatus').textContent = '';
+  document.getElementById('settingsDialog').classList.add('open');
+}
+function closeSettings() {
+  document.getElementById('settingsDialog').classList.remove('open');
+}
+function saveSettings() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  if (key) {
+    localStorage.setItem('anthropicApiKey', key);
+    document.getElementById('settingsStatus').textContent = '✓ Saved';
+    document.getElementById('settingsStatus').style.color = 'var(--green)';
+  } else {
+    localStorage.removeItem('anthropicApiKey');
+    document.getElementById('settingsStatus').textContent = 'Key cleared';
+    document.getElementById('settingsStatus').style.color = 'var(--dim)';
+  }
+}
+async function testApiKey() {
+  const key = document.getElementById('apiKeyInput').value.trim();
+  const status = document.getElementById('settingsStatus');
+  if (!key) { status.textContent = 'Enter a key first'; status.style.color = 'var(--yellow)'; return; }
+  status.textContent = 'Testing...';
+  status.style.color = 'var(--dim)';
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-7',
+        max_tokens: 16,
+        messages: [{ role: 'user', content: 'Reply with the single word "ok".' }]
+      })
+    });
+    if (resp.ok) {
+      status.textContent = '✓ Key works!';
+      status.style.color = 'var(--green)';
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      status.textContent = '✗ ' + (err.error?.message || ('HTTP ' + resp.status));
+      status.style.color = 'var(--red)';
+    }
+  } catch (e) {
+    status.textContent = '✗ ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+}
+
+// ═══════════════════════════════
+// PDF TEXT EXTRACTION (lazy-load PDF.js from CDN)
+// ═══════════════════════════════
+let pdfJsLoadPromise = null;
+function loadPdfJs() {
+  if (pdfJsLoadPromise) return pdfJsLoadPromise;
+  pdfJsLoadPromise = new Promise((resolve, reject) => {
+    if (window.pdfjsLib) return resolve(window.pdfjsLib);
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      resolve(window.pdfjsLib);
+    };
+    s.onerror = () => reject(new Error('Could not load PDF reader. Check your internet connection.'));
+    document.head.appendChild(s);
+  });
+  return pdfJsLoadPromise;
+}
+
+async function extractPdfText(dataURL) {
+  const pdfjsLib = await loadPdfJs();
+  // dataURL → ArrayBuffer
+  const base64 = dataURL.split(',')[1];
+  const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  let fullText = '';
+  const maxPages = Math.min(pdf.numPages, 20); // cap at 20 pages to keep token cost reasonable
+  for (let i = 1; i <= maxPages; i++) {
+    const page = await pdf.getPage(i);
+    const tc = await page.getTextContent();
+    fullText += tc.items.map(it => it.str).join(' ') + '\n\n';
+  }
+  return fullText.trim();
+}
+
+// ═══════════════════════════════
+// AI CONTACT EXTRACTION
+// ═══════════════════════════════
+async function extractContactsFromFile(fileIndex) {
+  const apiKey = localStorage.getItem('anthropicApiKey');
+  if (!apiKey) {
+    if (confirm('No API key set. Open Settings to add one?')) openSettings();
+    return;
+  }
+  const file = jobFiles[fileIndex];
+  if (!file || !file.fileName.toLowerCase().endsWith('.pdf')) {
+    alert('Only PDF files can be extracted right now.');
+    return;
+  }
+
+  // Loading overlay
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:5000;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:600;flex-direction:column;gap:14px';
+  overlay.innerHTML = '<div>🤖 Reading PDF...</div><div id="extractStatus" style="font-size:14px;color:#aaa;font-weight:400">Loading PDF reader</div>';
+  document.body.appendChild(overlay);
+  const setStatus = msg => { const el = document.getElementById('extractStatus'); if (el) el.textContent = msg; };
+
+  try {
+    setStatus('Extracting text from PDF...');
+    const text = await extractPdfText(file.dataURL);
+    if (!text || text.length < 30) throw new Error('Could not read text from this PDF (it may be a scanned image).');
+
+    setStatus('Asking Claude to find contacts...');
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-7',
+        max_tokens: 2048,
+        system: 'You extract contact information from commercial work-order documents (any client — restaurants, theme parks, hotels, retail, anything). Return only people relevant to the field installer (general contractors, superintendents, property managers, franchise owners, trades, office contacts). Skip Anthropic, MistAmerica logos/footers, generic customer-service lines. Map roles to the closest fit from the allowed list.',
+        messages: [{
+          role: 'user',
+          content: 'Extract all contacts from this work-order document. For each person, give name, role, phone, email, and a short note about where they appear or what they do.\n\n' + text.slice(0, 50000)
+        }],
+        output_config: {
+          format: {
+            type: 'json_schema',
+            schema: {
+              type: 'object',
+              properties: {
+                contacts: {
+                  type: 'array',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      name: { type: 'string' },
+                      role: { type: 'string', enum: [
+                        'GC / Superintendent', 'Property Owner', 'Property Manager',
+                        'Franchise Owner', 'Plumber', 'Electrician', 'Other Trade',
+                        'MistAmerica Office', 'Other'
+                      ]},
+                      phone: { type: 'string' },
+                      email: { type: 'string' },
+                      discussed: { type: 'string' }
+                    },
+                    required: ['name', 'role', 'phone', 'email', 'discussed'],
+                    additionalProperties: false
+                  }
+                }
+              },
+              required: ['contacts'],
+              additionalProperties: false
+            }
+          }
+        }
+      })
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.error?.message || ('API error: HTTP ' + resp.status));
+    }
+    const data = await resp.json();
+    const textBlock = (data.content || []).find(b => b.type === 'text');
+    if (!textBlock) throw new Error('No response content from Claude.');
+    const parsed = JSON.parse(textBlock.text);
+    const found = (parsed.contacts || []).filter(c => c.name);
+
+    overlay.remove();
+
+    if (!found.length) {
+      alert('Claude did not find any contacts in this document.');
+      return;
+    }
+
+    foundContactsBuffer = found;
+    showFoundContactsDialog();
+  } catch (e) {
+    overlay.remove();
+    alert('Extraction failed: ' + e.message);
+  }
+}
+
+function showFoundContactsDialog() {
+  const list = document.getElementById('foundContactsList');
+  list.innerHTML = foundContactsBuffer.map((c, i) => `
+    <label style="display:block;padding:10px 12px;margin-bottom:6px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);cursor:pointer">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <input type="checkbox" data-idx="${i}" checked style="width:20px;height:20px;flex-shrink:0;margin-top:2px;cursor:pointer">
+        <div style="flex:1">
+          <div style="font-weight:700;font-size:15px">${esc(c.name)} <span style="font-weight:400;color:var(--dim);font-size:13px">— ${esc(c.role)}</span></div>
+          ${c.phone ? `<div style="font-size:13px;margin-top:2px">📞 ${esc(c.phone)}</div>` : ''}
+          ${c.email ? `<div style="font-size:13px;margin-top:2px">✉ ${esc(c.email)}</div>` : ''}
+          ${c.discussed ? `<div style="font-size:12px;color:var(--dim);margin-top:4px">${esc(c.discussed)}</div>` : ''}
+        </div>
+      </div>
+    </label>
+  `).join('');
+  document.getElementById('foundContactsDialog').classList.add('open');
+}
+
+function addSelectedContacts() {
+  const checks = document.querySelectorAll('#foundContactsList input[type="checkbox"]');
+  let added = 0;
+  checks.forEach(cb => {
+    if (cb.checked) {
+      const c = foundContactsBuffer[parseInt(cb.dataset.idx, 10)];
+      contacts.push({
+        name: c.name || '',
+        role: c.role || 'Other',
+        phone: c.phone || '',
+        email: c.email || '',
+        discussed: c.discussed || ''
+      });
+      added++;
+    }
+  });
+  document.getElementById('foundContactsDialog').classList.remove('open');
+  foundContactsBuffer = [];
+  if (added > 0) {
+    document.getElementById('contactsSection').classList.remove('hidden');
+    renderContacts();
+  }
+}
 
 // ═══════════════════════════════
 // INIT

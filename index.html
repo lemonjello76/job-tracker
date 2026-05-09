@@ -628,13 +628,25 @@
 
 <div class="main">
 
+<!-- TRIP SELECTOR -->
+<div class="section" style="padding:10px 14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--bg);border-color:var(--accent)">
+  <span style="font-size:11px;color:var(--dim);font-weight:700;letter-spacing:1px">TRIP:</span>
+  <select id="tripSelector" onchange="switchToTrip(this.value)" style="flex:1;min-width:120px;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none">
+    <option value="">— Solo jobs (no trip) —</option>
+  </select>
+  <button class="action-btn-sm" style="margin:0;padding:7px 10px;font-size:12px" onclick="newTrip()" title="Start a new multi-job trip">+ Trip</button>
+  <button class="action-btn-sm" id="tripTotalsBtn" style="margin:0;padding:7px 10px;font-size:12px;background:var(--yellow);color:#111" onclick="generateTripTotals()" disabled title="Generate trip totals report">📋 Totals</button>
+  <button class="action-btn-sm" id="closeTripBtn" style="margin:0;padding:7px 10px;font-size:12px" onclick="closeTrip()" disabled title="Mark trip as closed">✓ Close</button>
+  <button class="action-btn-sm" id="deleteTripBtn" style="margin:0;padding:7px 10px;font-size:12px" onclick="deleteCurrentTrip()" disabled title="Delete trip (jobs become solo)">🗑</button>
+</div>
+
 <!-- DRAFT SELECTOR -->
 <div class="section" style="padding:12px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
   <span style="font-size:12px;color:var(--dim);font-weight:700;letter-spacing:1px">EDITING:</span>
   <select id="draftSelector" onchange="switchToDraft(this.value)" style="flex:1;min-width:140px;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none">
     <option value="">— New Job —</option>
   </select>
-  <button class="action-btn-sm" style="margin:0;padding:8px 12px" onclick="newDraft()" title="Start a new in-progress job">+ New</button>
+  <button class="action-btn-sm" style="margin:0;padding:8px 12px" onclick="newDraft()" title="Start a new in-progress job (in current trip)">+ New</button>
   <button class="action-btn-sm" style="margin:0;padding:8px 10px" onclick="deleteCurrentDraft()" title="Delete this in-progress job">🗑</button>
   <span id="autoSaveIndicator" style="font-size:11px;color:var(--green);min-width:54px;text-align:right;opacity:0;transition:opacity .3s">✓ Saved</span>
 </div>
@@ -959,14 +971,49 @@ const CHECKLIST_TEMPLATES = {
 // ═══════════════════════════════
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('MistAmericaJobs', 2);
+    const req = indexedDB.open('MistAmericaJobs', 3);
     req.onupgradeneeded = e => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('jobs')) d.createObjectStore('jobs', { keyPath: 'id' });
       if (!d.objectStoreNames.contains('drafts')) d.createObjectStore('drafts', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('trips')) d.createObjectStore('trips', { keyPath: 'id' });
     };
     req.onsuccess = e => resolve(e.target.result);
     req.onerror = e => reject(e.target.error);
+  });
+}
+
+// ── TRIPS (multi-job container) ──
+function dbPutTrip(trip) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('trips', 'readwrite');
+    tx.objectStore('trips').put(trip);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+function dbGetAllTrips() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('trips', 'readonly');
+    const req = tx.objectStore('trips').getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function dbGetTrip(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('trips', 'readonly');
+    const req = tx.objectStore('trips').get(id);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function dbDeleteTrip(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('trips', 'readwrite');
+    tx.objectStore('trips').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
 }
 
@@ -2474,6 +2521,8 @@ async function saveAndReset() {
   closeDialog();
   const job = {
     id: Date.now(),
+    tripId: currentTripId || null,
+    rawState: serializeCurrentState(),
     client: document.getElementById('client').value.trim() || 'Untitled',
     city: document.getElementById('city').value.trim(),
     state: document.getElementById('state').value.trim().toUpperCase(),
@@ -2499,6 +2548,7 @@ async function saveAndReset() {
   clearForm();
   await refreshSidebar();
   await refreshDraftSelector();
+  await refreshTripSelector();
 }
 
 function clearForm() {
@@ -2997,8 +3047,333 @@ function addSelectedContacts() {
 // DRAFTS — auto-save and multi-job support
 // ═══════════════════════════════
 let currentDraftId = null;
+let currentTripId = null;
 let autoSaveTimer = null;
 let autoSaveInFlight = false;
+
+// ── TRIP CONTROLLERS ──
+async function newTrip() {
+  const name = prompt('Trip name (e.g. "March CA Loop"):');
+  if (!name || !name.trim()) return;
+  const trip = {
+    id: 'trip_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    name: name.trim(),
+    startedAt: Date.now(),
+    endedAt: null,
+    status: 'active'
+  };
+  await dbPutTrip(trip);
+  const prevTripId = currentTripId;
+  currentTripId = trip.id;
+  localStorage.setItem('currentTripId', currentTripId);
+  // Optionally pull the current draft into the new trip
+  if (currentDraftId) {
+    const draft = await dbGetDraft(currentDraftId);
+    if (draft && draft.tripId !== trip.id) {
+      if (confirm('Move the current job (' + (draft.name || 'Untitled') + ') into this new trip?')) {
+        draft.tripId = trip.id;
+        await dbPutDraft(draft);
+      } else if (prevTripId !== trip.id) {
+        // User declined → switch trip filter but keep draft where it was
+        // Need to load a different draft for this trip, or none
+        currentDraftId = null;
+        localStorage.removeItem('currentDraftId');
+        clearForm();
+      }
+    }
+  }
+  await refreshTripSelector();
+  await refreshDraftSelector();
+}
+
+async function switchToTrip(id) {
+  if ((id || null) === (currentTripId || null)) return;
+  await autoSave(); // save current first
+  currentTripId = id || null;
+  if (currentTripId) localStorage.setItem('currentTripId', currentTripId);
+  else localStorage.removeItem('currentTripId');
+  // Load the most recent draft in this trip (or none)
+  const drafts = (await dbGetAllDrafts()).filter(d => (d.tripId || null) === (currentTripId || null));
+  if (drafts.length) {
+    drafts.sort((a, b) => b.savedAt - a.savedAt);
+    currentDraftId = drafts[0].id;
+    localStorage.setItem('currentDraftId', currentDraftId);
+    applyDraftState(drafts[0].state);
+  } else {
+    currentDraftId = null;
+    localStorage.removeItem('currentDraftId');
+    clearForm();
+  }
+  await refreshTripSelector();
+  await refreshDraftSelector();
+}
+
+async function closeTrip() {
+  if (!currentTripId) return;
+  if (!confirm('Mark this trip as closed?\n\nThe trip totals report will still work, and existing jobs in the trip stay. New jobs created after this will be solo unless you reopen the trip.')) return;
+  const trip = await dbGetTrip(currentTripId);
+  if (!trip) return;
+  trip.endedAt = Date.now();
+  trip.status = 'closed';
+  await dbPutTrip(trip);
+  alert('Trip "' + trip.name + '" closed. You can still view its totals.');
+  await refreshTripSelector();
+}
+
+async function deleteCurrentTrip() {
+  if (!currentTripId) return;
+  if (!confirm('Delete this trip?\n\nJobs in the trip stay (just become solo / unassigned). The trip itself is removed.')) return;
+  const tripId = currentTripId;
+  // Strip tripId from drafts
+  const drafts = await dbGetAllDrafts();
+  for (const d of drafts) {
+    if (d.tripId === tripId) {
+      delete d.tripId;
+      await dbPutDraft(d);
+    }
+  }
+  // Strip tripId from completed jobs
+  const jobs = await dbGetAll();
+  for (const j of jobs) {
+    if (j.tripId === tripId) {
+      delete j.tripId;
+      await dbPut(j);
+    }
+  }
+  await dbDeleteTrip(tripId);
+  currentTripId = null;
+  localStorage.removeItem('currentTripId');
+  await refreshTripSelector();
+  await refreshDraftSelector();
+}
+
+async function refreshTripSelector() {
+  if (!db) return;
+  const trips = await dbGetAllTrips();
+  trips.sort((a, b) => b.startedAt - a.startedAt);
+  const sel = document.getElementById('tripSelector');
+  if (!sel) return;
+  let html = '<option value="">— Solo jobs (no trip) —</option>';
+  trips.forEach(t => {
+    const status = t.status === 'closed' ? ' [CLOSED]' : '';
+    html += `<option value="${t.id}"${t.id === currentTripId ? ' selected' : ''}>${esc(t.name)}${status}</option>`;
+  });
+  sel.innerHTML = html;
+  document.getElementById('tripTotalsBtn').disabled = !currentTripId;
+  document.getElementById('closeTripBtn').disabled = !currentTripId;
+  document.getElementById('deleteTripBtn').disabled = !currentTripId;
+}
+
+// ── TRIP TOTALS REPORT ──
+async function generateTripTotals() {
+  if (!currentTripId) { alert('Pick a trip first.'); return; }
+  await autoSave(); // freeze current draft first so its data is in the totals
+  const trip = await dbGetTrip(currentTripId);
+  if (!trip) { alert('Trip not found.'); return; }
+  const drafts = (await dbGetAllDrafts()).filter(d => d.tripId === currentTripId);
+  const completed = (await dbGetAll()).filter(j => j.tripId === currentTripId);
+
+  const jobRows = [];
+  let grandDriveMs = 0, grandSiteMs = 0, grandMiles = 0, grandSpent = 0;
+  const cats = {};
+  const allDayBuckets = {}; // for cross-job day-by-day aggregation
+
+  function processSegments(segs, receiptsArr, jobName) {
+    let driveMs = 0, siteMs = 0, miles = 0;
+    (segs || []).forEach(seg => {
+      const dur = (seg.endedAt || Date.now()) - seg.startedAt;
+      if (seg.type === 'drive') {
+        driveMs += dur;
+        if (seg.startOdoMiles && seg.endOdoMiles) miles += Math.max(0, seg.endOdoMiles - seg.startOdoMiles);
+      } else if (seg.type === 'workday') {
+        siteMs += dur;
+      }
+      // Add to the day bucket for cross-job rollup
+      const dayKey = new Date(seg.startedAt).toLocaleDateString('en-CA');
+      (allDayBuckets[dayKey] = allDayBuckets[dayKey] || []).push({ ...seg, _jobName: jobName });
+    });
+    let spent = 0;
+    (receiptsArr || []).forEach(r => {
+      const amt = parseFloat(r.amount) || 0;
+      spent += amt;
+      const cat = r.category || 'other';
+      cats[cat] = (cats[cat] || 0) + amt;
+    });
+    return { driveMs, siteMs, miles, spent };
+  }
+
+  // In-progress jobs
+  drafts.forEach(d => {
+    const s = d.state || {};
+    const t = processSegments(s.segments, s.receipts, d.name);
+    jobRows.push({
+      name: d.name, city: s.city || '', state: s.state || '',
+      status: 'In progress',
+      driveH: t.driveMs / 3600000, siteH: t.siteMs / 3600000,
+      miles: t.miles, spent: t.spent
+    });
+    grandDriveMs += t.driveMs; grandSiteMs += t.siteMs; grandMiles += t.miles; grandSpent += t.spent;
+  });
+
+  // Completed jobs (use rawState if it was saved when graduating)
+  completed.forEach(j => {
+    let driveMs = 0, siteMs = 0, miles = 0, spent = 0;
+    if (j.rawState) {
+      const t = processSegments(j.rawState.segments, j.rawState.receipts, j.client);
+      driveMs = t.driveMs; siteMs = t.siteMs; miles = t.miles; spent = t.spent;
+    }
+    jobRows.push({
+      name: j.client, city: j.city || '', state: j.state || '',
+      status: 'Completed',
+      driveH: driveMs / 3600000, siteH: siteMs / 3600000,
+      miles, spent
+    });
+    grandDriveMs += driveMs; grandSiteMs += siteMs; grandMiles += miles; grandSpent += spent;
+  });
+
+  const earliest = jobRows.length ? null : null; // computed below from segments
+  let dateMin = Infinity, dateMax = 0;
+  Object.keys(allDayBuckets).forEach(d => {
+    const t = new Date(d + 'T00:00:00').getTime();
+    if (t < dateMin) dateMin = t;
+    if (t > dateMax) dateMax = t;
+  });
+  const dateRange = isFinite(dateMin)
+    ? new Date(dateMin).toLocaleDateString('en-US', {month:'short',day:'numeric'}) + ' — ' + new Date(dateMax).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'})
+    : 'No segments yet';
+
+  const fileBase = ('trip_totals_' + (trip.name || 'trip')).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'trip_totals';
+
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trip Totals — ${esc(trip.name)}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111;padding:30px;max-width:900px;margin:0 auto;padding-top:80px}
+  h1{font-size:22px;border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+  .meta{font-size:14px;color:#444;margin-bottom:2px} .meta strong{color:#111}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:#333;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #ccc}
+  h3{font-size:13px;margin:12px 0 4px;color:#222}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+  .stat{background:#f6f7fa;padding:14px;border-radius:6px;text-align:center}
+  .stat .v{font-size:24px;font-weight:700;color:#111}
+  .stat .l{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-top:4px}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0 14px}
+  th{text-align:left;padding:7px 10px;background:#f0f0f0;border:1px solid #ddd;font-weight:600}
+  td{padding:7px 10px;border:1px solid #ddd}
+  .total-row td{font-weight:700;background:#f0f0f0}
+  .pill{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase}
+  .pill-completed{background:#d1fae5;color:#065f46}
+  .pill-progress{background:#fef3c7;color:#78350f}
+  .action-bar{position:fixed;top:0;left:0;right:0;background:#1a1d26;padding:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;z-index:1000}
+  .action-bar button{padding:12px 18px;border:none;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;color:#fff;min-width:110px}
+  .btn-share{background:#22c55e}.btn-print{background:#4f8cff}.btn-dl{background:#8b90a0}
+  @media (max-width:600px){body{padding:20px;padding-top:70px}.stats{grid-template-columns:repeat(2,1fr)} table{font-size:12px} th,td{padding:6px 6px}}
+  @media print{body{padding:0}.action-bar{display:none !important}@page{margin:.5in}}
+</style></head><body>
+<div class="action-bar">
+  <button class="btn-share" onclick="__shareReport()">📤 Share</button>
+  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadReport()">💾 Download</button>
+</div>
+<script>
+  const __reportName = ${JSON.stringify(fileBase)};
+  async function __shareReport(){const b=new Blob([document.documentElement.outerHTML],{type:'text/html'});const f=new File([b],__reportName+'.html',{type:'text/html'});try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Trip Totals'});return;}if(navigator.share){await navigator.share({title:'Trip Totals',url:location.href});return;}}catch(e){if(e.name==='AbortError')return;}__downloadReport();}
+  function __downloadReport(){const b=new Blob([document.documentElement.outerHTML],{type:'text/html'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=__reportName+'.html';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(u),60000);}
+<\/script>
+<h1>MistAmerica — Trip Totals</h1>
+<p class="meta"><strong>Trip:</strong> ${esc(trip.name)}</p>
+<p class="meta"><strong>Dates:</strong> ${esc(dateRange)}</p>
+<p class="meta"><strong>Status:</strong> ${trip.status === 'closed' ? 'Closed' : 'Active'} · <strong>Jobs:</strong> ${jobRows.length}</p>
+
+<div class="stats">
+  <div class="stat"><div class="v">${(grandDriveMs/3600000).toFixed(1)}</div><div class="l">Drive Hours</div></div>
+  <div class="stat"><div class="v">${(grandSiteMs/3600000).toFixed(1)}</div><div class="l">Site Hours</div></div>
+  <div class="stat"><div class="v">${grandMiles.toLocaleString()}</div><div class="l">Total Miles</div></div>
+  <div class="stat"><div class="v">$${grandSpent.toFixed(0)}</div><div class="l">Total Spent</div></div>
+</div>
+
+<h2>Jobs in this Trip</h2>
+<table>
+  <thead><tr><th>Job</th><th>Location</th><th>Status</th><th style="text-align:right">Drive</th><th style="text-align:right">Site</th><th style="text-align:right">Miles</th><th style="text-align:right">Spent</th></tr></thead>
+  <tbody>`;
+  jobRows.forEach(r => {
+    const pillClass = r.status === 'Completed' ? 'pill-completed' : 'pill-progress';
+    html += `<tr>
+      <td>${esc(r.name)}</td>
+      <td>${esc([r.city, r.state].filter(Boolean).join(', ')) || '—'}</td>
+      <td><span class="pill ${pillClass}">${r.status}</span></td>
+      <td style="text-align:right">${r.driveH.toFixed(2)} hrs</td>
+      <td style="text-align:right">${r.siteH.toFixed(2)} hrs</td>
+      <td style="text-align:right">${r.miles.toLocaleString()}</td>
+      <td style="text-align:right">$${r.spent.toFixed(2)}</td>
+    </tr>`;
+  });
+  html += `<tr class="total-row">
+    <td colspan="3">GRAND TOTAL</td>
+    <td style="text-align:right">${(grandDriveMs/3600000).toFixed(2)} hrs</td>
+    <td style="text-align:right">${(grandSiteMs/3600000).toFixed(2)} hrs</td>
+    <td style="text-align:right">${grandMiles.toLocaleString()}</td>
+    <td style="text-align:right">$${grandSpent.toFixed(2)}</td>
+  </tr></tbody></table>`;
+
+  // Cost breakdown
+  if (Object.keys(cats).length) {
+    html += `<h2>Cost Breakdown (Trip-Wide)</h2><table><thead><tr><th>Category</th><th style="text-align:right">Total</th></tr></thead><tbody>`;
+    Object.entries(cats).sort().forEach(([cat, total]) => {
+      html += `<tr><td>${cat.charAt(0).toUpperCase()+cat.slice(1)}</td><td style="text-align:right">$${total.toFixed(2)}</td></tr>`;
+    });
+    html += `<tr class="total-row"><td>Grand Total</td><td style="text-align:right">$${grandSpent.toFixed(2)}</td></tr></tbody></table>`;
+  }
+
+  // Day-by-day rollup across all jobs
+  const days = Object.keys(allDayBuckets).sort();
+  if (days.length) {
+    html += `<h2>Day by Day (All Jobs)</h2>`;
+    days.forEach(d => {
+      const dayDate = new Date(d + 'T00:00:00');
+      const sorted = allDayBuckets[d].sort((a, b) => a.startedAt - b.startedAt);
+      let dayDriveMs = 0, dayWorkMs = 0, dayMiles = 0;
+      sorted.forEach(s => {
+        const dur = (s.endedAt || Date.now()) - s.startedAt;
+        if (s.type === 'drive') {
+          dayDriveMs += dur;
+          if (s.startOdoMiles && s.endOdoMiles) dayMiles += Math.max(0, s.endOdoMiles - s.startOdoMiles);
+        } else { dayWorkMs += dur; }
+      });
+      html += `<h3>📅 ${dayDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})}</h3>`;
+      html += `<table><thead><tr><th style="width:90px">Type</th><th style="width:140px">Time</th><th>Job · Note</th><th style="text-align:right;width:120px">Duration</th></tr></thead><tbody>`;
+      sorted.forEach(s => {
+        const ico = s.type === 'drive' ? '🚗 Drive' : '🏗️ Workday';
+        const start = new Date(s.startedAt).toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
+        const end = s.endedAt ? new Date(s.endedAt).toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'}) : 'now';
+        const dur = ((s.endedAt || Date.now()) - s.startedAt) / 3600000;
+        const milesStr = (s.type === 'drive' && s.startOdoMiles && s.endOdoMiles) ? ' (' + (s.endOdoMiles - s.startOdoMiles).toLocaleString() + ' mi)' : '';
+        const noteStr = s.note ? ' — ' + esc(s.note) : '';
+        html += `<tr><td>${ico}</td><td>${start} → ${end}</td><td>${esc(s._jobName)}${noteStr}</td><td style="text-align:right">${dur.toFixed(2)} hrs${milesStr}</td></tr>`;
+      });
+      html += `<tr class="total-row"><td colspan="3">Day total</td><td style="text-align:right">${((dayDriveMs+dayWorkMs)/3600000).toFixed(2)} hrs${dayMiles ? ' · ' + dayMiles.toLocaleString() + ' mi' : ''}</td></tr>`;
+      html += `</tbody></table>`;
+    });
+  }
+
+  html += `</body></html>`;
+
+  try {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) {
+      const a = document.createElement('a');
+      a.href = url; a.download = fileBase + '.html';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      alert('Popup blocked — trip totals downloaded instead.');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    alert('Could not open trip totals: ' + err.message);
+  }
+}
 
 function serializeCurrentState() {
   return {
@@ -3091,6 +3466,7 @@ async function autoSave() {
       name,
       meta,
       savedAt: Date.now(),
+      tripId: currentTripId || null,
       state
     });
     localStorage.setItem('currentDraftId', currentDraftId);
@@ -3129,12 +3505,15 @@ function hasAnyContent() {
 
 async function refreshDraftSelector() {
   if (!db) return;
-  const drafts = await dbGetAllDrafts();
+  let drafts = await dbGetAllDrafts();
+  // Filter to current trip context (or solo if no trip selected)
+  drafts = drafts.filter(d => (d.tripId || null) === (currentTripId || null));
   drafts.sort((a, b) => b.savedAt - a.savedAt);
   const sel = document.getElementById('draftSelector');
   if (!sel) return;
   if (!drafts.length) {
-    sel.innerHTML = '<option value="">— No saved jobs in progress —</option>';
+    const label = currentTripId ? '— No jobs in this trip yet — tap + New —' : '— No solo jobs —';
+    sel.innerHTML = `<option value="">${label}</option>`;
     return;
   }
   sel.innerHTML = drafts.map(d => {
@@ -3192,19 +3571,33 @@ async function deleteCurrentDraft() {
     const jobs = await dbGetAll();
     document.getElementById('completedCount').textContent = jobs.length;
 
-    // Restore the last open draft, or fall back to most recent draft
+    // Restore current trip context first
+    const savedTripId = localStorage.getItem('currentTripId');
+    if (savedTripId) {
+      const trip = await dbGetTrip(savedTripId);
+      if (trip) currentTripId = savedTripId;
+      else localStorage.removeItem('currentTripId');
+    }
+
+    // Restore the last open draft, or fall back to most recent draft in this trip context
     let restored = false;
     const savedId = localStorage.getItem('currentDraftId');
     if (savedId) {
       const draft = await dbGetDraft(savedId);
       if (draft) {
         currentDraftId = savedId;
+        // Sync trip context to the draft's trip
+        if ((draft.tripId || null) !== (currentTripId || null)) {
+          currentTripId = draft.tripId || null;
+          if (currentTripId) localStorage.setItem('currentTripId', currentTripId);
+          else localStorage.removeItem('currentTripId');
+        }
         applyDraftState(draft.state);
         restored = true;
       }
     }
     if (!restored) {
-      const drafts = await dbGetAllDrafts();
+      const drafts = (await dbGetAllDrafts()).filter(d => (d.tripId || null) === (currentTripId || null));
       if (drafts.length) {
         drafts.sort((a, b) => b.savedAt - a.savedAt);
         currentDraftId = drafts[0].id;
@@ -3212,6 +3605,7 @@ async function deleteCurrentDraft() {
         applyDraftState(drafts[0].state);
       }
     }
+    await refreshTripSelector();
     await refreshDraftSelector();
   } catch(e) {
     console.warn('IndexedDB unavailable:', e);

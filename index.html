@@ -769,7 +769,24 @@
 <div id="photosSection" class="section hidden">
   <h2>Job Photos (<span id="photoCount">0</span>)</h2>
   <button class="action-btn-sm" onclick="document.getElementById('photoInput').click()">+ Add More Photos</button>
+  <div id="photoFilterBar" style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0"></div>
   <div class="photo-grid" id="photoGrid"></div>
+  <datalist id="photoAreaList">
+    <option value="Outdoor patio">
+    <option value="Drive-thru">
+    <option value="Roof">
+    <option value="Dining area">
+    <option value="Kitchen">
+    <option value="Pump room">
+    <option value="Storage / equipment room">
+    <option value="Restroom">
+    <option value="Lobby / entrance">
+    <option value="Walk-in cooler / freezer">
+    <option value="Mechanical / utility area">
+    <option value="Exterior front">
+    <option value="Exterior side">
+    <option value="Exterior rear">
+  </datalist>
 </div>
 
 <!-- JOB FILES -->
@@ -956,7 +973,14 @@
 // ═══════════════════════════════
 // STATE
 // ═══════════════════════════════
-let photos = [];     // { dataURL, notes, gps }
+let photos = [];     // { dataURL, notes, gps, area, phase, component, voiceNote }
+let photoFilter = { phase: '', area: '' }; // active photo grid filter
+let pendingVoicePhotoIndex = null;
+let photoVoiceMediaRecorder = null;
+let photoVoiceChunks = [];
+let photoVoiceSpeechRec = null;
+let photoVoiceTranscript = '';
+let photoVoiceStartedAt = 0;
 let receipts = [];   // { dataURL, amount, vendor, category, gps }
 let jobFiles = [];   // { dataURL, fileName, size, isImage }
 let notes = [];      // { title, text }
@@ -1235,7 +1259,10 @@ document.getElementById('photoInput').addEventListener('change', async function(
     const reader = new FileReader();
     reader.onload = async ev => {
       const stamped = await stampImage(ev.target.result, gps);
-      photos.push({ dataURL: stamped.dataURL, notes: '', gps, stamp: stamped.stamp });
+      photos.push({
+        dataURL: stamped.dataURL, notes: '', gps, stamp: stamped.stamp,
+        area: '', phase: '', component: '', voiceNote: null
+      });
       loaded++;
       if (loaded === files.length) renderPhotos();
     };
@@ -1249,13 +1276,141 @@ function renderPhotos() {
   document.getElementById('photoCount').textContent = photos.length;
   if (!photos.length) { sec.classList.add('hidden'); return; }
   sec.classList.remove('hidden');
-  document.getElementById('photoGrid').innerHTML = photos.map((p, i) => `
+
+  // Render filter bar
+  const filterBar = document.getElementById('photoFilterBar');
+  if (filterBar) {
+    const counts = {
+      all: photos.length,
+      before: photos.filter(p => p.phase === 'before').length,
+      during: photos.filter(p => p.phase === 'during').length,
+      after: photos.filter(p => p.phase === 'after').length,
+      untagged: photos.filter(p => !p.phase).length
+    };
+    const isActive = v => photoFilter.phase === v ? ';background:var(--accent);color:#fff;border-color:var(--accent)' : '';
+    filterBar.innerHTML = `
+      <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('')}" onclick="setPhotoFilter('phase','')">All (${counts.all})</button>
+      <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('before')}" onclick="setPhotoFilter('phase','before')">📷 Before (${counts.before})</button>
+      <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('during')}" onclick="setPhotoFilter('phase','during')">🔧 During (${counts.during})</button>
+      <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('after')}" onclick="setPhotoFilter('phase','after')">✅ After (${counts.after})</button>
+      ${counts.untagged > 0 ? `<button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('untagged')}" onclick="setPhotoFilter('phase','untagged')">📁 Untagged (${counts.untagged})</button>` : ''}
+    `;
+  }
+
+  // Show photos matching the active filter
+  const visible = photos.map((p, i) => ({ p, i })).filter(({p}) => {
+    if (photoFilter.phase === 'untagged') return !p.phase;
+    if (photoFilter.phase && p.phase !== photoFilter.phase) return false;
+    if (photoFilter.area && p.area !== photoFilter.area) return false;
+    return true;
+  });
+
+  const isRecording = photoVoiceMediaRecorder && photoVoiceMediaRecorder.state === 'recording';
+
+  document.getElementById('photoGrid').innerHTML = visible.map(({p, i}) => {
+    const recordBtn = (isRecording && pendingVoicePhotoIndex === i)
+      ? `<button class="action-btn-sm" style="margin:6px 0 0;padding:6px 10px;font-size:12px;background:var(--red);color:#fff;width:100%" onclick="recordPhotoVoice(${i})">■ Stop Recording</button>`
+      : `<button class="action-btn-sm" style="margin:6px 0 0;padding:6px 10px;font-size:12px;width:100%" onclick="recordPhotoVoice(${i})">🎙️ ${p.voiceNote ? 'Re-record' : 'Voice Note'}</button>`;
+    return `
     <div class="photo-card">
       <img src="${p.dataURL}" alt="Photo ${i+1}" onclick="window.open(this.src,'_blank')">
       <button class="remove-btn" onclick="photos.splice(${i},1);renderPhotos()">×</button>
-      <textarea placeholder="Notes — what does this photo show?" onchange="photos[${i}].notes=this.value">${esc(p.notes)}</textarea>
+      <div style="padding:8px 10px;display:flex;flex-direction:column;gap:5px;border-top:1px solid var(--border)">
+        <select onchange="photos[${i}].phase=this.value;renderPhotos();scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
+          <option value="">— Phase —</option>
+          <option value="before"${p.phase==='before'?' selected':''}>📷 Before</option>
+          <option value="during"${p.phase==='during'?' selected':''}>🔧 During</option>
+          <option value="after"${p.phase==='after'?' selected':''}>✅ After</option>
+        </select>
+        <input list="photoAreaList" type="text" placeholder="Area (Patio, Roof, Pump room...)" value="${esc(p.area||'')}" onchange="photos[${i}].area=this.value;renderPhotos();scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
+        <select onchange="photos[${i}].component=this.value;scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
+          <option value="">— Component (optional) —</option>
+          <option value="pump"${p.component==='pump'?' selected':''}>🔧 Pump</option>
+          <option value="line"${p.component==='line'?' selected':''}>⚡ Line / tubing</option>
+          <option value="nozzle"${p.component==='nozzle'?' selected':''}>💧 Nozzle</option>
+          <option value="switch"${p.component==='switch'?' selected':''}>🎛 Switch / control</option>
+          <option value="ro"${p.component==='ro'?' selected':''}>🧪 RO membrane</option>
+          <option value="drain"${p.component==='drain'?' selected':''}>🚰 Drain</option>
+          <option value="electrical"${p.component==='electrical'?' selected':''}>🔌 Electrical</option>
+          <option value="mounting"${p.component==='mounting'?' selected':''}>🧱 Mounting / bracket</option>
+          <option value="overall"${p.component==='overall'?' selected':''}>📐 Overall view</option>
+          <option value="other"${p.component==='other'?' selected':''}>❔ Other</option>
+        </select>
+      </div>
+      ${recordBtn}
+      ${p.voiceNote ? `
+        <audio controls src="${p.voiceNote.audioURL}" style="width:100%;margin-top:6px"></audio>
+        ${p.voiceNote.transcript ? `<div style="font-size:11px;color:var(--dim);font-style:italic;padding:4px 8px;background:var(--surface);border-radius:var(--radius);margin-top:4px">"${esc(p.voiceNote.transcript)}"</div>` : ''}
+      ` : ''}
+      <textarea placeholder="Notes — what does this photo show?" onchange="photos[${i}].notes=this.value;scheduleAutoSave()">${esc(p.notes)}</textarea>
     </div>
-  `).join('');
+  `;}).join('');
+}
+
+function setPhotoFilter(key, val) {
+  photoFilter[key] = val;
+  renderPhotos();
+}
+
+// Per-photo voice notes
+async function recordPhotoVoice(index) {
+  // If currently recording, stop
+  if (photoVoiceMediaRecorder && photoVoiceMediaRecorder.state === 'recording') {
+    photoVoiceMediaRecorder.stop();
+    if (photoVoiceSpeechRec) { try { photoVoiceSpeechRec.stop(); } catch(e) {} }
+    return;
+  }
+  pendingVoicePhotoIndex = index;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    photoVoiceChunks = [];
+    photoVoiceTranscript = '';
+    photoVoiceStartedAt = Date.now();
+    photoVoiceMediaRecorder = new MediaRecorder(stream);
+    photoVoiceMediaRecorder.ondataavailable = e => { if (e.data.size > 0) photoVoiceChunks.push(e.data); };
+    photoVoiceMediaRecorder.onstop = async () => {
+      stream.getTracks().forEach(t => t.stop());
+      const blob = new Blob(photoVoiceChunks, { type: 'audio/webm' });
+      const reader = new FileReader();
+      reader.onload = ev => {
+        const duration = Math.floor((Date.now() - photoVoiceStartedAt) / 1000);
+        if (photos[pendingVoicePhotoIndex]) {
+          photos[pendingVoicePhotoIndex].voiceNote = {
+            audioURL: ev.target.result,
+            transcript: photoVoiceTranscript.trim(),
+            duration
+          };
+        }
+        photoVoiceMediaRecorder = null;
+        pendingVoicePhotoIndex = null;
+        renderPhotos();
+        scheduleAutoSave();
+      };
+      reader.readAsDataURL(blob);
+    };
+    photoVoiceMediaRecorder.start();
+
+    // Live transcription (Chrome/Edge only)
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      photoVoiceSpeechRec = new SR();
+      photoVoiceSpeechRec.continuous = true;
+      photoVoiceSpeechRec.interimResults = false;
+      photoVoiceSpeechRec.lang = 'en-US';
+      photoVoiceSpeechRec.onresult = e => {
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          if (e.results[i].isFinal) photoVoiceTranscript += e.results[i][0].transcript + ' ';
+        }
+      };
+      photoVoiceSpeechRec.onerror = () => {};
+      try { photoVoiceSpeechRec.start(); } catch(e) {}
+    }
+    renderPhotos(); // re-render to show "Stop" button
+  } catch (e) {
+    pendingVoicePhotoIndex = null;
+    photoVoiceMediaRecorder = null;
+    alert('Could not start mic: ' + e.message + '\n\nMake sure you granted mic permission.');
+  }
 }
 
 // ═══════════════════════════════
@@ -2467,16 +2622,59 @@ function generateReport() {
     html += `</ul>`;
   }
 
-  // Photos
+  // Photos — grouped by area, then by phase
   if (photos.length > 0) {
-    html += `<h2>Job Photos (${photos.length})</h2><div class="photo-grid">`;
+    const renderPhotoCard = (p) => {
+      let s = `<div class="photo-item"><img src="${p.dataURL}">`;
+      if (p.component) s += `<div style="font-size:11px;color:#0c4a6e;font-weight:700;margin-top:2px;background:#e0f2fe;padding:2px 6px;border-radius:3px;display:inline-block">${esc(p.component.toUpperCase())}</div>`;
+      if (p.notes) s += `<div class="photo-notes">${esc(p.notes)}</div>`;
+      if (p.voiceNote) {
+        s += `<audio controls src="${p.voiceNote.audioURL}" style="width:100%;margin-top:4px"></audio>`;
+        if (p.voiceNote.transcript) s += `<div style="font-size:11px;color:#555;font-style:italic;margin-top:2px">"${esc(p.voiceNote.transcript)}"</div>`;
+      }
+      if (p.gps) s += `<div style="font-size:11px;color:#666;margin-top:2px"><a href="${gpsMapsLink(p.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">📍 ${fmtGps(p.gps)}</a></div>`;
+      s += `</div>`;
+      return s;
+    };
+
+    // Bucket by area
+    const byArea = {};
     photos.forEach(p => {
-      html += `<div class="photo-item"><img src="${p.dataURL}">`;
-      if (p.notes) html += `<div class="photo-notes">${esc(p.notes)}</div>`;
-      if (p.gps) html += `<div style="font-size:11px;color:#666;margin-top:2px"><a href="${gpsMapsLink(p.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">📍 ${fmtGps(p.gps)}</a></div>`;
-      html += `</div>`;
+      const area = (p.area || '').trim() || '__untagged__';
+      if (!byArea[area]) byArea[area] = { before: [], during: [], after: [], untagged: [] };
+      byArea[area][p.phase || 'untagged'].push(p);
     });
-    html += `</div>`;
+
+    const taggedAreas = Object.keys(byArea).filter(a => a !== '__untagged__').sort();
+    const hasUntaggedArea = !!byArea['__untagged__'];
+    const useGrouping = taggedAreas.length > 0 || photos.some(p => p.phase);
+
+    html += `<h2>Job Photos (${photos.length})</h2>`;
+
+    if (!useGrouping) {
+      // No tags at all → flat grid (legacy behavior)
+      html += `<div class="photo-grid">`;
+      photos.forEach(p => { html += renderPhotoCard(p); });
+      html += `</div>`;
+    } else {
+      const phaseLabels = { before: '📷 Before', during: '🔧 During', after: '✅ After', untagged: '📁 Other' };
+      const renderArea = (areaName, groups) => {
+        const total = groups.before.length + groups.during.length + groups.after.length + groups.untagged.length;
+        if (total === 0) return '';
+        let s = `<h3 style="font-size:14px;margin:14px 0 6px;color:#222;background:#f0f0f0;padding:6px 10px;border-radius:4px">${esc(areaName)} <span style="font-weight:400;color:#666;font-size:12px">(${total} ${total === 1 ? 'photo' : 'photos'})</span></h3>`;
+        ['before', 'during', 'after', 'untagged'].forEach(phase => {
+          if (!groups[phase].length) return;
+          s += `<h4 style="margin:8px 0 4px;font-size:12px;color:#555;font-weight:600;text-transform:uppercase;letter-spacing:.5px">${phaseLabels[phase]} (${groups[phase].length})</h4>`;
+          s += `<div class="photo-grid">`;
+          groups[phase].forEach(p => { s += renderPhotoCard(p); });
+          s += `</div>`;
+        });
+        return s;
+      };
+
+      taggedAreas.forEach(area => { html += renderArea(area, byArea[area]); });
+      if (hasUntaggedArea) html += renderArea('Untagged Area', byArea['__untagged__']);
+    }
   }
 
   // Receipts with images

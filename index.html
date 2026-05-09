@@ -522,6 +522,76 @@
 
   .hidden { display: none; }
 
+  /* DASHBOARD */
+  .dashboard {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 16px;
+  }
+  .dash-status {
+    font-size: 15px;
+    font-weight: 700;
+    text-align: center;
+    margin-bottom: 12px;
+    padding: 10px;
+    background: var(--input);
+    border-radius: var(--radius);
+  }
+  .dash-status .dash-timer {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    margin-left: 10px;
+    font-size: 18px;
+  }
+  .dash-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+  .dash-stat {
+    background: var(--input);
+    padding: 10px 4px;
+    border-radius: var(--radius);
+    text-align: center;
+    cursor: pointer;
+    border: 1px solid transparent;
+  }
+  .dash-stat:hover { border-color: var(--accent); }
+  .dash-stat-label { font-size: 9px; color: var(--dim); font-weight: 700; letter-spacing: 1px; }
+  .dash-stat-value { font-size: 17px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .dash-buttons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+  .dash-btn {
+    padding: 14px 8px;
+    border: none;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    color: #fff;
+    letter-spacing: 0.5px;
+  }
+  .dash-btn-drive { background: #4f8cff; }
+  .dash-btn-drive:hover { background: #6fa0ff; }
+  .dash-btn-work { background: #22c55e; }
+  .dash-btn-work:hover { background: #16a34a; }
+  .dash-btn-gas { background: #fbbf24; color: #111; }
+  .dash-btn-gas:hover { background: #f59e0b; }
+  .dash-btn-stop { background: #ef4444; }
+  .dash-btn-stop:hover { background: #dc2626; }
+  .dash-btn:disabled { background: var(--input); color: var(--dim); cursor: not-allowed; }
+  @media (max-width:480px) {
+    .dash-stats { gap: 4px; }
+    .dash-stat-value { font-size: 15px; }
+    .dash-btn { padding: 12px 4px; font-size: 13px; }
+  }
+
   /* Prevent auto-zoom on mobile inputs */
   @media (max-width: 768px) {
     input, select, textarea { font-size: 16px !important; }
@@ -583,25 +653,49 @@
   </div>
 </div>
 
-<!-- JOB CLOCK -->
-<div class="section">
-  <h2>Job Clock</h2>
-  <div id="clockDisplay" style="font-size:32px;font-weight:700;text-align:center;padding:14px;background:var(--input);border-radius:var(--radius);margin-bottom:12px;letter-spacing:2px;font-variant-numeric:tabular-nums">0:00:00</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-    <button id="clockStartBtn" class="action-btn" style="background:var(--green);color:#fff;border-style:solid" onclick="startClock()">▶ START JOB</button>
-    <button id="clockStopBtn" class="action-btn" style="background:var(--red);color:#fff;border-style:solid;display:none" onclick="stopClock()">■ STOP JOB</button>
-    <button class="action-btn-sm" onclick="resetClock()" style="grid-column:1 / -1;margin:0">Reset Clock</button>
+<!-- DASHBOARD — live totals + segment controls -->
+<div class="dashboard">
+  <div class="dash-status" id="dashStatus">
+    <span id="dashStatusIcon">⏸</span>
+    <span id="dashStatusText">Not started</span>
+    <span id="dashLiveTimer" class="dash-timer"></span>
   </div>
-  <div id="clockMeta" style="font-size:12px;color:var(--dim);margin-top:8px;text-align:center"></div>
+  <div class="dash-stats">
+    <div class="dash-stat" onclick="document.getElementById('segmentsSection').scrollIntoView({behavior:'smooth'})">
+      <div class="dash-stat-label">🚗 DRIVE</div>
+      <div class="dash-stat-value" id="dashDriveTotal">0h</div>
+    </div>
+    <div class="dash-stat" onclick="document.getElementById('segmentsSection').scrollIntoView({behavior:'smooth'})">
+      <div class="dash-stat-label">🏗️ SITE</div>
+      <div class="dash-stat-value" id="dashSiteTotal">0h</div>
+    </div>
+    <div class="dash-stat" onclick="document.getElementById('segmentsSection').scrollIntoView({behavior:'smooth'})">
+      <div class="dash-stat-label">🛣️ MILES</div>
+      <div class="dash-stat-value" id="dashMilesTotal">0</div>
+    </div>
+    <div class="dash-stat" onclick="document.getElementById('receiptsSection').scrollIntoView({behavior:'smooth'})">
+      <div class="dash-stat-label">💰 SPENT</div>
+      <div class="dash-stat-value" id="dashSpentTotal">$0</div>
+    </div>
+  </div>
+  <div class="dash-buttons">
+    <button class="dash-btn dash-btn-drive" onclick="startDriveSegment()">🚗 START DRIVE</button>
+    <button class="dash-btn dash-btn-work" onclick="startWorkdaySegment()">🏗️ START WORKDAY</button>
+    <button class="dash-btn dash-btn-gas" onclick="logGasStop()">⛽ LOG GAS</button>
+    <button class="dash-btn dash-btn-stop" id="dashStopBtn" onclick="stopCurrentSegment()" disabled>■ STOP</button>
+  </div>
 </div>
 
-<!-- 5 BIG BUTTONS -->
+<!-- TIME LOG — list of segments -->
+<div id="segmentsSection" class="section">
+  <h2>Time Log <span style="font-weight:400;color:var(--dim);text-transform:none;letter-spacing:0">(<span id="segmentCount">0</span> segments)</span></h2>
+  <div id="segmentsList"></div>
+</div>
+
+<!-- 7 BIG BUTTONS -->
 <div class="actions">
   <button class="action-btn" onclick="document.getElementById('photoInput').click()">
     <span class="icon">📷</span> UPLOAD PHOTOS
-  </button>
-  <button class="action-btn" onclick="toggleSection('hoursSection')">
-    <span class="icon">🕐</span> HOURS &amp; MILEAGE
   </button>
   <button class="action-btn" onclick="document.getElementById('receiptInput').click()">
     <span class="icon">🧾</span> UPLOAD RECEIPTS
@@ -621,6 +715,9 @@
   <button class="action-btn" onclick="toggleSection('voiceSection')">
     <span class="icon">🎙️</span> VOICE MEMOS
   </button>
+  <button class="action-btn" onclick="toggleSection('hoursSection')" style="opacity:.6">
+    <span class="icon">🕐</span> MANUAL HOURS<br><span style="font-size:11px;font-weight:400;color:var(--dim)">(legacy form)</span>
+  </button>
 </div>
 
 <!-- Hidden file inputs -->
@@ -628,6 +725,8 @@
 <input type="file" id="receiptInput" class="hidden" multiple accept="image/*">
 <input type="file" id="jobFileInput" class="hidden" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.txt,.csv">
 <input type="file" id="odoInput" class="hidden" accept="image/*">
+<input type="file" id="segOdoInput" class="hidden" accept="image/*" capture="environment">
+<input type="file" id="gasInput" class="hidden" accept="image/*" capture="environment">
 
 <!-- PHOTOS -->
 <div id="photosSection" class="section hidden">
@@ -794,7 +893,10 @@ let contacts = [];   // { name, role, phone, email, discussed }
 let foundContactsBuffer = []; // staged AI-extracted contacts awaiting user confirmation
 let checklist = { type: '', items: [] }; // { label, checked }
 let voiceMemos = []; // { audioURL, transcript, stamp, duration }
-let clockState = { running: false, startedAt: 0, accumulatedMs: 0 };
+let clockState = { running: false, startedAt: 0, accumulatedMs: 0 }; // legacy — kept for old-draft compat
+let segments = [];   // { id, type:'drive'|'workday', startedAt, endedAt, startGps, endGps, startOdoPhoto, startOdoMiles, endOdoPhoto, endOdoMiles, note }
+let segmentTickInterval = null;
+let pendingOdoTarget = null; // { segId, which:'start'|'end' }
 let db = null;
 let lastReportHTML = '';
 let lastSummaryHTML = '';
@@ -1241,6 +1343,7 @@ function renderReceipts() {
 function updateExpenseTotal() {
   const total = receipts.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
   document.getElementById('expenseTotal').textContent = '$' + total.toFixed(2);
+  if (typeof updateDashboard === 'function') updateDashboard();
 }
 
 // ═══════════════════════════════
@@ -1515,6 +1618,261 @@ function renderVoiceMemos() {
 }
 
 // ═══════════════════════════════
+// SEGMENTS — drive / workday tracking
+// ═══════════════════════════════
+function newSegId() { return 'seg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+function getRunningSegment() { return segments.find(s => !s.endedAt); }
+
+function fmtHrsShort(ms) {
+  const h = ms / 3600000;
+  if (h < 0.05) return '0h';
+  if (h >= 10) return Math.round(h) + 'h';
+  return h.toFixed(1) + 'h';
+}
+
+function totalMilesFromSegments() {
+  let m = 0;
+  segments.forEach(s => {
+    if (s.type === 'drive' && s.startOdoMiles && s.endOdoMiles) {
+      m += Math.max(0, s.endOdoMiles - s.startOdoMiles);
+    }
+  });
+  return m;
+}
+
+function totalMsByType(type) {
+  let total = 0;
+  const now = Date.now();
+  segments.forEach(s => {
+    if (s.type === type) total += (s.endedAt || now) - s.startedAt;
+  });
+  return total;
+}
+
+function updateDashboard() {
+  const live = getRunningSegment();
+  const icon = document.getElementById('dashStatusIcon');
+  const txt = document.getElementById('dashStatusText');
+  const timer = document.getElementById('dashLiveTimer');
+  if (live) {
+    icon.textContent = live.type === 'drive' ? '🚗' : '🏗️';
+    txt.textContent = (live.type === 'drive' ? 'Driving' : 'Working') + (live.note ? ' — ' + live.note : '');
+    timer.textContent = fmtClock(Date.now() - live.startedAt);
+  } else {
+    icon.textContent = '⏸';
+    txt.textContent = segments.length ? 'Paused' : 'Not started';
+    timer.textContent = '';
+  }
+  document.getElementById('dashDriveTotal').textContent = fmtHrsShort(totalMsByType('drive'));
+  document.getElementById('dashSiteTotal').textContent = fmtHrsShort(totalMsByType('workday'));
+  const m = totalMilesFromSegments();
+  document.getElementById('dashMilesTotal').textContent = m ? m.toLocaleString() : '0';
+  const spent = receipts.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
+  document.getElementById('dashSpentTotal').textContent = '$' + spent.toFixed(0);
+  document.getElementById('dashStopBtn').disabled = !live;
+}
+
+function startSegmentTicker() {
+  if (segmentTickInterval) return;
+  segmentTickInterval = setInterval(() => {
+    if (!getRunningSegment()) { clearInterval(segmentTickInterval); segmentTickInterval = null; updateDashboard(); return; }
+    updateDashboard();
+    // Update the duration text in the live segment card if present
+    const live = getRunningSegment();
+    const el = document.querySelector(`[data-segid="${live.id}"] .seg-duration`);
+    if (el) el.textContent = fmtClock(Date.now() - live.startedAt);
+  }, 1000);
+}
+
+function renderSegments() {
+  const list = document.getElementById('segmentsList');
+  if (!list) return;
+  document.getElementById('segmentCount').textContent = segments.length;
+  if (!segments.length) {
+    list.innerHTML = '<p style="color:var(--dim);text-align:center;padding:14px;font-size:13px">No segments yet. Tap a Start button above to begin tracking time.</p>';
+    return;
+  }
+  const sorted = [...segments].sort((a,b) => b.startedAt - a.startedAt);
+  list.innerHTML = sorted.map(s => {
+    const ico = s.type === 'drive' ? '🚗' : '🏗️';
+    const label = s.type === 'drive' ? 'Drive' : 'Workday';
+    const start = new Date(s.startedAt);
+    const end = s.endedAt ? new Date(s.endedAt) : null;
+    const dur = (s.endedAt || Date.now()) - s.startedAt;
+    const isLive = !s.endedAt;
+    const milesText = (s.type === 'drive' && s.startOdoMiles && s.endOdoMiles)
+      ? ` · ${(s.endOdoMiles - s.startOdoMiles).toLocaleString()} mi` : '';
+    const dateStr = start.toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+    const endStr = end ? end.toLocaleString('en-US', { hour:'numeric', minute:'2-digit' }) : 'now';
+    const odoStart = s.startOdoPhoto ? `<div style="text-align:center"><img src="${s.startOdoPhoto}" style="width:90px;height:65px;object-fit:cover;border-radius:4px;cursor:zoom-in" onclick="window.open(this.src,'_blank')"><div style="font-size:10px;color:var(--dim);margin-top:2px">Start: ${s.startOdoMiles ? s.startOdoMiles.toLocaleString()+' mi' : '—'}</div></div>` : '';
+    const odoEnd = s.endOdoPhoto ? `<div style="text-align:center"><img src="${s.endOdoPhoto}" style="width:90px;height:65px;object-fit:cover;border-radius:4px;cursor:zoom-in" onclick="window.open(this.src,'_blank')"><div style="font-size:10px;color:var(--dim);margin-top:2px">End: ${s.endOdoMiles ? s.endOdoMiles.toLocaleString()+' mi' : '—'}</div></div>` : '';
+    const odoBlock = (odoStart || odoEnd) ? `<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">${odoStart}${odoEnd}</div>` : '';
+    return `<div class="note-card" data-segid="${s.id}" style="position:relative">
+      <button class="remove-btn" onclick="deleteSegment('${s.id}')">×</button>
+      <div style="font-weight:700;font-size:15px">${ico} ${label}${isLive?' <span style="color:var(--red);font-size:12px">● LIVE</span>':''}</div>
+      <div style="font-size:13px;color:var(--dim);margin-top:4px">
+        ${dateStr} → ${endStr} · <span class="seg-duration">${fmtClock(dur)}</span>${milesText}
+      </div>
+      ${odoBlock}
+      <input type="text" placeholder="Note (e.g. Vegas → SF, or 'Day 2 site work')" value="${esc(s.note||'')}" onchange="updateSegmentNote('${s.id}', this.value)" style="width:100%;margin-top:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none">
+    </div>`;
+  }).join('');
+}
+
+function updateSegmentNote(id, val) {
+  const s = segments.find(x => x.id === id);
+  if (s) { s.note = val; updateDashboard(); scheduleAutoSave(); }
+}
+
+function deleteSegment(id) {
+  if (!confirm('Delete this time segment?')) return;
+  segments = segments.filter(s => s.id !== id);
+  renderSegments();
+  updateDashboard();
+  scheduleAutoSave();
+}
+
+async function startDriveSegment() {
+  const running = getRunningSegment();
+  if (running) {
+    if (!confirm(`Stop the current ${running.type === 'drive' ? 'drive' : 'workday'} segment first?`)) return;
+    running.endedAt = Date.now();
+    running.endGps = await getGps();
+  }
+  const gps = await getGps();
+  const seg = {
+    id: newSegId(),
+    type: 'drive',
+    startedAt: Date.now(),
+    endedAt: null,
+    startGps: gps,
+    endGps: null,
+    startOdoPhoto: null,
+    startOdoMiles: null,
+    endOdoPhoto: null,
+    endOdoMiles: null,
+    note: ''
+  };
+  segments.push(seg);
+  renderSegments();
+  updateDashboard();
+  startSegmentTicker();
+  scheduleAutoSave();
+  // Auto-prompt for start odometer photo
+  setTimeout(() => promptOdometerPhoto(seg.id, 'start'), 200);
+}
+
+async function startWorkdaySegment() {
+  const running = getRunningSegment();
+  if (running) {
+    if (!confirm(`Stop the current ${running.type === 'drive' ? 'drive' : 'workday'} segment first?`)) return;
+    running.endedAt = Date.now();
+    running.endGps = await getGps();
+  }
+  const gps = await getGps();
+  segments.push({
+    id: newSegId(),
+    type: 'workday',
+    startedAt: Date.now(),
+    endedAt: null,
+    startGps: gps,
+    endGps: null,
+    note: ''
+  });
+  renderSegments();
+  updateDashboard();
+  startSegmentTicker();
+  scheduleAutoSave();
+}
+
+async function stopCurrentSegment() {
+  const running = getRunningSegment();
+  if (!running) return;
+  const gps = await getGps();
+  running.endedAt = Date.now();
+  running.endGps = gps;
+  if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
+  renderSegments();
+  updateDashboard();
+  scheduleAutoSave();
+  // Drive segment → prompt for end odometer
+  if (running.type === 'drive') {
+    setTimeout(() => promptOdometerPhoto(running.id, 'end'), 200);
+  }
+}
+
+function promptOdometerPhoto(segId, which) {
+  pendingOdoTarget = { segId, which };
+  const msg = which === 'start' ? '📷 Snap a pic of the START odometer now?' : '📷 Snap a pic of the END odometer?';
+  if (confirm(msg + '\n\nOK = open camera now, Cancel = skip')) {
+    document.getElementById('segOdoInput').click();
+  } else {
+    pendingOdoTarget = null;
+  }
+}
+
+document.getElementById('segOdoInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  const target = pendingOdoTarget;
+  pendingOdoTarget = null;
+  e.target.value = '';
+  if (!file || !target) return;
+  const seg = segments.find(s => s.id === target.segId);
+  if (!seg) return;
+  const gps = await getGps();
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    const stamped = await stampImage(ev.target.result, gps);
+    if (target.which === 'start') {
+      seg.startOdoPhoto = stamped.dataURL;
+      const m = prompt('Start odometer reading (miles):');
+      if (m != null && m !== '') seg.startOdoMiles = parseInt(m.replace(/[^0-9]/g,''), 10) || null;
+    } else {
+      seg.endOdoPhoto = stamped.dataURL;
+      const m = prompt('End odometer reading (miles):');
+      if (m != null && m !== '') seg.endOdoMiles = parseInt(m.replace(/[^0-9]/g,''), 10) || null;
+    }
+    renderSegments();
+    updateDashboard();
+    scheduleAutoSave();
+  };
+  reader.readAsDataURL(file);
+});
+
+// ═══════════════════════════════
+// LOG GAS — one-tap gas stop
+// ═══════════════════════════════
+function logGasStop() {
+  document.getElementById('gasInput').click();
+}
+
+document.getElementById('gasInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  const gps = await getGps();
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    const stamped = await stampImage(ev.target.result, gps);
+    const amountStr = prompt('Gas amount ($):');
+    const amount = amountStr ? parseFloat(amountStr.replace(/[^0-9.]/g, '')) || 0 : 0;
+    receipts.push({
+      dataURL: stamped.dataURL,
+      amount: amount.toString(),
+      vendor: '',
+      category: 'gas',
+      gps: gps,
+      stamp: stamped.stamp
+    });
+    renderReceipts();
+    document.getElementById('receiptsSection').classList.remove('hidden');
+    updateDashboard();
+    scheduleAutoSave();
+  };
+  reader.readAsDataURL(file);
+});
+
+// ═══════════════════════════════
 // REPORT
 // ═══════════════════════════════
 function generateReport() {
@@ -1525,9 +1883,19 @@ function generateReport() {
   const dateEnd = document.getElementById('dateEnd').value;
   const location = [city, state].filter(Boolean).join(', ') || 'N/A';
 
-  const siteH = parseFloat(document.getElementById('siteHours').value) || 0;
-  const driveToH = parseFloat(document.getElementById('driveToHours').value) || 0;
-  const driveBackH = parseFloat(document.getElementById('driveBackHours').value) || 0;
+  // SEGMENTS-FIRST totals; fall back to old hours fields if no segments exist
+  let totalDriveMs = 0, totalSiteMs = 0;
+  segments.forEach(s => {
+    const dur = (s.endedAt || Date.now()) - s.startedAt;
+    if (s.type === 'drive') totalDriveMs += dur;
+    else if (s.type === 'workday') totalSiteMs += dur;
+  });
+  const segDriveH = totalDriveMs / 3600000;
+  const segSiteH = totalSiteMs / 3600000;
+
+  const siteH = segments.length ? segSiteH : (parseFloat(document.getElementById('siteHours').value) || 0);
+  const driveToH = segments.length ? segDriveH : (parseFloat(document.getElementById('driveToHours').value) || 0);
+  const driveBackH = segments.length ? 0 : (parseFloat(document.getElementById('driveBackHours').value) || 0);
   const totalH = siteH + driveToH + driveBackH;
 
   const cats = {};
@@ -1540,11 +1908,15 @@ function generateReport() {
   });
 
   let totalMiles = 0;
-  trips.forEach(t => {
-    const s = parseFloat(t.startMiles) || 0;
-    const e = parseFloat(t.endMiles) || 0;
-    if (e > s) totalMiles += e - s;
-  });
+  if (segments.length) {
+    totalMiles = totalMilesFromSegments();
+  } else {
+    trips.forEach(t => {
+      const s = parseFloat(t.startMiles) || 0;
+      const e = parseFloat(t.endMiles) || 0;
+      if (e > s) totalMiles += e - s;
+    });
+  }
 
   const reportFileBase = (client + '_' + (city || '') + '_' + (state || '')).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'job_report';
 
@@ -1667,15 +2039,67 @@ function generateReport() {
     <p class="meta"><strong>Location:</strong> ${esc(location)}</p>
     <p class="meta"><strong>Dates:</strong> ${fmtDate(dateStart) || 'N/A'}${dateEnd ? ' — ' + fmtDate(dateEnd) : ''}</p>`;
 
-  // Hours
+  // Hours summary
   if (totalH > 0) {
-    html += `<h2>Hours</h2><table>
+    html += `<h2>Hours Summary</h2><table>
       <thead><tr><th>Category</th><th>Hours</th></tr></thead><tbody>
+      ${segments.length ? `
+      <tr><td>🚗 Drive Time</td><td>${segDriveH.toFixed(2)}</td></tr>
+      <tr><td>🏗️ Site Time</td><td>${segSiteH.toFixed(2)}</td></tr>
+      ` : `
       <tr><td>On Site</td><td>${siteH.toFixed(1)}</td></tr>
       <tr><td>Drive (to job)</td><td>${driveToH.toFixed(1)}</td></tr>
       <tr><td>Drive (return)</td><td>${driveBackH.toFixed(1)}</td></tr>
-      <tr class="total-row"><td>Total</td><td>${totalH.toFixed(1)}</td></tr>
+      `}
+      <tr class="total-row"><td>Total</td><td>${totalH.toFixed(2)}</td></tr>
       </tbody></table>`;
+  }
+
+  // Day-by-day Time Log (segments only)
+  if (segments.length) {
+    const byDay = {};
+    segments.forEach(s => {
+      const dayKey = new Date(s.startedAt).toLocaleDateString('en-CA'); // YYYY-MM-DD
+      (byDay[dayKey] = byDay[dayKey] || []).push(s);
+    });
+    const days = Object.keys(byDay).sort();
+    html += `<h2>Time Log — Day by Day</h2>`;
+    days.forEach(d => {
+      const dayDate = new Date(d + 'T00:00:00');
+      let dayDriveMs = 0, dayWorkMs = 0, dayMiles = 0;
+      const sorted = byDay[d].sort((a,b) => a.startedAt - b.startedAt);
+      sorted.forEach(s => {
+        const dur = (s.endedAt || Date.now()) - s.startedAt;
+        if (s.type === 'drive') {
+          dayDriveMs += dur;
+          if (s.startOdoMiles && s.endOdoMiles) dayMiles += Math.max(0, s.endOdoMiles - s.startOdoMiles);
+        } else { dayWorkMs += dur; }
+      });
+      html += `<h3 style="font-size:14px;margin:14px 0 6px;color:#222">📅 ${dayDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'})}</h3>`;
+      html += `<table style="margin-bottom:6px">
+        <thead><tr><th style="width:90px">Type</th><th>Time</th><th>Note</th><th style="text-align:right;width:110px">Duration</th></tr></thead><tbody>`;
+      sorted.forEach(s => {
+        const ico = s.type === 'drive' ? '🚗 Drive' : '🏗️ Workday';
+        const start = new Date(s.startedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+        const end = s.endedAt ? new Date(s.endedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) : 'now';
+        const dur = ((s.endedAt || Date.now()) - s.startedAt) / 3600000;
+        const milesStr = (s.type === 'drive' && s.startOdoMiles && s.endOdoMiles) ? ` (${(s.endOdoMiles - s.startOdoMiles).toLocaleString()} mi)` : '';
+        html += `<tr><td>${ico}</td><td>${start} → ${end}</td><td>${esc(s.note||'')}</td><td style="text-align:right">${dur.toFixed(2)} hrs${milesStr}</td></tr>`;
+      });
+      html += `<tr class="total-row"><td colspan="3">Day total</td><td style="text-align:right">${((dayDriveMs+dayWorkMs)/3600000).toFixed(2)} hrs${dayMiles ? ' · ' + dayMiles.toLocaleString() + ' mi' : ''}</td></tr>`;
+      html += `</tbody></table>`;
+
+      // Inline thumbnails for this day's odometer photos
+      const odoPhotos = sorted.filter(s => s.startOdoPhoto || s.endOdoPhoto);
+      if (odoPhotos.length) {
+        html += `<div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px">`;
+        odoPhotos.forEach(s => {
+          if (s.startOdoPhoto) html += `<div style="text-align:center;font-size:10px;color:#666"><img src="${s.startOdoPhoto}" style="width:110px;height:80px;object-fit:cover;border-radius:4px;border:1px solid #ddd;cursor:zoom-in"><div>Start odo</div></div>`;
+          if (s.endOdoPhoto) html += `<div style="text-align:center;font-size:10px;color:#666"><img src="${s.endOdoPhoto}" style="width:110px;height:80px;object-fit:cover;border-radius:4px;border:1px solid #ddd;cursor:zoom-in"><div>End odo</div></div>`;
+        });
+        html += `</div>`;
+      }
+    });
   }
 
   // Mileage
@@ -1837,9 +2261,16 @@ function generateSummary() {
   const dateEnd = document.getElementById('dateEnd').value;
   const location = [city, state].filter(Boolean).join(', ') || 'N/A';
 
-  const siteH = parseFloat(document.getElementById('siteHours').value) || 0;
-  const driveToH = parseFloat(document.getElementById('driveToHours').value) || 0;
-  const driveBackH = parseFloat(document.getElementById('driveBackHours').value) || 0;
+  // Segments-first totals (fall back to old hours/trips for legacy drafts)
+  let segDriveMs = 0, segSiteMs = 0;
+  segments.forEach(s => {
+    const dur = (s.endedAt || Date.now()) - s.startedAt;
+    if (s.type === 'drive') segDriveMs += dur;
+    else if (s.type === 'workday') segSiteMs += dur;
+  });
+  const siteH = segments.length ? (segSiteMs / 3600000) : (parseFloat(document.getElementById('siteHours').value) || 0);
+  const driveToH = segments.length ? (segDriveMs / 3600000) : (parseFloat(document.getElementById('driveToHours').value) || 0);
+  const driveBackH = segments.length ? 0 : (parseFloat(document.getElementById('driveBackHours').value) || 0);
   const totalH = siteH + driveToH + driveBackH;
 
   let expenseTotal = 0;
@@ -1852,11 +2283,15 @@ function generateSummary() {
   });
 
   let totalMiles = 0;
-  trips.forEach(t => {
-    const s = parseFloat(t.startMiles) || 0;
-    const e = parseFloat(t.endMiles) || 0;
-    if (e > s) totalMiles += e - s;
-  });
+  if (segments.length) {
+    totalMiles = totalMilesFromSegments();
+  } else {
+    trips.forEach(t => {
+      const s = parseFloat(t.startMiles) || 0;
+      const e = parseFloat(t.endMiles) || 0;
+      if (e > s) totalMiles += e - s;
+    });
+  }
 
   const heroPhotos = photos.slice(0, 4);
   const checklistDone = checklist.items.filter(it => it.checked).length;
@@ -2079,6 +2514,8 @@ function clearForm() {
   photos = []; receipts = []; jobFiles = []; notes = []; trips = [];
   contacts = []; voiceMemos = [];
   checklist = { type: '', items: [] };
+  segments = [];
+  if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
   document.getElementById('checklistType').value = '';
   resetClock();
   lastReportHTML = '';
@@ -2091,6 +2528,8 @@ function clearForm() {
   renderContacts();
   renderChecklist();
   renderVoiceMemos();
+  renderSegments();
+  updateDashboard();
   document.getElementById('hoursSection').classList.add('hidden');
   document.getElementById('notesSection').classList.add('hidden');
   document.getElementById('contactsSection').classList.add('hidden');
@@ -2572,7 +3011,7 @@ function serializeCurrentState() {
     driveToHours: document.getElementById('driveToHours').value,
     driveBackHours: document.getElementById('driveBackHours').value,
     photos, receipts, jobFiles, notes, trips, contacts, voiceMemos,
-    checklist, clockState
+    checklist, clockState, segments
   };
 }
 
@@ -2595,6 +3034,7 @@ function applyDraftState(s) {
   voiceMemos = s.voiceMemos || [];
   checklist = s.checklist || { type: '', items: [] };
   clockState = s.clockState || { running: false, startedAt: 0, accumulatedMs: 0 };
+  segments = s.segments || [];
   document.getElementById('checklistType').value = checklist.type || '';
   calcHours();
   renderPhotos();
@@ -2605,6 +3045,10 @@ function applyDraftState(s) {
   renderContacts();
   renderChecklist();
   renderVoiceMemos();
+  renderSegments();
+  updateDashboard();
+  // If there's a live segment running, restart the ticker
+  if (getRunningSegment()) startSegmentTicker();
   // Reveal sections that have content
   if (photos.length) document.getElementById('photosSection').classList.remove('hidden');
   if (receipts.length) document.getElementById('receiptsSection').classList.remove('hidden');
@@ -2678,6 +3122,7 @@ function hasAnyContent() {
   if (photos.length || receipts.length || jobFiles.length) return true;
   if (notes.length || trips.length || contacts.length || voiceMemos.length) return true;
   if (checklist.items.length) return true;
+  if (segments.length) return true;
   if (clockState.accumulatedMs > 0 || clockState.running) return true;
   return false;
 }
@@ -2771,6 +3216,12 @@ async function deleteCurrentDraft() {
   } catch(e) {
     console.warn('IndexedDB unavailable:', e);
   }
+
+  // Initial dashboard render
+  renderSegments();
+  updateDashboard();
+  // Resume the live-segment ticker if a segment was running on reload
+  if (getRunningSegment()) startSegmentTicker();
 
   // Show voice-unsupported warning up front if browser can't transcribe
   if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) {

@@ -663,10 +663,29 @@
     <div class="field"><label>Date Started</label><input type="date" id="dateStart"></div>
     <div class="field"><label>Date Completed</label><input type="date" id="dateEnd"></div>
   </div>
+  <div class="form-row">
+    <div class="field"><label>Crew Size</label>
+      <select id="crewSize" style="padding:10px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:15px;font-family:inherit;outline:none">
+        <option value="1">1 — Solo Installer</option>
+        <option value="2">2 — Pair</option>
+        <option value="3">3 — Crew</option>
+        <option value="4">4+ — Full team</option>
+      </select>
+    </div>
+    <div class="field"><label>Industry-Standard Crew (for this job type)</label>
+      <select id="stdCrewSize" style="padding:10px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:15px;font-family:inherit;outline:none">
+        <option value="">— Optional —</option>
+        <option value="2">2 (small install)</option>
+        <option value="3">3 (typical install)</option>
+        <option value="4">4 (large install)</option>
+      </select>
+    </div>
+  </div>
 </div>
 
 <!-- DASHBOARD — live totals + segment controls -->
 <div class="dashboard">
+  <div id="weekOverageBadge" style="display:none;text-align:center;padding:8px;border-radius:var(--radius);font-weight:700;font-size:14px;margin-bottom:10px;letter-spacing:1px"></div>
   <div class="dash-status" id="dashStatus">
     <span id="dashStatusIcon">⏸</span>
     <span id="dashStatusText">Not started</span>
@@ -726,6 +745,12 @@
   </button>
   <button class="action-btn" onclick="toggleSection('voiceSection')">
     <span class="icon">🎙️</span> VOICE MEMOS
+  </button>
+  <button class="action-btn" onclick="toggleSection('communicationsSection'); addCommunicationIfEmpty()">
+    <span class="icon">📧</span> COMM LOG
+  </button>
+  <button class="action-btn" onclick="toggleSection('discrepanciesSection'); addDiscrepancyIfEmpty()">
+    <span class="icon">⚠️</span> DISCREPANCIES
   </button>
   <button class="action-btn" onclick="toggleSection('hoursSection')" style="opacity:.6">
     <span class="icon">🕐</span> MANUAL HOURS<br><span style="font-size:11px;font-weight:400;color:var(--dim)">(legacy form)</span>
@@ -820,10 +845,45 @@
   <div id="voiceList" style="margin-top:12px"></div>
 </div>
 
+<!-- COMMUNICATIONS LOG -->
+<div id="communicationsSection" class="section hidden">
+  <h2>Communications Log (<span id="commCount">0</span>) <span style="font-weight:400;color:var(--dim);font-size:12px;text-transform:none;letter-spacing:0">— every message you sent + whether they responded</span></h2>
+  <div id="commList"></div>
+  <button class="action-btn-sm" onclick="addCommunication()">+ Log Communication</button>
+  <div id="commStats" style="margin-top:10px;padding:10px;background:var(--input);border-radius:var(--radius);font-size:13px;display:none"></div>
+</div>
+
+<!-- DISCREPANCIES -->
+<div id="discrepanciesSection" class="section hidden">
+  <h2>Discrepancies (<span id="discCount">0</span>) <span style="font-weight:400;color:var(--dim);font-size:12px;text-transform:none;letter-spacing:0">— what spec said vs. what site shows</span></h2>
+  <div id="discList"></div>
+  <button class="action-btn-sm" onclick="addDiscrepancy()">+ Flag Discrepancy</button>
+  <div id="discStats" style="margin-top:10px;padding:10px;background:var(--input);border-radius:var(--radius);font-size:13px;display:none"></div>
+</div>
+
+<!-- DAILY NOTES (for daily report) -->
+<div id="dailyNotesSection" class="section">
+  <h2>Today's Self-Notes <span style="font-weight:400;color:var(--dim);font-size:12px;text-transform:none;letter-spacing:0">— for daily report</span></h2>
+  <div class="field" style="margin-bottom:10px">
+    <label>🔧 What got done today</label>
+    <textarea id="dnWorkCompleted" oninput="dailyNotes.workCompleted=this.value;scheduleAutoSave()" placeholder="Pump installed, 8 nozzles set, leak test passed..." style="width:100%;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none;resize:vertical;min-height:60px"></textarea>
+  </div>
+  <div class="field" style="margin-bottom:10px">
+    <label>⚠️ Blockers / decisions needed from office</label>
+    <textarea id="dnBlockers" oninput="dailyNotes.blockers=this.value;scheduleAutoSave()" placeholder="Spec says 12 nozzles, only 8 in materials. Need decision on ordering more or revising plan..." style="width:100%;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none;resize:vertical;min-height:60px"></textarea>
+  </div>
+  <div class="field">
+    <label>🤦 What I'd do differently / honest self-notes</label>
+    <textarea id="dnSelfNotes" oninput="dailyNotes.selfNotes=this.value;scheduleAutoSave()" placeholder="Should have caught nozzle count before leaving Vegas. Forgot the impact driver bit set..." style="width:100%;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none;resize:vertical;min-height:60px"></textarea>
+  </div>
+</div>
+
 <!-- GENERATE -->
 <div class="bottom-btns">
   <button class="generate-btn" onclick="generateReport()">FULL REPORT</button>
   <button class="generate-btn" style="background:var(--yellow);color:#111" onclick="generateSummary()">PROJECT SUMMARY</button>
+  <button class="generate-btn" style="background:#a78bfa;color:#fff" onclick="generateDailyReport()">📅 DAILY REPORT</button>
+  <button class="generate-btn" style="background:#ec4899;color:#fff" onclick="generateWeeklyDigest()">📊 WEEKLY DIGEST</button>
   <button class="send-btn" onclick="sendReport()" style="grid-column:1 / -1">SEND REPORT ✉</button>
 </div>
 
@@ -909,6 +969,9 @@ let clockState = { running: false, startedAt: 0, accumulatedMs: 0 }; // legacy �
 let segments = [];   // { id, type:'drive'|'workday', startedAt, endedAt, startGps, endGps, startOdoPhoto, startOdoMiles, endOdoPhoto, endOdoMiles, note }
 let segmentTickInterval = null;
 let pendingOdoTarget = null; // { segId, which:'start'|'end' }
+let communications = []; // { id, kind:'email'|'text'|'call'|'in-person', to, subject, summary, sentAt, responseReceived, responseAt, responseSummary }
+let discrepancies = []; // { id, area, specSays, siteShows, flaggedAt, raisedToOffice, responseReceived, responseAt, responseSummary }
+let dailyNotes = { workCompleted: '', blockers: '', selfNotes: '' }; // free-text fields filled in for daily report
 let db = null;
 let lastReportHTML = '';
 let lastSummaryHTML = '';
@@ -1665,6 +1728,215 @@ function renderVoiceMemos() {
 }
 
 // ═══════════════════════════════
+// COMMUNICATIONS LOG — every message sent + response tracking
+// ═══════════════════════════════
+function addCommunication() {
+  communications.push({
+    id: 'comm_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    kind: 'email',
+    to: '',
+    subject: '',
+    summary: '',
+    sentAt: new Date().toISOString().slice(0,10),
+    responseReceived: false,
+    responseAt: '',
+    responseSummary: ''
+  });
+  renderCommunications();
+}
+function addCommunicationIfEmpty() { if (!communications.length) addCommunication(); }
+
+function renderCommunications() {
+  document.getElementById('commCount').textContent = communications.length;
+  document.getElementById('commList').innerHTML = communications.map((c, i) => {
+    const sent = new Date(c.sentAt);
+    let daysWaited = '';
+    if (c.responseReceived && c.responseAt) {
+      const r = new Date(c.responseAt);
+      const days = Math.round((r - sent) / 86400000);
+      daysWaited = days >= 0 ? days + ' days to respond' : '';
+    } else if (c.sentAt) {
+      const days = Math.round((Date.now() - sent.getTime()) / 86400000);
+      if (days > 0) daysWaited = days + ' days unanswered';
+    }
+    return `<div class="note-card">
+      <button class="remove-btn" onclick="communications.splice(${i},1);renderCommunications();updateCommStats()">×</button>
+      <div class="form-row">
+        <div class="field">
+          <select onchange="communications[${i}].kind=this.value;updateCommStats()" style="padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;outline:none;width:100%">
+            <option value="email"${c.kind==='email'?' selected':''}>📧 Email</option>
+            <option value="text"${c.kind==='text'?' selected':''}>💬 Text</option>
+            <option value="call"${c.kind==='call'?' selected':''}>📞 Call</option>
+            <option value="in-person"${c.kind==='in-person'?' selected':''}>🤝 In Person</option>
+          </select>
+        </div>
+        <div class="field"><input type="date" value="${esc(c.sentAt)}" onchange="communications[${i}].sentAt=this.value;renderCommunications();updateCommStats()"></div>
+      </div>
+      <input type="text" placeholder="To (e.g. John @ MistAmerica office)" value="${esc(c.to)}" onchange="communications[${i}].to=this.value">
+      <input type="text" placeholder="Subject / topic" value="${esc(c.subject)}" onchange="communications[${i}].subject=this.value">
+      <textarea placeholder="What you said / asked..." onchange="communications[${i}].summary=this.value">${esc(c.summary)}</textarea>
+      <div style="margin-top:10px;padding:10px;background:var(--surface);border-radius:var(--radius)">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" ${c.responseReceived?'checked':''} onchange="communications[${i}].responseReceived=this.checked;if(this.checked&&!communications[${i}].responseAt)communications[${i}].responseAt=new Date().toISOString().slice(0,10);renderCommunications();updateCommStats()" style="width:18px;height:18px">
+          <span style="font-weight:700">Response received?</span>
+          ${daysWaited ? `<span style="color:${c.responseReceived?'var(--green)':'var(--red)'};font-size:12px;margin-left:auto">${daysWaited}</span>` : ''}
+        </label>
+        ${c.responseReceived ? `
+          <input type="date" value="${esc(c.responseAt||'')}" onchange="communications[${i}].responseAt=this.value;renderCommunications();updateCommStats()" style="margin-top:8px">
+          <textarea placeholder="What they said in response..." onchange="communications[${i}].responseSummary=this.value" style="margin-top:6px">${esc(c.responseSummary||'')}</textarea>
+        ` : ''}
+      </div>
+    </div>`;
+  }).join('');
+  updateCommStats();
+}
+
+function updateCommStats() {
+  const el = document.getElementById('commStats');
+  if (!el) return;
+  if (!communications.length) { el.style.display = 'none'; return; }
+  const total = communications.length;
+  const responded = communications.filter(c => c.responseReceived).length;
+  const ignored = total - responded;
+  const avgDays = (() => {
+    const days = communications.filter(c => c.responseReceived && c.responseAt && c.sentAt).map(c => {
+      return Math.max(0, Math.round((new Date(c.responseAt) - new Date(c.sentAt)) / 86400000));
+    });
+    return days.length ? (days.reduce((a,b) => a+b, 0) / days.length).toFixed(1) : '—';
+  })();
+  el.style.display = '';
+  el.innerHTML = `<strong>Stats:</strong> ${total} sent · ${responded} answered · <span style="color:var(--red);font-weight:700">${ignored} ignored</span> · avg response time when answered: ${avgDays} days`;
+}
+
+// ═══════════════════════════════
+// DISCREPANCIES — spec vs site, raised & response tracking
+// ═══════════════════════════════
+function addDiscrepancy() {
+  discrepancies.push({
+    id: 'disc_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+    area: '',
+    specSays: '',
+    siteShows: '',
+    flaggedAt: new Date().toISOString().slice(0,10),
+    raisedToOffice: false,
+    responseReceived: false,
+    responseAt: '',
+    responseSummary: ''
+  });
+  renderDiscrepancies();
+}
+function addDiscrepancyIfEmpty() { if (!discrepancies.length) addDiscrepancy(); }
+
+function renderDiscrepancies() {
+  document.getElementById('discCount').textContent = discrepancies.length;
+  document.getElementById('discList').innerHTML = discrepancies.map((d, i) => `
+    <div class="note-card">
+      <button class="remove-btn" onclick="discrepancies.splice(${i},1);renderDiscrepancies();updateDiscStats()">×</button>
+      <div class="form-row">
+        <div class="field"><input type="text" placeholder="Area / component (e.g. patio nozzles)" value="${esc(d.area)}" onchange="discrepancies[${i}].area=this.value"></div>
+        <div class="field"><input type="date" value="${esc(d.flaggedAt)}" onchange="discrepancies[${i}].flaggedAt=this.value"></div>
+      </div>
+      <textarea placeholder="What the spec / job file said..." onchange="discrepancies[${i}].specSays=this.value" style="min-height:50px">${esc(d.specSays)}</textarea>
+      <textarea placeholder="What the site actually shows..." onchange="discrepancies[${i}].siteShows=this.value;updateDiscStats()" style="min-height:50px;margin-top:6px">${esc(d.siteShows)}</textarea>
+      <div style="margin-top:10px;padding:10px;background:var(--surface);border-radius:var(--radius)">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;margin-bottom:6px">
+          <input type="checkbox" ${d.raisedToOffice?'checked':''} onchange="discrepancies[${i}].raisedToOffice=this.checked;renderDiscrepancies();updateDiscStats()" style="width:18px;height:18px">
+          <span style="font-weight:700">Raised to office</span>
+        </label>
+        ${d.raisedToOffice ? `
+          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+            <input type="checkbox" ${d.responseReceived?'checked':''} onchange="discrepancies[${i}].responseReceived=this.checked;if(this.checked&&!discrepancies[${i}].responseAt)discrepancies[${i}].responseAt=new Date().toISOString().slice(0,10);renderDiscrepancies();updateDiscStats()" style="width:18px;height:18px">
+            <span style="font-weight:700">Response received?</span>
+          </label>
+          ${d.responseReceived ? `
+            <input type="date" value="${esc(d.responseAt||'')}" onchange="discrepancies[${i}].responseAt=this.value" style="margin-top:6px">
+            <textarea placeholder="What they decided / responded..." onchange="discrepancies[${i}].responseSummary=this.value" style="margin-top:6px">${esc(d.responseSummary||'')}</textarea>
+          ` : ''}
+        ` : ''}
+      </div>
+    </div>
+  `).join('');
+  updateDiscStats();
+}
+
+function updateDiscStats() {
+  const el = document.getElementById('discStats');
+  if (!el) return;
+  if (!discrepancies.length) { el.style.display = 'none'; return; }
+  const total = discrepancies.length;
+  const raised = discrepancies.filter(d => d.raisedToOffice).length;
+  const acknowledged = discrepancies.filter(d => d.responseReceived).length;
+  const ignored = raised - acknowledged;
+  el.style.display = '';
+  el.innerHTML = `<strong>Stats:</strong> ${total} flagged · ${raised} raised to office · ${acknowledged} acknowledged · <span style="color:var(--red);font-weight:700">${ignored} ignored</span>`;
+}
+
+// ═══════════════════════════════
+// WEEKLY HOURS / OVERAGE BADGE
+// ═══════════════════════════════
+function getWeekStart(date) {
+  // Monday start; ISO week
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setHours(0,0,0,0);
+  d.setDate(diff);
+  return d;
+}
+
+async function getCurrentWeekHours() {
+  const weekStart = getWeekStart(new Date()).getTime();
+  const weekEnd = weekStart + 7 * 86400000;
+  // Sum from current segments
+  let totalMs = 0;
+  segments.forEach(s => {
+    if (s.startedAt >= weekStart && s.startedAt < weekEnd) {
+      totalMs += (s.endedAt || Date.now()) - s.startedAt;
+    }
+  });
+  // Also pull from other drafts and completed jobs (this week)
+  if (db) {
+    try {
+      const allDrafts = await dbGetAllDrafts();
+      allDrafts.forEach(d => {
+        if (d.id === currentDraftId) return; // already counted
+        (d.state?.segments || []).forEach(s => {
+          if (s.startedAt >= weekStart && s.startedAt < weekEnd) {
+            totalMs += (s.endedAt || Date.now()) - s.startedAt;
+          }
+        });
+      });
+      const allJobs = await dbGetAll();
+      allJobs.forEach(j => {
+        (j.rawState?.segments || []).forEach(s => {
+          if (s.startedAt >= weekStart && s.startedAt < weekEnd) {
+            totalMs += (s.endedAt || Date.now()) - s.startedAt;
+          }
+        });
+      });
+    } catch (e) {}
+  }
+  return totalMs / 3600000;
+}
+
+async function refreshOverageBadge() {
+  const hrs = await getCurrentWeekHours();
+  const el = document.getElementById('weekOverageBadge');
+  if (!el) return;
+  if (hrs < 40) {
+    el.style.display = 'none';
+    return;
+  }
+  el.style.display = '';
+  let bg = 'var(--yellow)', txt = '#111';
+  if (hrs >= 60) { bg = 'var(--red)'; txt = '#fff'; }
+  else if (hrs >= 50) { bg = '#fb923c'; txt = '#111'; }
+  el.style.background = bg;
+  el.style.color = txt;
+  el.innerHTML = `⚠️ ${hrs.toFixed(1)}h THIS WEEK · ${(hrs - 40).toFixed(1)}h OVER 40`;
+}
+
+// ═══════════════════════════════
 // SEGMENTS — drive / workday tracking
 // ═══════════════════════════════
 function newSegId() { return 'seg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
@@ -1717,6 +1989,7 @@ function updateDashboard() {
   const spent = receipts.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
   document.getElementById('dashSpentTotal').textContent = '$' + spent.toFixed(0);
   document.getElementById('dashStopBtn').disabled = !live;
+  refreshOverageBadge();
 }
 
 function startSegmentTicker() {
@@ -2466,6 +2739,442 @@ function generateSummary() {
 }
 
 // ═══════════════════════════════
+// DAILY REPORT — today's slice, brief, for end-of-day send
+// ═══════════════════════════════
+function generateDailyReport() {
+  const today = new Date();
+  const todayStr = today.toLocaleDateString('en-CA');
+  const todayStart = new Date(todayStr + 'T00:00:00').getTime();
+  const todayEnd = todayStart + 86400000;
+
+  const client = document.getElementById('client').value.trim() || 'Untitled';
+  const city = document.getElementById('city').value.trim();
+  const state = document.getElementById('state').value.trim().toUpperCase();
+  const location = [city, state].filter(Boolean).join(', ');
+  const crew = document.getElementById('crewSize').value || '1';
+  const stdCrew = document.getElementById('stdCrewSize').value;
+
+  // Today's segments
+  const todaysSegs = segments.filter(s => s.startedAt >= todayStart && s.startedAt < todayEnd);
+  let driveMs = 0, siteMs = 0, miles = 0;
+  todaysSegs.forEach(s => {
+    const dur = (s.endedAt || Date.now()) - s.startedAt;
+    if (s.type === 'drive') {
+      driveMs += dur;
+      if (s.startOdoMiles && s.endOdoMiles) miles += Math.max(0, s.endOdoMiles - s.startOdoMiles);
+    } else if (s.type === 'workday') siteMs += dur;
+  });
+  const totalH = (driveMs + siteMs) / 3600000;
+
+  // Today's photos / receipts / contacts (filter by stamp.date if present, else include all from this draft)
+  const todaysPhotos = photos.filter(p => !p.stamp || isSameDay(p.stamp, today));
+  const todaysReceipts = receipts.filter(r => !r.stamp || isSameDay(r.stamp, today));
+  const todaysSpent = todaysReceipts.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
+  const todaysVoice = voiceMemos.filter(v => !v.stamp || isSameDay(v.stamp, today));
+  const todaysComms = communications.filter(c => c.sentAt === todayStr || c.responseAt === todayStr);
+  const todaysDisc = discrepancies.filter(d => d.flaggedAt === todayStr);
+
+  const fileBase = ('daily_' + client + '_' + todayStr).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Daily Report — ${esc(client)} — ${todayStr}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111;padding:24px;max-width:760px;margin:0 auto;padding-top:80px;line-height:1.5}
+  h1{font-size:20px;border-bottom:3px solid #111;padding-bottom:6px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+  .meta{font-size:13px;color:#444} .meta strong{color:#111}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:#333;margin:18px 0 6px;padding-bottom:4px;border-bottom:1px solid #ccc}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+  .stat{background:#f6f7fa;padding:10px;border-radius:6px;text-align:center}
+  .stat .v{font-size:18px;font-weight:700} .stat .l{font-size:10px;text-transform:uppercase;color:#666;margin-top:2px;letter-spacing:.5px}
+  .crew-pill{display:inline-block;padding:3px 10px;border-radius:12px;font-size:11px;font-weight:700;text-transform:uppercase;background:#fef3c7;color:#78350f}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0}
+  th{text-align:left;padding:6px 8px;background:#f0f0f0;border:1px solid #ddd;font-weight:600}
+  td{padding:6px 8px;border:1px solid #ddd}
+  ul{margin:6px 0 12px 22px;font-size:13px}
+  .blockerbox{background:#fef3c7;padding:10px 12px;border-radius:6px;border-left:4px solid #fbbf24;margin:6px 0}
+  .selfbox{background:#f3f4f6;padding:10px 12px;border-radius:6px;border-left:4px solid #6b7280;margin:6px 0}
+  .ignored{color:#dc2626;font-weight:700}
+  .action-bar{position:fixed;top:0;left:0;right:0;background:#1a1d26;padding:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;z-index:1000}
+  .action-bar button{padding:12px 18px;border:none;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;color:#fff;min-width:110px}
+  .btn-share{background:#22c55e}.btn-print{background:#4f8cff}.btn-dl{background:#8b90a0}
+  @media (max-width:600px){body{padding:16px;padding-top:70px}.stats{grid-template-columns:repeat(2,1fr)}}
+  @media print{body{padding:0}.action-bar{display:none !important}@page{margin:.5in}}
+</style></head><body>
+<div class="action-bar">
+  <button class="btn-share" onclick="__shareReport()">📤 Share</button>
+  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadReport()">💾 Download</button>
+</div>
+<script>
+  const __reportName = ${JSON.stringify(fileBase)};
+  async function __shareReport(){const b=new Blob([document.documentElement.outerHTML],{type:'text/html'});const f=new File([b],__reportName+'.html',{type:'text/html'});try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Daily Report'});return;}if(navigator.share){await navigator.share({title:'Daily Report',url:location.href});return;}}catch(e){if(e.name==='AbortError')return;}__downloadReport();}
+  function __downloadReport(){const b=new Blob([document.documentElement.outerHTML],{type:'text/html'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=__reportName+'.html';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(u),60000);}
+<\/script>
+<h1>Daily Report</h1>
+<p class="meta"><strong>Date:</strong> ${today.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'})}</p>
+<p class="meta"><strong>Job:</strong> ${esc(client)}${location ? ' — ' + esc(location) : ''}</p>
+<p class="meta" style="margin-top:6px"><span class="crew-pill">Crew Size: ${crew}${crew === '1' ? ' — Solo Installer' : ''}</span>${stdCrew ? ' &nbsp; <span style="font-size:11px;color:#666">Industry standard for this job: ' + stdCrew + ' installers</span>' : ''}</p>
+
+<div class="stats">
+  <div class="stat"><div class="v">${totalH.toFixed(1)}</div><div class="l">Hours Today</div></div>
+  <div class="stat"><div class="v">${(driveMs/3600000).toFixed(1)}</div><div class="l">Drive</div></div>
+  <div class="stat"><div class="v">${(siteMs/3600000).toFixed(1)}</div><div class="l">Site</div></div>
+  <div class="stat"><div class="v">$${todaysSpent.toFixed(0)}</div><div class="l">Spent Today</div></div>
+</div>`;
+
+  // Time segments today
+  if (todaysSegs.length) {
+    html += `<h2>Today's Time Segments</h2><table><thead><tr><th>Type</th><th>Time</th><th>Note</th><th style="text-align:right">Duration</th></tr></thead><tbody>`;
+    todaysSegs.sort((a,b) => a.startedAt - b.startedAt).forEach(s => {
+      const start = new Date(s.startedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
+      const end = s.endedAt ? new Date(s.endedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) : 'now';
+      const dur = ((s.endedAt || Date.now()) - s.startedAt) / 3600000;
+      const ico = s.type === 'drive' ? '🚗' : '🏗️';
+      const milesStr = (s.type === 'drive' && s.startOdoMiles && s.endOdoMiles) ? ` (${(s.endOdoMiles - s.startOdoMiles).toLocaleString()} mi)` : '';
+      html += `<tr><td>${ico} ${s.type === 'drive' ? 'Drive' : 'Workday'}</td><td>${start} → ${end}</td><td>${esc(s.note||'')}</td><td style="text-align:right">${dur.toFixed(2)} hrs${milesStr}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+
+  // Self-notes
+  if (dailyNotes.workCompleted) {
+    html += `<h2>🔧 Work Completed Today</h2><div style="font-size:13px;white-space:pre-wrap">${esc(dailyNotes.workCompleted)}</div>`;
+  }
+  if (dailyNotes.blockers) {
+    html += `<h2>⚠️ Blockers / Decisions Needed</h2><div class="blockerbox" style="font-size:13px;white-space:pre-wrap">${esc(dailyNotes.blockers)}</div>`;
+  }
+  if (dailyNotes.selfNotes) {
+    html += `<h2>🤦 Honest Self-Notes</h2><div class="selfbox" style="font-size:13px;white-space:pre-wrap;font-style:italic">${esc(dailyNotes.selfNotes)}</div>`;
+  }
+
+  // Communications today
+  if (todaysComms.length) {
+    html += `<h2>📞 Communications Today</h2><table><thead><tr><th>Kind</th><th>To</th><th>Subject</th><th>Status</th></tr></thead><tbody>`;
+    todaysComms.forEach(c => {
+      const kindMap = { email:'📧 Email', text:'💬 Text', call:'📞 Call', 'in-person':'🤝 In-person' };
+      let status;
+      if (c.responseReceived) {
+        status = `<span style="color:#16a34a">✓ Responded ${c.responseAt}</span>`;
+      } else {
+        const days = c.sentAt ? Math.round((Date.now() - new Date(c.sentAt).getTime()) / 86400000) : 0;
+        status = `<span class="ignored">⚠ Unanswered (${days}d)</span>`;
+      }
+      html += `<tr><td>${kindMap[c.kind] || c.kind}</td><td>${esc(c.to)}</td><td>${esc(c.subject)}</td><td>${status}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+
+  // Discrepancies flagged today
+  if (todaysDisc.length) {
+    html += `<h2>⚠️ Discrepancies Flagged Today</h2>`;
+    todaysDisc.forEach(d => {
+      html += `<div class="blockerbox"><strong>${esc(d.area)}</strong>
+        <div style="font-size:12px;margin-top:4px"><strong>Spec says:</strong> ${esc(d.specSays)}</div>
+        <div style="font-size:12px;margin-top:2px"><strong>Site shows:</strong> ${esc(d.siteShows)}</div>
+        <div style="font-size:12px;margin-top:2px"><strong>Status:</strong> ${d.raisedToOffice ? (d.responseReceived ? '✓ Office acknowledged' : `<span class="ignored">Raised but no response yet</span>`) : 'Not yet raised to office'}</div></div>`;
+    });
+  }
+
+  // Photos today (counts)
+  if (todaysPhotos.length || todaysReceipts.length || todaysVoice.length) {
+    html += `<h2>📎 Attachments</h2><ul>`;
+    if (todaysPhotos.length) html += `<li>${todaysPhotos.length} job photos</li>`;
+    if (todaysReceipts.length) html += `<li>${todaysReceipts.length} receipts ($${todaysSpent.toFixed(2)} total)</li>`;
+    if (todaysVoice.length) html += `<li>${todaysVoice.length} voice memos</li>`;
+    html += `</ul><p style="font-size:12px;color:#666">(Full photos/receipts/audio in the FULL REPORT)</p>`;
+  }
+
+  if (!todaysSegs.length && !dailyNotes.workCompleted && !dailyNotes.blockers && !todaysPhotos.length) {
+    html += `<p style="color:#666;font-style:italic;margin-top:14px">No activity logged for today yet.</p>`;
+  }
+
+  html += `</body></html>`;
+
+  try {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) {
+      const a = document.createElement('a');
+      a.href = url; a.download = fileBase + '.html';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      alert('Popup blocked — daily report downloaded instead.');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    alert('Could not open daily report: ' + err.message);
+  }
+}
+
+// Helper to compare a stamp string ("M/D/YYYY HH:MM") to a Date
+function isSameDay(stampOrIso, dateObj) {
+  if (!stampOrIso) return false;
+  let stampDate;
+  // Try to parse human-format stamp first
+  const m = stampOrIso.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) {
+    stampDate = new Date(parseInt(m[3]), parseInt(m[1])-1, parseInt(m[2]));
+  } else {
+    stampDate = new Date(stampOrIso);
+  }
+  if (isNaN(stampDate.getTime())) return false;
+  return stampDate.toLocaleDateString('en-CA') === dateObj.toLocaleDateString('en-CA');
+}
+
+// ═══════════════════════════════
+// WEEKLY DIGEST — past 7 days across all jobs
+// ═══════════════════════════════
+async function generateWeeklyDigest() {
+  await autoSave(); // freeze current draft into DB so its data is in the digest
+  const today = new Date();
+  const weekStart = getWeekStart(today);
+  const weekEnd = new Date(weekStart.getTime() + 7 * 86400000);
+  const weekStartMs = weekStart.getTime();
+  const weekEndMs = weekEnd.getTime();
+
+  // Pull from current state, all drafts, and all completed jobs
+  const buckets = []; // { jobName, segs:[], receipts:[], comms:[], disc:[], crew:'1', stdCrew:'' }
+
+  // Current draft (in-memory state)
+  buckets.push({
+    jobName: document.getElementById('client').value.trim() || 'Untitled (current)',
+    segs: segments.filter(s => s.startedAt >= weekStartMs && s.startedAt < weekEndMs),
+    receipts: receipts,
+    comms: communications,
+    disc: discrepancies,
+    crew: document.getElementById('crewSize').value || '1',
+    stdCrew: document.getElementById('stdCrewSize').value || ''
+  });
+
+  if (db) {
+    try {
+      const allDrafts = await dbGetAllDrafts();
+      allDrafts.forEach(d => {
+        if (d.id === currentDraftId) return;
+        const st = d.state || {};
+        buckets.push({
+          jobName: d.name + ' (in progress)',
+          segs: (st.segments || []).filter(s => s.startedAt >= weekStartMs && s.startedAt < weekEndMs),
+          receipts: st.receipts || [],
+          comms: st.communications || [],
+          disc: st.discrepancies || [],
+          crew: '1',
+          stdCrew: ''
+        });
+      });
+      const allJobs = await dbGetAll();
+      allJobs.forEach(j => {
+        const st = j.rawState || {};
+        buckets.push({
+          jobName: j.client + ' (completed)',
+          segs: (st.segments || []).filter(s => s.startedAt >= weekStartMs && s.startedAt < weekEndMs),
+          receipts: st.receipts || [],
+          comms: st.communications || [],
+          disc: st.discrepancies || [],
+          crew: '1',
+          stdCrew: ''
+        });
+      });
+    } catch (e) {}
+  }
+
+  // Aggregate
+  let totalDriveMs = 0, totalSiteMs = 0, totalMiles = 0, totalSpent = 0;
+  let allCommsCount = 0, allCommsResponded = 0, sumRespDays = 0, respDaysCount = 0;
+  let allDiscCount = 0, allDiscRaised = 0, allDiscAck = 0;
+  const dayActivity = {}; // YYYY-MM-DD → hrs
+  const jobsThisWeek = []; // jobs with any activity this week
+
+  buckets.forEach(b => {
+    let driveMs = 0, siteMs = 0, miles = 0;
+    b.segs.forEach(s => {
+      const dur = (s.endedAt || Date.now()) - s.startedAt;
+      if (s.type === 'drive') {
+        driveMs += dur;
+        if (s.startOdoMiles && s.endOdoMiles) miles += Math.max(0, s.endOdoMiles - s.startOdoMiles);
+      } else if (s.type === 'workday') siteMs += dur;
+      const dayKey = new Date(s.startedAt).toLocaleDateString('en-CA');
+      dayActivity[dayKey] = (dayActivity[dayKey] || 0) + dur;
+    });
+    const spent = b.receipts.reduce((s, r) => {
+      // Only count receipts in this week (if stamp exists)
+      if (r.stamp) {
+        const dt = (() => {
+          const m = r.stamp.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (m) return new Date(parseInt(m[3]), parseInt(m[1])-1, parseInt(m[2])).getTime();
+          return new Date(r.stamp).getTime();
+        })();
+        if (isNaN(dt) || dt < weekStartMs || dt >= weekEndMs) return s;
+      }
+      return s + (parseFloat(r.amount) || 0);
+    }, 0);
+    if (driveMs + siteMs > 0 || spent > 0) {
+      jobsThisWeek.push({
+        name: b.jobName,
+        crew: b.crew,
+        stdCrew: b.stdCrew,
+        driveH: driveMs / 3600000,
+        siteH: siteMs / 3600000,
+        miles, spent
+      });
+    }
+    totalDriveMs += driveMs; totalSiteMs += siteMs; totalMiles += miles; totalSpent += spent;
+    // Communications this week
+    b.comms.forEach(c => {
+      if (!c.sentAt) return;
+      const sent = new Date(c.sentAt).getTime();
+      if (sent < weekStartMs || sent >= weekEndMs) return;
+      allCommsCount++;
+      if (c.responseReceived) {
+        allCommsResponded++;
+        if (c.responseAt) {
+          const days = Math.max(0, (new Date(c.responseAt) - new Date(c.sentAt)) / 86400000);
+          sumRespDays += days; respDaysCount++;
+        }
+      }
+    });
+    // Discrepancies this week
+    b.disc.forEach(d => {
+      if (!d.flaggedAt) return;
+      const flagged = new Date(d.flaggedAt).getTime();
+      if (flagged < weekStartMs || flagged >= weekEndMs) return;
+      allDiscCount++;
+      if (d.raisedToOffice) allDiscRaised++;
+      if (d.responseReceived) allDiscAck++;
+    });
+  });
+
+  const totalH = (totalDriveMs + totalSiteMs) / 3600000;
+  const overage = Math.max(0, totalH - 40);
+  const fteCount = totalH / 40;
+  const daysWorked = Object.keys(dayActivity).length;
+  const avgPerDay = daysWorked ? totalH / daysWorked : 0;
+  const avgRespDays = respDaysCount ? (sumRespDays / respDaysCount).toFixed(1) : '—';
+  const ignored = allCommsCount - allCommsResponded;
+  const discIgnored = allDiscRaised - allDiscAck;
+
+  const fileBase = ('weekly_digest_' + weekStart.toLocaleDateString('en-CA')).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+
+  // Color code overage banner
+  let overageBg = '#fef3c7', overageColor = '#78350f';
+  if (totalH >= 60) { overageBg = '#fee2e2'; overageColor = '#7f1d1d'; }
+  else if (totalH >= 50) { overageBg = '#ffedd5'; overageColor = '#7c2d12'; }
+
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Weekly Digest — ${weekStart.toLocaleDateString('en-US', {month:'short',day:'numeric'})}–${new Date(weekEnd.getTime()-86400000).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'})}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111;padding:30px;max-width:900px;margin:0 auto;padding-top:80px;line-height:1.5}
+  h1{font-size:22px;border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+  .meta{font-size:14px;color:#444} .meta strong{color:#111}
+  h2{font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:#333;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #ccc}
+  .overage-banner{background:${overageBg};color:${overageColor};padding:14px 18px;border-radius:8px;margin:14px 0;font-weight:700;text-align:center;font-size:15px}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
+  .stat{background:#f6f7fa;padding:14px;border-radius:6px;text-align:center}
+  .stat .v{font-size:24px;font-weight:700;color:#111}
+  .stat .l{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-top:4px}
+  table{width:100%;border-collapse:collapse;font-size:13px;margin:6px 0 14px}
+  th{text-align:left;padding:7px 10px;background:#f0f0f0;border:1px solid #ddd;font-weight:600}
+  td{padding:7px 10px;border:1px solid #ddd}
+  .total-row td{font-weight:700;background:#f0f0f0}
+  .ignored{color:#dc2626;font-weight:700}
+  .action-bar{position:fixed;top:0;left:0;right:0;background:#1a1d26;padding:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;z-index:1000}
+  .action-bar button{padding:12px 18px;border:none;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;color:#fff;min-width:110px}
+  .btn-share{background:#22c55e}.btn-print{background:#4f8cff}.btn-dl{background:#8b90a0}
+  @media (max-width:600px){body{padding:20px;padding-top:70px}.stats{grid-template-columns:repeat(2,1fr)}}
+  @media print{body{padding:0}.action-bar{display:none !important}@page{margin:.5in}}
+</style></head><body>
+<div class="action-bar">
+  <button class="btn-share" onclick="__shareReport()">📤 Share</button>
+  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadReport()">💾 Download</button>
+</div>
+<script>
+  const __reportName = ${JSON.stringify(fileBase)};
+  async function __shareReport(){const b=new Blob([document.documentElement.outerHTML],{type:'text/html'});const f=new File([b],__reportName+'.html',{type:'text/html'});try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'Weekly Digest'});return;}if(navigator.share){await navigator.share({title:'Weekly Digest',url:location.href});return;}}catch(e){if(e.name==='AbortError')return;}__downloadReport();}
+  function __downloadReport(){const b=new Blob([document.documentElement.outerHTML],{type:'text/html'});const u=URL.createObjectURL(b);const a=document.createElement('a');a.href=u;a.download=__reportName+'.html';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(u),60000);}
+<\/script>
+<h1>Weekly Digest</h1>
+<p class="meta"><strong>Week of:</strong> ${weekStart.toLocaleDateString('en-US', {month:'long', day:'numeric'})} — ${new Date(weekEnd.getTime()-86400000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})}</p>
+<p class="meta"><strong>Days Worked:</strong> ${daysWorked} · <strong>Avg per workday:</strong> ${avgPerDay.toFixed(1)} hrs</p>
+
+${totalH >= 40 ? `<div class="overage-banner">⚠️ ${totalH.toFixed(1)} HOURS THIS WEEK · ${overage.toFixed(1)} HRS OVER STANDARD 40 · ${fteCount.toFixed(2)} FTE-EQUIVALENT EFFORT</div>` : ''}
+
+<div class="stats">
+  <div class="stat"><div class="v">${totalH.toFixed(1)}</div><div class="l">Total Hours</div></div>
+  <div class="stat"><div class="v">${(totalDriveMs/3600000).toFixed(1)}</div><div class="l">Drive Hours</div></div>
+  <div class="stat"><div class="v">${totalMiles.toLocaleString()}</div><div class="l">Total Miles</div></div>
+  <div class="stat"><div class="v">$${totalSpent.toFixed(0)}</div><div class="l">Total Spent</div></div>
+</div>`;
+
+  if (jobsThisWeek.length) {
+    html += `<h2>Jobs Worked This Week</h2><table><thead><tr><th>Job</th><th>Crew</th><th style="text-align:right">Drive</th><th style="text-align:right">Site</th><th style="text-align:right">Miles</th><th style="text-align:right">Spent</th></tr></thead><tbody>`;
+    jobsThisWeek.forEach(j => {
+      const crewLabel = j.crew === '1' ? '1 (solo)' : j.crew;
+      const stdNote = j.stdCrew ? ` <span style="color:#dc2626;font-size:11px">(std: ${j.stdCrew})</span>` : '';
+      html += `<tr><td>${esc(j.name)}</td><td>${crewLabel}${stdNote}</td><td style="text-align:right">${j.driveH.toFixed(2)}</td><td style="text-align:right">${j.siteH.toFixed(2)}</td><td style="text-align:right">${j.miles.toLocaleString()}</td><td style="text-align:right">$${j.spent.toFixed(2)}</td></tr>`;
+    });
+    html += `<tr class="total-row"><td colspan="2">GRAND TOTAL</td><td style="text-align:right">${(totalDriveMs/3600000).toFixed(2)}</td><td style="text-align:right">${(totalSiteMs/3600000).toFixed(2)}</td><td style="text-align:right">${totalMiles.toLocaleString()}</td><td style="text-align:right">$${totalSpent.toFixed(2)}</td></tr>`;
+    html += `</tbody></table>`;
+  }
+
+  html += `<h2>Communication Summary</h2>
+  <table><tbody>
+    <tr><td>Messages sent to office</td><td style="text-align:right;font-weight:700">${allCommsCount}</td></tr>
+    <tr><td>Responses received</td><td style="text-align:right;color:#16a34a;font-weight:700">${allCommsResponded}</td></tr>
+    <tr><td>Unanswered</td><td style="text-align:right" class="ignored">${ignored}</td></tr>
+    <tr><td>Avg response time when answered</td><td style="text-align:right">${avgRespDays} days</td></tr>
+  </tbody></table>`;
+
+  html += `<h2>Discrepancies Summary</h2>
+  <table><tbody>
+    <tr><td>Discrepancies flagged</td><td style="text-align:right;font-weight:700">${allDiscCount}</td></tr>
+    <tr><td>Raised to office</td><td style="text-align:right">${allDiscRaised}</td></tr>
+    <tr><td>Office acknowledged</td><td style="text-align:right;color:#16a34a">${allDiscAck}</td></tr>
+    <tr><td>Raised but ignored</td><td style="text-align:right" class="ignored">${discIgnored}</td></tr>
+  </tbody></table>`;
+
+  // Day-by-day hours bar
+  if (Object.keys(dayActivity).length) {
+    html += `<h2>Hours by Day</h2><table><thead><tr><th>Day</th><th style="text-align:right">Hours</th><th style="width:50%">Visual</th></tr></thead><tbody>`;
+    const days = Object.keys(dayActivity).sort();
+    const maxH = Math.max(...Object.values(dayActivity)) / 3600000;
+    days.forEach(d => {
+      const dayDate = new Date(d + 'T00:00:00');
+      const h = dayActivity[d] / 3600000;
+      const pct = (h / maxH) * 100;
+      const barColor = h >= 12 ? '#dc2626' : h >= 8 ? '#fbbf24' : '#22c55e';
+      html += `<tr><td>${dayDate.toLocaleDateString('en-US', {weekday:'short', month:'short', day:'numeric'})}</td><td style="text-align:right;font-weight:700">${h.toFixed(2)}</td><td><div style="background:${barColor};height:18px;border-radius:3px;width:${pct.toFixed(0)}%"></div></td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+
+  if (totalH === 0) {
+    html += `<p style="color:#666;font-style:italic;margin-top:14px">No activity logged for this week yet.</p>`;
+  }
+
+  html += `</body></html>`;
+
+  try {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) {
+      const a = document.createElement('a');
+      a.href = url; a.download = fileBase + '.html';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      alert('Popup blocked — weekly digest downloaded instead.');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    alert('Could not open weekly digest: ' + err.message);
+  }
+}
+
+// ═══════════════════════════════
 // SEND REPORT
 // ═══════════════════════════════
 function sendReport() {
@@ -2565,6 +3274,13 @@ function clearForm() {
   contacts = []; voiceMemos = [];
   checklist = { type: '', items: [] };
   segments = [];
+  communications = []; discrepancies = [];
+  dailyNotes = { workCompleted: '', blockers: '', selfNotes: '' };
+  document.getElementById('crewSize').value = '1';
+  document.getElementById('stdCrewSize').value = '';
+  document.getElementById('dnWorkCompleted').value = '';
+  document.getElementById('dnBlockers').value = '';
+  document.getElementById('dnSelfNotes').value = '';
   if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
   document.getElementById('checklistType').value = '';
   resetClock();
@@ -2579,12 +3295,16 @@ function clearForm() {
   renderChecklist();
   renderVoiceMemos();
   renderSegments();
+  renderCommunications();
+  renderDiscrepancies();
   updateDashboard();
   document.getElementById('hoursSection').classList.add('hidden');
   document.getElementById('notesSection').classList.add('hidden');
   document.getElementById('contactsSection').classList.add('hidden');
   document.getElementById('checklistSection').classList.add('hidden');
   document.getElementById('voiceSection').classList.add('hidden');
+  document.getElementById('communicationsSection').classList.add('hidden');
+  document.getElementById('discrepanciesSection').classList.add('hidden');
   window.scrollTo(0, 0);
 }
 
@@ -3385,8 +4105,11 @@ function serializeCurrentState() {
     siteHours: document.getElementById('siteHours').value,
     driveToHours: document.getElementById('driveToHours').value,
     driveBackHours: document.getElementById('driveBackHours').value,
+    crewSize: document.getElementById('crewSize').value,
+    stdCrewSize: document.getElementById('stdCrewSize').value,
     photos, receipts, jobFiles, notes, trips, contacts, voiceMemos,
-    checklist, clockState, segments
+    checklist, clockState, segments,
+    communications, discrepancies, dailyNotes
   };
 }
 
@@ -3410,6 +4133,14 @@ function applyDraftState(s) {
   checklist = s.checklist || { type: '', items: [] };
   clockState = s.clockState || { running: false, startedAt: 0, accumulatedMs: 0 };
   segments = s.segments || [];
+  communications = s.communications || [];
+  discrepancies = s.discrepancies || [];
+  dailyNotes = s.dailyNotes || { workCompleted: '', blockers: '', selfNotes: '' };
+  document.getElementById('crewSize').value = s.crewSize || '1';
+  document.getElementById('stdCrewSize').value = s.stdCrewSize || '';
+  document.getElementById('dnWorkCompleted').value = dailyNotes.workCompleted || '';
+  document.getElementById('dnBlockers').value = dailyNotes.blockers || '';
+  document.getElementById('dnSelfNotes').value = dailyNotes.selfNotes || '';
   document.getElementById('checklistType').value = checklist.type || '';
   calcHours();
   renderPhotos();
@@ -3421,6 +4152,8 @@ function applyDraftState(s) {
   renderChecklist();
   renderVoiceMemos();
   renderSegments();
+  renderCommunications();
+  renderDiscrepancies();
   updateDashboard();
   // If there's a live segment running, restart the ticker
   if (getRunningSegment()) startSegmentTicker();
@@ -3499,6 +4232,8 @@ function hasAnyContent() {
   if (notes.length || trips.length || contacts.length || voiceMemos.length) return true;
   if (checklist.items.length) return true;
   if (segments.length) return true;
+  if (communications.length || discrepancies.length) return true;
+  if (dailyNotes.workCompleted || dailyNotes.blockers || dailyNotes.selfNotes) return true;
   if (clockState.accumulatedMs > 0 || clockState.running) return true;
   return false;
 }

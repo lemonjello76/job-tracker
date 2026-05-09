@@ -558,6 +558,17 @@
 
 <div class="main">
 
+<!-- DRAFT SELECTOR -->
+<div class="section" style="padding:12px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+  <span style="font-size:12px;color:var(--dim);font-weight:700;letter-spacing:1px">EDITING:</span>
+  <select id="draftSelector" onchange="switchToDraft(this.value)" style="flex:1;min-width:140px;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none">
+    <option value="">— New Job —</option>
+  </select>
+  <button class="action-btn-sm" style="margin:0;padding:8px 12px" onclick="newDraft()" title="Start a new in-progress job">+ New</button>
+  <button class="action-btn-sm" style="margin:0;padding:8px 10px" onclick="deleteCurrentDraft()" title="Delete this in-progress job">🗑</button>
+  <span id="autoSaveIndicator" style="font-size:11px;color:var(--green);min-width:54px;text-align:right;opacity:0;transition:opacity .3s">✓ Saved</span>
+</div>
+
 <!-- JOB INFO -->
 <div class="section">
   <h2>Job Info</h2>
@@ -846,12 +857,48 @@ const CHECKLIST_TEMPLATES = {
 // ═══════════════════════════════
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('MistAmericaJobs', 1);
+    const req = indexedDB.open('MistAmericaJobs', 2);
     req.onupgradeneeded = e => {
-      e.target.result.createObjectStore('jobs', { keyPath: 'id' });
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('jobs')) d.createObjectStore('jobs', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('drafts')) d.createObjectStore('drafts', { keyPath: 'id' });
     };
     req.onsuccess = e => resolve(e.target.result);
     req.onerror = e => reject(e.target.error);
+  });
+}
+
+// ── DRAFTS (in-progress jobs) ──
+function dbPutDraft(draft) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('drafts', 'readwrite');
+    tx.objectStore('drafts').put(draft);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+function dbGetAllDrafts() {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('drafts', 'readonly');
+    const req = tx.objectStore('drafts').getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function dbGetDraft(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('drafts', 'readonly');
+    const req = tx.objectStore('drafts').get(id);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+function dbDeleteDraft(id) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('drafts', 'readwrite');
+    tx.objectStore('drafts').delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
   });
 }
 function dbPut(job) {
@@ -2008,8 +2055,15 @@ async function saveAndReset() {
     clockMs: clockState.accumulatedMs,
   };
   await dbPut(job);
+  // Graduate this draft to a completed job — remove from drafts
+  if (currentDraftId) {
+    try { await dbDeleteDraft(currentDraftId); } catch (e) {}
+    currentDraftId = null;
+    localStorage.removeItem('currentDraftId');
+  }
   clearForm();
   await refreshSidebar();
+  await refreshDraftSelector();
 }
 
 function clearForm() {
@@ -2501,6 +2555,190 @@ function addSelectedContacts() {
 }
 
 // ═══════════════════════════════
+// DRAFTS — auto-save and multi-job support
+// ═══════════════════════════════
+let currentDraftId = null;
+let autoSaveTimer = null;
+let autoSaveInFlight = false;
+
+function serializeCurrentState() {
+  return {
+    client: document.getElementById('client').value,
+    city: document.getElementById('city').value,
+    state: document.getElementById('state').value,
+    dateStart: document.getElementById('dateStart').value,
+    dateEnd: document.getElementById('dateEnd').value,
+    siteHours: document.getElementById('siteHours').value,
+    driveToHours: document.getElementById('driveToHours').value,
+    driveBackHours: document.getElementById('driveBackHours').value,
+    photos, receipts, jobFiles, notes, trips, contacts, voiceMemos,
+    checklist, clockState
+  };
+}
+
+function applyDraftState(s) {
+  if (!s) return;
+  document.getElementById('client').value = s.client || '';
+  document.getElementById('city').value = s.city || '';
+  document.getElementById('state').value = s.state || '';
+  document.getElementById('dateStart').value = s.dateStart || '';
+  document.getElementById('dateEnd').value = s.dateEnd || '';
+  document.getElementById('siteHours').value = s.siteHours || '';
+  document.getElementById('driveToHours').value = s.driveToHours || '';
+  document.getElementById('driveBackHours').value = s.driveBackHours || '';
+  photos = s.photos || [];
+  receipts = s.receipts || [];
+  jobFiles = s.jobFiles || [];
+  notes = s.notes || [];
+  trips = s.trips || [];
+  contacts = s.contacts || [];
+  voiceMemos = s.voiceMemos || [];
+  checklist = s.checklist || { type: '', items: [] };
+  clockState = s.clockState || { running: false, startedAt: 0, accumulatedMs: 0 };
+  document.getElementById('checklistType').value = checklist.type || '';
+  calcHours();
+  renderPhotos();
+  renderReceipts();
+  renderJobFiles();
+  renderNotes();
+  renderMileage();
+  renderContacts();
+  renderChecklist();
+  renderVoiceMemos();
+  // Reveal sections that have content
+  if (photos.length) document.getElementById('photosSection').classList.remove('hidden');
+  if (receipts.length) document.getElementById('receiptsSection').classList.remove('hidden');
+  if (jobFiles.length) document.getElementById('jobFilesSection').classList.remove('hidden');
+  if (notes.length) document.getElementById('notesSection').classList.remove('hidden');
+  if (contacts.length) document.getElementById('contactsSection').classList.remove('hidden');
+  if (checklist.items.length) document.getElementById('checklistSection').classList.remove('hidden');
+  if (voiceMemos.length) document.getElementById('voiceSection').classList.remove('hidden');
+  if (s.siteHours || s.driveToHours || s.driveBackHours || trips.length) {
+    document.getElementById('hoursSection').classList.remove('hidden');
+  }
+  // Restore clock — if it was running when the tab closed, freeze it as paused
+  // (don't count time-while-tab-was-closed as work time)
+  if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
+  if (clockState.running) {
+    clockState.running = false;
+    document.getElementById('clockMeta').textContent = 'Paused (was running when you left — tap START to resume)';
+  } else if (clockState.accumulatedMs > 0) {
+    document.getElementById('clockMeta').textContent = 'Paused at ' + fmtClock(clockState.accumulatedMs);
+  } else {
+    document.getElementById('clockMeta').textContent = '';
+  }
+  document.getElementById('clockDisplay').textContent = fmtClock(clockState.accumulatedMs);
+  document.getElementById('clockStartBtn').style.display = '';
+  document.getElementById('clockStopBtn').style.display = 'none';
+}
+
+async function autoSave() {
+  if (!db || autoSaveInFlight) return;
+  // Don't create a draft for a totally empty form
+  if (!hasAnyContent()) return;
+  autoSaveInFlight = true;
+  try {
+    if (!currentDraftId) currentDraftId = 'draft_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const state = serializeCurrentState();
+    const name = state.client.trim() || 'Untitled Job';
+    const meta = [state.city, state.state].filter(Boolean).join(', ');
+    await dbPutDraft({
+      id: currentDraftId,
+      name,
+      meta,
+      savedAt: Date.now(),
+      state
+    });
+    localStorage.setItem('currentDraftId', currentDraftId);
+    flashAutoSaved();
+    refreshDraftSelector();
+  } catch (e) {
+    console.warn('autosave failed:', e);
+  } finally {
+    autoSaveInFlight = false;
+  }
+}
+
+function scheduleAutoSave() {
+  if (autoSaveTimer) clearTimeout(autoSaveTimer);
+  autoSaveTimer = setTimeout(() => autoSave(), 1500);
+}
+
+function flashAutoSaved() {
+  const el = document.getElementById('autoSaveIndicator');
+  if (!el) return;
+  el.textContent = '✓ Saved';
+  el.style.opacity = '1';
+  setTimeout(() => { if (el) el.style.opacity = '0'; }, 1500);
+}
+
+function hasAnyContent() {
+  if (document.getElementById('client').value.trim()) return true;
+  if (document.getElementById('city').value.trim()) return true;
+  if (photos.length || receipts.length || jobFiles.length) return true;
+  if (notes.length || trips.length || contacts.length || voiceMemos.length) return true;
+  if (checklist.items.length) return true;
+  if (clockState.accumulatedMs > 0 || clockState.running) return true;
+  return false;
+}
+
+async function refreshDraftSelector() {
+  if (!db) return;
+  const drafts = await dbGetAllDrafts();
+  drafts.sort((a, b) => b.savedAt - a.savedAt);
+  const sel = document.getElementById('draftSelector');
+  if (!sel) return;
+  if (!drafts.length) {
+    sel.innerHTML = '<option value="">— No saved jobs in progress —</option>';
+    return;
+  }
+  sel.innerHTML = drafts.map(d => {
+    const label = d.name + (d.meta ? ' (' + d.meta + ')' : '');
+    return `<option value="${d.id}"${d.id === currentDraftId ? ' selected' : ''}>${esc(label)}</option>`;
+  }).join('');
+}
+
+async function newDraft() {
+  await autoSave(); // save current first
+  currentDraftId = null;
+  localStorage.removeItem('currentDraftId');
+  clearForm();
+  await refreshDraftSelector();
+  document.getElementById('client').focus();
+}
+
+async function switchToDraft(id) {
+  if (!id || id === currentDraftId) return;
+  await autoSave(); // save current first
+  const draft = await dbGetDraft(id);
+  if (!draft) {
+    alert('That job is no longer saved.');
+    await refreshDraftSelector();
+    return;
+  }
+  currentDraftId = id;
+  localStorage.setItem('currentDraftId', id);
+  applyDraftState(draft.state);
+  await refreshDraftSelector();
+  window.scrollTo(0, 0);
+}
+
+async function deleteCurrentDraft() {
+  if (!currentDraftId) {
+    if (!hasAnyContent()) { alert('Nothing to delete.'); return; }
+    if (!confirm('Clear the current job and start a fresh one?')) return;
+    clearForm();
+    return;
+  }
+  if (!confirm('Delete this in-progress job? All its photos, receipts, and notes will be lost.')) return;
+  await dbDeleteDraft(currentDraftId);
+  currentDraftId = null;
+  localStorage.removeItem('currentDraftId');
+  clearForm();
+  await refreshDraftSelector();
+}
+
+// ═══════════════════════════════
 // INIT
 // ═══════════════════════════════
 (async function init() {
@@ -2508,15 +2746,64 @@ function addSelectedContacts() {
     db = await openDB();
     const jobs = await dbGetAll();
     document.getElementById('completedCount').textContent = jobs.length;
+
+    // Restore the last open draft, or fall back to most recent draft
+    let restored = false;
+    const savedId = localStorage.getItem('currentDraftId');
+    if (savedId) {
+      const draft = await dbGetDraft(savedId);
+      if (draft) {
+        currentDraftId = savedId;
+        applyDraftState(draft.state);
+        restored = true;
+      }
+    }
+    if (!restored) {
+      const drafts = await dbGetAllDrafts();
+      if (drafts.length) {
+        drafts.sort((a, b) => b.savedAt - a.savedAt);
+        currentDraftId = drafts[0].id;
+        localStorage.setItem('currentDraftId', currentDraftId);
+        applyDraftState(drafts[0].state);
+      }
+    }
+    await refreshDraftSelector();
   } catch(e) {
     console.warn('IndexedDB unavailable:', e);
   }
-  restoreClock();
+
   // Show voice-unsupported warning up front if browser can't transcribe
   if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) {
     const el = document.getElementById('voiceUnsupported');
     if (el) el.style.display = '';
   }
+
+  // ── AUTO-SAVE wiring ──
+  // Catch every form input change anywhere on the page (delegated)
+  document.addEventListener('input', e => {
+    if (e.target && e.target.matches && e.target.matches('input, textarea, select')) {
+      // Skip the API key field — that goes to localStorage separately
+      if (e.target.id === 'apiKeyInput') return;
+      scheduleAutoSave();
+    }
+  });
+  document.addEventListener('change', e => {
+    if (e.target && e.target.matches && e.target.matches('input, textarea, select')) {
+      if (e.target.id === 'apiKeyInput') return;
+      scheduleAutoSave();
+    }
+  });
+
+  // Save when user backgrounds the app (switches tabs, locks phone, etc.)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') autoSave();
+  });
+  // Save when navigating away
+  window.addEventListener('pagehide', () => { autoSave(); });
+  window.addEventListener('beforeunload', () => { autoSave(); });
+
+  // Periodic safety net — every 30 seconds force a save if there's any content
+  setInterval(() => { if (hasAnyContent()) scheduleAutoSave(); }, 30000);
 })();
 </script>
 

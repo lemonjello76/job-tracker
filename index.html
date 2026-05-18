@@ -761,6 +761,12 @@
       </select>
     </div>
   </div>
+  <!-- Pin Site Location -->
+  <div id="pinSiteBox" style="margin-top:14px;padding:12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <div id="pinStatusText" style="flex:1;min-width:180px;font-size:14px;color:var(--dim)">📍 No site location pinned — tap "Pin Spot" when you're on site</div>
+    <button class="action-btn-sm" style="margin:0;padding:8px 14px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="pinSiteLocation()">📍 Pin Spot</button>
+    <button id="unpinBtn" class="action-btn-sm" style="margin:0;padding:8px 12px;display:none" onclick="unpinSiteLocation()">Clear</button>
+  </div>
 </div>
 
 <!-- DASHBOARD — live totals + segment controls -->
@@ -1117,7 +1123,9 @@ let foundContactsBuffer = []; // staged AI-extracted contacts awaiting user conf
 let checklist = { type: '', items: [] }; // { label, checked }
 let voiceMemos = []; // { audioURL, transcript, stamp, duration }
 let clockState = { running: false, startedAt: 0, accumulatedMs: 0 }; // legacy — kept for old-draft compat
-let segments = [];   // { id, type:'drive'|'workday', startedAt, endedAt, startGps, endGps, startOdoPhoto, startOdoMiles, endOdoPhoto, endOdoMiles, note }
+let segments = [];   // { id, type:'drive'|'workday', startedAt, endedAt, startGps, endGps, startOdoPhoto, startOdoMiles, endOdoPhoto, endOdoMiles, note, tripLevel }
+let pinnedLocation = null; // { lat, lng, acc, pinnedAt } — the pinned site GPS for this draft
+let driftCheckInterval = null; // re-checks GPS every 5min during active workday
 let segmentTickInterval = null;
 let pendingOdoTarget = null; // { segId, which:'start'|'end' }
 let communications = []; // { id, kind:'email'|'text'|'call'|'in-person', to, subject, summary, sentAt, responseReceived, responseAt, responseSummary }
@@ -1338,6 +1346,127 @@ function fmtGps(g) {
 function gpsMapsLink(g) {
   if (!g) return '';
   return 'https://www.google.com/maps?q=' + g.lat + ',' + g.lng;
+}
+
+// ═══════════════════════════════
+// GEOFENCING — distance + nearest-job detection
+// ═══════════════════════════════
+const GEOFENCE_RADIUS_M = 804;  // 1/2 mile in meters (805m ≈ 0.5 mi)
+const DRIFT_CHECK_MS = 5 * 60 * 1000; // 5 min — re-check during active workday
+
+// Haversine — meters between two {lat, lng} points
+function distanceMeters(a, b) {
+  if (!a || !b || a.lat == null || b.lat == null) return Infinity;
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLng = toRad(b.lng - a.lng);
+  const lat1 = toRad(a.lat);
+  const lat2 = toRad(b.lat);
+  const h = Math.sin(dLat/2)**2 + Math.cos(lat1)*Math.cos(lat2)*Math.sin(dLng/2)**2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function metersToMilesStr(m) {
+  if (!isFinite(m)) return '—';
+  const mi = m / 1609.34;
+  if (mi < 0.1) return Math.round(m * 3.281) + ' ft';
+  return mi.toFixed(1) + ' mi';
+}
+
+// Find which draft's pinned site is closest to a GPS point.
+// Returns { draft, distanceM, inside } for the closest, or null if no pinned sites.
+async function findNearestPinnedJob(gps) {
+  if (!gps || !db) return null;
+  const allDrafts = await dbGetAllDrafts();
+  let best = null;
+  allDrafts.forEach(d => {
+    const pin = d.state && d.state.pinnedLocation;
+    if (!pin || pin.lat == null) return;
+    const dist = distanceMeters(gps, pin);
+    if (!best || dist < best.distanceM) {
+      best = { draft: d, distanceM: dist, inside: dist <= GEOFENCE_RADIUS_M };
+    }
+  });
+  return best;
+}
+
+// ═══════════════════════════════
+// PIN SITE LOCATION + DRIFT
+// ═══════════════════════════════
+async function pinSiteLocation() {
+  showToast('📍 Getting GPS...', 'info', 2000);
+  const gps = await getGps();
+  if (!gps) {
+    alert('Could not get GPS. Make sure location is enabled on your phone, then try again.');
+    return;
+  }
+  pinnedLocation = { lat: gps.lat, lng: gps.lng, acc: gps.acc, pinnedAt: Date.now() };
+  refreshPinDisplay();
+  scheduleAutoSave();
+  showToast('📍 Site pinned!', 'good', 2500);
+}
+
+function unpinSiteLocation() {
+  if (!pinnedLocation) return;
+  if (!confirm('Clear the pinned site location for this job?')) return;
+  pinnedLocation = null;
+  refreshPinDisplay();
+  scheduleAutoSave();
+}
+
+function refreshPinDisplay() {
+  const text = document.getElementById('pinStatusText');
+  const unpinBtn = document.getElementById('unpinBtn');
+  if (!text) return;
+  if (pinnedLocation) {
+    const when = new Date(pinnedLocation.pinnedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    text.innerHTML = `📍 <strong>Pinned:</strong> <a href="${gpsMapsLink(pinnedLocation)}" target="_blank" style="color:var(--accent);text-decoration:underline">${fmtGps(pinnedLocation)}</a> · ±${Math.round(pinnedLocation.acc || 0)}m · ${when}`;
+    text.style.color = 'var(--text)';
+    if (unpinBtn) unpinBtn.style.display = '';
+  } else {
+    text.innerHTML = '📍 No site location pinned — tap "Pin Spot" when you\'re on site';
+    text.style.color = 'var(--dim)';
+    if (unpinBtn) unpinBtn.style.display = 'none';
+  }
+}
+
+// Drift check — runs every 5 min during active workday segment
+function startDriftMonitor() {
+  if (driftCheckInterval) return;
+  driftCheckInterval = setInterval(async () => {
+    const running = getRunningSegment();
+    if (!running || running.type !== 'workday') {
+      clearInterval(driftCheckInterval);
+      driftCheckInterval = null;
+      return;
+    }
+    if (!pinnedLocation) return; // nothing to check against
+    const gps = await getGps();
+    if (!gps) return;
+    const dist = distanceMeters(gps, pinnedLocation);
+    if (dist > GEOFENCE_RADIUS_M) {
+      showToast(`📍 Drifted ${metersToMilesStr(dist)} from pinned site. Still on site, or moved on?`, 'warn', 8000);
+    }
+  }, DRIFT_CHECK_MS);
+}
+
+// Toast helper — small floating message at top of screen, auto-dismiss
+function showToast(msg, kind = 'info', ms = 3500) {
+  let container = document.getElementById('__toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = '__toastContainer';
+    container.style.cssText = 'position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:9999;pointer-events:none;display:flex;flex-direction:column;gap:8px;align-items:center;max-width:92vw';
+    document.body.appendChild(container);
+  }
+  const t = document.createElement('div');
+  const bg = kind === 'warn' ? '#fbbf24' : kind === 'good' ? '#22c55e' : '#4f8cff';
+  const fg = kind === 'warn' ? '#111' : '#fff';
+  t.style.cssText = `background:${bg};color:${fg};padding:12px 18px;border-radius:8px;font-weight:600;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,0.3);pointer-events:auto;text-align:center;max-width:100%`;
+  t.textContent = msg;
+  container.appendChild(t);
+  setTimeout(() => { t.style.transition = 'opacity 0.4s'; t.style.opacity = '0'; setTimeout(() => t.remove(), 400); }, ms);
 }
 
 // Burn timestamp + optional GPS onto image
@@ -2580,14 +2709,21 @@ function renderSegments() {
     const odoStart = s.startOdoPhoto ? `<div style="text-align:center"><img src="${s.startOdoPhoto}" style="width:90px;height:65px;object-fit:cover;border-radius:4px;cursor:zoom-in" onclick="window.open(this.src,'_blank')"><div style="font-size:10px;color:var(--dim);margin-top:2px">Start: ${s.startOdoMiles ? s.startOdoMiles.toLocaleString()+' mi' : '—'}</div></div>` : '';
     const odoEnd = s.endOdoPhoto ? `<div style="text-align:center"><img src="${s.endOdoPhoto}" style="width:90px;height:65px;object-fit:cover;border-radius:4px;cursor:zoom-in" onclick="window.open(this.src,'_blank')"><div style="font-size:10px;color:var(--dim);margin-top:2px">End: ${s.endOdoMiles ? s.endOdoMiles.toLocaleString()+' mi' : '—'}</div></div>` : '';
     const odoBlock = (odoStart || odoEnd) ? `<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">${odoStart}${odoEnd}</div>` : '';
+    const tripBadge = s.tripLevel ? ' <span style="background:#fbbf24;color:#111;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:700">🌍 TRIP</span>' : '';
+    const tripToggle = s.type === 'drive'
+      ? `<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--dim);cursor:pointer">
+           <input type="checkbox" ${s.tripLevel?'checked':''} onchange="toggleSegmentTripLevel('${s.id}', this.checked)" style="width:auto;margin:0">
+           Trip-level drive (not tied to one job)
+         </label>` : '';
     return `<div class="note-card" data-segid="${s.id}" style="position:relative">
       <button class="remove-btn" onclick="deleteSegment('${s.id}')">×</button>
-      <div style="font-weight:700;font-size:15px">${ico} ${label}${isLive?' <span style="color:var(--red);font-size:12px">● LIVE</span>':''}</div>
+      <div style="font-weight:700;font-size:15px">${ico} ${label}${isLive?' <span style="color:var(--red);font-size:12px">● LIVE</span>':''}${tripBadge}</div>
       <div style="font-size:13px;color:var(--dim);margin-top:4px">
         ${dateStr} → ${endStr} · <span class="seg-duration">${fmtClock(dur)}</span>${milesText}
       </div>
       ${odoBlock}
       <input type="text" placeholder="Note (e.g. Vegas → SF, or 'Day 2 site work')" value="${esc(s.note||'')}" onchange="updateSegmentNote('${s.id}', this.value)" style="width:100%;margin-top:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none">
+      ${tripToggle}
     </div>`;
   }).join('');
 }
@@ -2605,6 +2741,15 @@ function deleteSegment(id) {
   scheduleAutoSave();
 }
 
+function toggleSegmentTripLevel(id, checked) {
+  const s = segments.find(x => x.id === id);
+  if (!s) return;
+  s.tripLevel = !!checked;
+  renderSegments();
+  updateDashboard();
+  scheduleAutoSave();
+}
+
 async function startDriveSegment() {
   const running = getRunningSegment();
   if (running) {
@@ -2613,6 +2758,25 @@ async function startDriveSegment() {
     running.endGps = await getGps();
   }
   const gps = await getGps();
+  // Geofence + trip-level decision
+  let tripLevel = false;
+  if (gps) {
+    const nearest = await findNearestPinnedJob(gps);
+    if (nearest && !nearest.inside && nearest.draft.id !== currentDraftId) {
+      // We're closer to a DIFFERENT pinned job than the active one
+      if (confirm(`📍 You're ${metersToMilesStr(nearest.distanceM)} from "${nearest.draft.name}". Switch to that job before starting this drive?\n\nOK = switch jobs, Cancel = keep current job`)) {
+        await switchToDraft(nearest.draft.id);
+        // After switch, segments[] is reloaded — fall through with new draft active
+      }
+    }
+    // If active job has a pin and we're outside its fence, ask if this is trip-level
+    if (pinnedLocation && distanceMeters(gps, pinnedLocation) > GEOFENCE_RADIUS_M) {
+      tripLevel = confirm(`📍 You're ${metersToMilesStr(distanceMeters(gps, pinnedLocation))} from this job's pinned site.\n\nIs this drive trip-level (bookend drive between cities, not tied to one job)?\n\nOK = mark trip-level, Cancel = keep on this job`);
+    } else if (!pinnedLocation) {
+      // No pin set on active job at all — quick offer
+      tripLevel = confirm('📍 This job has no pinned site yet.\n\nIs this drive trip-level (not tied to one specific job)?\n\nOK = mark trip-level, Cancel = keep on this job');
+    }
+  }
   const seg = {
     id: newSegId(),
     type: 'drive',
@@ -2624,13 +2788,15 @@ async function startDriveSegment() {
     startOdoMiles: null,
     endOdoPhoto: null,
     endOdoMiles: null,
-    note: ''
+    note: '',
+    tripLevel
   };
   segments.push(seg);
   renderSegments();
   updateDashboard();
   startSegmentTicker();
   scheduleAutoSave();
+  if (tripLevel) showToast('🌍 Trip-level drive started', 'info', 2500);
   // Auto-prompt for start odometer photo
   setTimeout(() => promptOdometerPhoto(seg.id, 'start'), 200);
 }
@@ -2643,6 +2809,24 @@ async function startWorkdaySegment() {
     running.endGps = await getGps();
   }
   const gps = await getGps();
+  // Geofence check — workday should be at the active job's pinned site
+  if (gps) {
+    const nearest = await findNearestPinnedJob(gps);
+    if (nearest && nearest.inside && nearest.draft.id !== currentDraftId) {
+      // Inside a DIFFERENT pinned job's fence
+      if (confirm(`📍 You're at "${nearest.draft.name}" (${metersToMilesStr(nearest.distanceM)} away). Switch to that job before starting workday?\n\nOK = switch, Cancel = stay on current`)) {
+        await switchToDraft(nearest.draft.id);
+      }
+    } else if (pinnedLocation) {
+      const dist = distanceMeters(gps, pinnedLocation);
+      if (dist > GEOFENCE_RADIUS_M) {
+        if (!confirm(`📍 You're ${metersToMilesStr(dist)} from this job's pinned site. Start workday anyway?\n\nOK = start, Cancel = stop and pin a new location first`)) return;
+      }
+    } else {
+      // No pin on this job — soft nudge
+      showToast('📍 Tip: Pin this site to enable auto-tagging next time', 'info', 4000);
+    }
+  }
   segments.push({
     id: newSegId(),
     type: 'workday',
@@ -2650,11 +2834,13 @@ async function startWorkdaySegment() {
     endedAt: null,
     startGps: gps,
     endGps: null,
-    note: ''
+    note: '',
+    tripLevel: false
   });
   renderSegments();
   updateDashboard();
   startSegmentTicker();
+  startDriftMonitor();
   scheduleAutoSave();
 }
 
@@ -2665,6 +2851,14 @@ async function stopCurrentSegment() {
   running.endedAt = Date.now();
   running.endGps = gps;
   if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
+  if (driftCheckInterval) { clearInterval(driftCheckInterval); driftCheckInterval = null; }
+  // Closing-out workday — check drift and warn if user has left the pin
+  if (running.type === 'workday' && pinnedLocation && gps) {
+    const dist = distanceMeters(gps, pinnedLocation);
+    if (dist > GEOFENCE_RADIUS_M) {
+      showToast(`📍 Ended workday ${metersToMilesStr(dist)} from pinned site. (No problem — just noting it.)`, 'info', 5000);
+    }
+  }
   renderSegments();
   updateDashboard();
   scheduleAutoSave();
@@ -3880,6 +4074,8 @@ function clearForm() {
   document.getElementById('dnBlockers').value = '';
   document.getElementById('dnSelfNotes').value = '';
   if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
+  if (driftCheckInterval) { clearInterval(driftCheckInterval); driftCheckInterval = null; }
+  pinnedLocation = null;
   document.getElementById('checklistType').value = '';
   resetClock();
   lastReportHTML = '';
@@ -3892,6 +4088,7 @@ function clearForm() {
   renderContacts();
   renderChecklist();
   renderVoiceMemos();
+  refreshPinDisplay();
   renderSegments();
   renderCommunications();
   renderDiscrepancies();
@@ -4496,15 +4693,26 @@ async function generateTripTotals() {
   const cats = {};
   const allDayBuckets = {}; // for cross-job day-by-day aggregation
 
+  let tripLevelDriveMs = 0, tripLevelMiles = 0;
+  const tripLevelSegs = [];
   function processSegments(segs, receiptsArr, jobName) {
     let driveMs = 0, siteMs = 0, miles = 0;
     (segs || []).forEach(seg => {
       const dur = (seg.endedAt || Date.now()) - seg.startedAt;
-      if (seg.type === 'drive') {
-        driveMs += dur;
-        if (seg.startOdoMiles && seg.endOdoMiles) miles += Math.max(0, seg.endOdoMiles - seg.startOdoMiles);
-      } else if (seg.type === 'workday') {
-        siteMs += dur;
+      if (seg.tripLevel) {
+        // Trip-level: don't count under this job
+        if (seg.type === 'drive') {
+          tripLevelDriveMs += dur;
+          if (seg.startOdoMiles && seg.endOdoMiles) tripLevelMiles += Math.max(0, seg.endOdoMiles - seg.startOdoMiles);
+        }
+        tripLevelSegs.push({ ...seg, _jobName: jobName });
+      } else {
+        if (seg.type === 'drive') {
+          driveMs += dur;
+          if (seg.startOdoMiles && seg.endOdoMiles) miles += Math.max(0, seg.endOdoMiles - seg.startOdoMiles);
+        } else if (seg.type === 'workday') {
+          siteMs += dur;
+        }
       }
       // Add to the day bucket for cross-job rollup
       const dayKey = new Date(seg.startedAt).toLocaleDateString('en-CA');
@@ -4635,6 +4843,19 @@ async function generateTripTotals() {
     <td style="text-align:right">$${grandSpent.toFixed(2)}</td>
   </tr></tbody></table>`;
 
+  // Trip-level drives (not tied to any single job)
+  if (tripLevelSegs.length) {
+    html += `<h2>🌍 Trip-Level Drives <span style="font-size:11px;color:#666;font-weight:400">(positioning / bookend drives — not charged to any one job)</span></h2>`;
+    html += `<table><thead><tr><th>Date</th><th>From Job</th><th>Note</th><th style="text-align:right">Hours</th><th style="text-align:right">Miles</th></tr></thead><tbody>`;
+    tripLevelSegs.sort((a,b) => a.startedAt - b.startedAt).forEach(s => {
+      const dt = new Date(s.startedAt).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+      const dur = ((s.endedAt || Date.now()) - s.startedAt) / 3600000;
+      const segMi = (s.startOdoMiles && s.endOdoMiles) ? Math.max(0, s.endOdoMiles - s.startOdoMiles) : 0;
+      html += `<tr><td>${dt}</td><td>${esc(s._jobName)}</td><td>${esc(s.note || '—')}</td><td style="text-align:right">${dur.toFixed(2)}</td><td style="text-align:right">${segMi ? segMi.toLocaleString() : '—'}</td></tr>`;
+    });
+    html += `<tr class="total-row"><td colspan="3">Trip-Level Total</td><td style="text-align:right">${(tripLevelDriveMs/3600000).toFixed(2)} hrs</td><td style="text-align:right">${tripLevelMiles.toLocaleString()}</td></tr></tbody></table>`;
+  }
+
   // Cost breakdown
   if (Object.keys(cats).length) {
     html += `<h2>Cost Breakdown (Trip-Wide)</h2><table><thead><tr><th>Category</th><th style="text-align:right">Total</th></tr></thead><tbody>`;
@@ -4706,7 +4927,7 @@ function serializeCurrentState() {
     crewSize: document.getElementById('crewSize').value,
     stdCrewSize: document.getElementById('stdCrewSize').value,
     photos, receipts, jobFiles, notes, trips, contacts, voiceMemos,
-    checklist, clockState, segments,
+    checklist, clockState, segments, pinnedLocation,
     communications, discrepancies, dailyNotes
   };
 }
@@ -4731,6 +4952,7 @@ function applyDraftState(s) {
   checklist = s.checklist || { type: '', items: [] };
   clockState = s.clockState || { running: false, startedAt: 0, accumulatedMs: 0 };
   segments = s.segments || [];
+  pinnedLocation = s.pinnedLocation || null;
   communications = s.communications || [];
   discrepancies = s.discrepancies || [];
   dailyNotes = s.dailyNotes || { workCompleted: '', blockers: '', selfNotes: '' };
@@ -4753,8 +4975,12 @@ function applyDraftState(s) {
   renderCommunications();
   renderDiscrepancies();
   updateDashboard();
+  refreshPinDisplay();
   // If there's a live segment running, restart the ticker
   if (getRunningSegment()) startSegmentTicker();
+  // If the live segment is a workday, also restart drift monitor
+  const _live = getRunningSegment();
+  if (_live && _live.type === 'workday') startDriftMonitor();
   // Reveal sections that have content
   if (photos.length) document.getElementById('photosSection').classList.remove('hidden');
   if (receipts.length) document.getElementById('receiptsSection').classList.remove('hidden');

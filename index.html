@@ -849,6 +849,7 @@
 <input type="file" id="jobFileInput" class="hidden" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.bmp,.webp,.txt,.csv">
 <input type="file" id="odoInput" class="hidden" accept="image/*">
 <input type="file" id="segOdoInput" class="hidden" accept="image/*" capture="environment">
+<input type="file" id="photoReplaceInput" class="hidden" accept="image/*">
 <input type="file" id="gasInput" class="hidden" accept="image/*" capture="environment">
 
 <!-- PHOTOS -->
@@ -1126,6 +1127,7 @@ let clockState = { running: false, startedAt: 0, accumulatedMs: 0 }; // legacy �
 let segments = [];   // { id, type:'drive'|'workday', startedAt, endedAt, startGps, endGps, startOdoPhoto, startOdoMiles, endOdoPhoto, endOdoMiles, note, tripLevel }
 let pinnedLocation = null; // { lat, lng, acc, pinnedAt } — the pinned site GPS for this draft
 let driftCheckInterval = null; // re-checks GPS every 5min during active workday
+let editingSegmentId = null;   // id of segment currently in edit mode (null = none)
 let segmentTickInterval = null;
 let pendingOdoTarget = null; // { segId, which:'start'|'end' }
 let communications = []; // { id, kind:'email'|'text'|'call'|'in-person', to, subject, summary, sentAt, responseReceived, responseAt, responseSummary }
@@ -1527,6 +1529,36 @@ document.getElementById('photoInput').addEventListener('change', async function(
   e.target.value = '';
 });
 
+// Replace an existing photo (keeps notes, phase, area, etc.)
+let pendingReplacePhotoIndex = null;
+function replacePhoto(index) {
+  pendingReplacePhotoIndex = index;
+  document.getElementById('photoReplaceInput').click();
+}
+document.getElementById('photoReplaceInput').addEventListener('change', async function(e) {
+  const file = e.target.files[0];
+  e.target.value = '';
+  const idx = pendingReplacePhotoIndex;
+  pendingReplacePhotoIndex = null;
+  if (!file || idx == null || !photos[idx]) return;
+  const gps = await getGps();
+  const reader = new FileReader();
+  reader.onload = async ev => {
+    const stamped = await stampImage(ev.target.result, gps);
+    // Keep all metadata, just swap the image data
+    photos[idx].dataURL = stamped.dataURL;
+    photos[idx].stamp = stamped.stamp;
+    photos[idx].gps = gps;
+    // Clear any markup since the underlying image changed
+    delete photos[idx].annotatedURL;
+    delete photos[idx].annotations;
+    renderPhotos();
+    scheduleAutoSave();
+    showToast('🔄 Photo replaced', 'good', 2000);
+  };
+  reader.readAsDataURL(file);
+});
+
 function renderPhotos() {
   const sec = document.getElementById('photosSection');
   document.getElementById('photoCount').textContent = photos.length;
@@ -1575,6 +1607,7 @@ function renderPhotos() {
       ${annotatedBadge}
       <button class="remove-btn" onclick="photos.splice(${i},1);renderPhotos()">×</button>
       <button class="action-btn-sm" style="position:absolute;bottom:auto;top:6px;right:38px;margin:0;padding:4px 8px;font-size:11px" onclick="openMarkup(${i})">✏ Markup</button>
+      <button class="action-btn-sm" style="position:absolute;bottom:auto;top:6px;right:108px;margin:0;padding:4px 8px;font-size:11px" onclick="replacePhoto(${i})">🔄 Replace</button>
       <div style="padding:8px 10px;display:flex;flex-direction:column;gap:5px;border-top:1px solid var(--border)">
         <select onchange="photos[${i}].phase=this.value;renderPhotos();scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
           <option value="">— Phase —</option>
@@ -2715,6 +2748,49 @@ function renderSegments() {
            <input type="checkbox" ${s.tripLevel?'checked':''} onchange="toggleSegmentTripLevel('${s.id}', this.checked)" style="width:auto;margin:0">
            Trip-level drive (not tied to one job)
          </label>` : '';
+    const isEditing = editingSegmentId === s.id;
+    if (isEditing) {
+      // Edit mode — show editable fields for time and miles
+      const toLocalDT = ts => ts ? new Date(ts - new Date(ts).getTimezoneOffset()*60000).toISOString().slice(0, 16) : '';
+      const startVal = toLocalDT(s.startedAt);
+      const endVal = toLocalDT(s.endedAt);
+      return `<div class="note-card" data-segid="${s.id}" style="position:relative;border-color:var(--accent)">
+        <div style="font-weight:700;font-size:15px;margin-bottom:10px">${ico} Edit ${label}${tripBadge}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;color:var(--dim);font-weight:600">START</label>
+            <input type="datetime-local" id="editStart_${s.id}" value="${startVal}" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--dim);font-weight:600">END ${isLive?'(live — leave blank to keep running)':''}</label>
+            <input type="datetime-local" id="editEnd_${s.id}" value="${endVal}" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px">
+          </div>
+        </div>
+        ${s.type === 'drive' ? `
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+          <div>
+            <label style="font-size:11px;color:var(--dim);font-weight:600">START MILES</label>
+            <input type="number" id="editStartMi_${s.id}" value="${s.startOdoMiles || ''}" placeholder="123456" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px">
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--dim);font-weight:600">END MILES</label>
+            <input type="number" id="editEndMi_${s.id}" value="${s.endOdoMiles || ''}" placeholder="123756" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+          <button class="action-btn-sm" style="margin:0;font-size:12px" onclick="retakeOdoPhoto('${s.id}','start')">📷 Retake START odo</button>
+          <button class="action-btn-sm" style="margin:0;font-size:12px" onclick="retakeOdoPhoto('${s.id}','end')">📷 Retake END odo</button>
+        </div>
+        ` : ''}
+        ${odoBlock}
+        <input type="text" placeholder="Note" value="${esc(s.note||'')}" onchange="updateSegmentNote('${s.id}', this.value)" style="width:100%;margin-top:4px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none">
+        ${tripToggle}
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="action-btn-sm" style="margin:0;flex:1;background:var(--green);color:#fff;border-color:var(--green)" onclick="saveSegmentEdit('${s.id}')">✓ Save Changes</button>
+          <button class="action-btn-sm" style="margin:0;flex:1" onclick="cancelSegmentEdit()">Cancel</button>
+        </div>
+      </div>`;
+    }
     return `<div class="note-card" data-segid="${s.id}" style="position:relative">
       <button class="remove-btn" onclick="deleteSegment('${s.id}')">×</button>
       <div style="font-weight:700;font-size:15px">${ico} ${label}${isLive?' <span style="color:var(--red);font-size:12px">● LIVE</span>':''}${tripBadge}</div>
@@ -2724,6 +2800,7 @@ function renderSegments() {
       ${odoBlock}
       <input type="text" placeholder="Note (e.g. Vegas → SF, or 'Day 2 site work')" value="${esc(s.note||'')}" onchange="updateSegmentNote('${s.id}', this.value)" style="width:100%;margin-top:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none">
       ${tripToggle}
+      <button class="action-btn-sm" style="margin:8px 0 0;font-size:12px;width:100%" onclick="startSegmentEdit('${s.id}')">✏️ Edit times / miles</button>
     </div>`;
   }).join('');
 }
@@ -2748,6 +2825,61 @@ function toggleSegmentTripLevel(id, checked) {
   renderSegments();
   updateDashboard();
   scheduleAutoSave();
+}
+
+function startSegmentEdit(id) {
+  editingSegmentId = id;
+  renderSegments();
+  // Scroll the edit card into view
+  setTimeout(() => {
+    const card = document.querySelector(`[data-segid="${id}"]`);
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 50);
+}
+
+function cancelSegmentEdit() {
+  editingSegmentId = null;
+  renderSegments();
+}
+
+function saveSegmentEdit(id) {
+  const s = segments.find(x => x.id === id);
+  if (!s) return;
+  const startInput = document.getElementById(`editStart_${id}`);
+  const endInput = document.getElementById(`editEnd_${id}`);
+  const startMiInput = document.getElementById(`editStartMi_${id}`);
+  const endMiInput = document.getElementById(`editEndMi_${id}`);
+  if (startInput && startInput.value) {
+    s.startedAt = new Date(startInput.value).getTime();
+  }
+  if (endInput) {
+    s.endedAt = endInput.value ? new Date(endInput.value).getTime() : null;
+  }
+  if (startMiInput) {
+    const v = parseFloat(startMiInput.value);
+    s.startOdoMiles = isNaN(v) ? null : v;
+  }
+  if (endMiInput) {
+    const v = parseFloat(endMiInput.value);
+    s.endOdoMiles = isNaN(v) ? null : v;
+  }
+  // Validate — end shouldn't be before start
+  if (s.endedAt && s.endedAt < s.startedAt) {
+    alert('End time cannot be before start time. Please fix.');
+    return;
+  }
+  editingSegmentId = null;
+  renderSegments();
+  updateDashboard();
+  scheduleAutoSave();
+  showToast('✓ Segment updated', 'good', 2000);
+}
+
+// Retake an odometer photo on an existing segment (used in edit mode)
+function retakeOdoPhoto(segId, which) {
+  // Reuse the existing pendingOdoTarget mechanism + handler
+  pendingOdoTarget = { segId, which };
+  document.getElementById('segOdoInput').click();
 }
 
 async function startDriveSegment() {
@@ -4124,15 +4256,56 @@ async function refreshSidebar() {
   }
   body.innerHTML = jobs.map(j => {
     const loc = [j.city, j.state].filter(Boolean).join(', ');
+    const canReopen = !!j.rawState; // older jobs without rawState can't be reopened
     return `<div class="sidebar-item">
       <div class="si-client">${esc(j.client)}</div>
       <div class="si-meta">${esc(loc)}${j.dateStart ? ' — ' + fmtDate(j.dateStart) : ''}</div>
-      <div class="si-actions">
-        <button class="btn-green" style="padding:6px 14px;font-size:13px;border:none;border-radius:var(--radius);cursor:pointer" onclick="event.stopPropagation();viewSavedReport(${j.id})">View Report</button>
+      <div class="si-actions" style="flex-wrap:wrap">
+        <button class="btn-green" style="padding:6px 14px;font-size:13px;border:none;border-radius:var(--radius);cursor:pointer" onclick="event.stopPropagation();viewSavedReport(${j.id})">View</button>
+        ${canReopen ? `<button style="padding:6px 14px;font-size:13px;border:none;border-radius:var(--radius);cursor:pointer;background:var(--accent);color:#fff" onclick="event.stopPropagation();reopenForEditing(${j.id})">✏️ Edit</button>` : ''}
         <button class="btn-red" style="padding:6px 14px;font-size:13px;border:none;border-radius:var(--radius);cursor:pointer" onclick="event.stopPropagation();deleteSavedJob(${j.id})">Delete</button>
       </div>
     </div>`;
   }).join('');
+}
+
+async function reopenForEditing(id) {
+  const job = await dbGet(id);
+  if (!job || !job.rawState) {
+    alert('This saved job is missing its editable data — can only be viewed, not reopened.');
+    return;
+  }
+  if (!confirm('Reopen this saved job for editing?\n\nThe saved version (frozen report) will be removed. The job goes back to "in progress" so you can change anything — photos, times, miles, notes — and re-generate the report when done.')) return;
+  // Auto-save whatever's currently in the form first, so we don't lose it
+  if (hasAnyContent()) await autoSave();
+  // Create a new draft from the saved job's rawState
+  const newDraftId = 'draft_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  await dbPutDraft({
+    id: newDraftId,
+    name: job.client,
+    meta: [job.city, job.state].filter(Boolean).join(', '),
+    savedAt: Date.now(),
+    tripId: job.tripId || null,
+    state: job.rawState
+  });
+  // Switch trip context if needed
+  if ((job.tripId || null) !== (currentTripId || null)) {
+    currentTripId = job.tripId || null;
+    if (currentTripId) localStorage.setItem('currentTripId', currentTripId);
+    else localStorage.removeItem('currentTripId');
+    await refreshTripSelector();
+  }
+  // Delete the completed job (it's been "demoted" back to a draft)
+  await dbDelete(id);
+  // Load the new draft into the form
+  currentDraftId = newDraftId;
+  localStorage.setItem('currentDraftId', newDraftId);
+  applyDraftState(job.rawState);
+  await refreshDraftSelector();
+  await refreshSidebar();
+  closeSidebar();
+  showToast('✏️ Reopened for editing', 'good', 3000);
+  window.scrollTo(0, 0);
 }
 
 // Inject the action bar into old reports (generated before the feature existed)

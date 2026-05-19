@@ -1453,6 +1453,80 @@ function startDriftMonitor() {
   }, DRIFT_CHECK_MS);
 }
 
+// ═══════════════════════════════
+// VISION EXTRACTION — pull numbers out of photos via Claude
+// ═══════════════════════════════
+function parseDataURL(dataURL) {
+  const m = dataURL && dataURL.match(/^data:([^;]+);base64,(.+)$/);
+  if (!m) return null;
+  return { mediaType: m[1], base64: m[2] };
+}
+
+async function callClaudeWithImage(dataURL, userPrompt, systemPrompt) {
+  const apiKey = localStorage.getItem('anthropicApiKey');
+  if (!apiKey) return null;
+  const parsed = parseDataURL(dataURL);
+  if (!parsed) return null;
+  try {
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-7',
+        max_tokens: 512,
+        system: systemPrompt,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: parsed.mediaType, data: parsed.base64 } },
+            { type: 'text', text: userPrompt }
+          ]
+        }]
+      })
+    });
+    if (!resp.ok) {
+      console.warn('Vision API error:', resp.status, await resp.text().catch(()=>''));
+      return null;
+    }
+    const data = await resp.json();
+    const text = data.content?.[0]?.text || '';
+    // Find first JSON object in the response
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try { return JSON.parse(jsonMatch[0]); } catch { return null; }
+    }
+    return null;
+  } catch (e) {
+    console.warn('Vision call failed:', e);
+    return null;
+  }
+}
+
+async function extractOdometer(dataURL) {
+  const result = await callClaudeWithImage(
+    dataURL,
+    'Read the MAIN odometer reading (total vehicle miles, not the trip odometer) from this dashboard photo. Return ONLY JSON in this exact format and nothing else:\n{"miles": NUMBER, "confidence": "high" | "medium" | "low"}',
+    'You read odometer numbers from dashboard photos for an installer\'s mileage log. The "main" odometer is the total accumulated miles for the vehicle, usually the largest number on the display. Trip odometers are smaller / labeled "Trip A" or "Trip B" — ignore those. Return strict JSON only.'
+  );
+  if (result && typeof result.miles === 'number') return result;
+  return null;
+}
+
+async function extractReceipt(dataURL) {
+  const result = await callClaudeWithImage(
+    dataURL,
+    'Extract these fields from this receipt image. Return ONLY JSON in this exact format and nothing else:\n{"amount": NUMBER, "vendor": "STRING", "category": "gas" | "food" | "hotel" | "parts" | "other"}\n\nAmount = the total paid (grand total, not subtotal). Category mapping:\n- Gas station / fuel = "gas"\n- Restaurant, fast food, coffee = "food"\n- Hotel, motel, lodging = "hotel"\n- Hardware, parts, equipment, tools = "parts"\n- Anything else = "other"',
+    'You extract receipt details for an installer\'s expense report. Read the receipt image carefully and return strict JSON only.'
+  );
+  if (result && typeof result.amount === 'number') return result;
+  return null;
+}
+
 // Toast helper — small floating message at top of screen, auto-dismiss
 function showToast(msg, kind = 'info', ms = 3500) {
   let container = document.getElementById('__toastContainer');
@@ -2126,43 +2200,93 @@ document.getElementById('receiptInput').addEventListener('change', async functio
   const files = Array.from(e.target.files);
   if (!files.length) return;
   const gps = await getGps();
+  const addedIndices = [];
   let loaded = 0;
   files.forEach(file => {
     const reader = new FileReader();
     reader.onload = async ev => {
       const stamped = await stampImage(ev.target.result, gps);
+      const idx = receipts.length;
       receipts.push({ dataURL: stamped.dataURL, amount: '', vendor: '', category: 'gas', gps, stamp: stamped.stamp });
+      addedIndices.push(idx);
       loaded++;
-      if (loaded === files.length) renderReceipts();
+      if (loaded === files.length) {
+        renderReceipts();
+        scheduleAutoSave();
+        // Background AI extraction (don't block the UI)
+        if (localStorage.getItem('anthropicApiKey')) {
+          addedIndices.forEach(i => autoExtractReceipt(i));
+        }
+      }
     };
     reader.readAsDataURL(file);
   });
   e.target.value = '';
 });
 
+async function autoExtractReceipt(idx) {
+  if (!receipts[idx]) return;
+  receipts[idx]._extracting = true;
+  renderReceipts();
+  const result = await extractReceipt(receipts[idx].dataURL);
+  if (!receipts[idx]) return; // user might have deleted it
+  delete receipts[idx]._extracting;
+  if (result) {
+    if (!receipts[idx].amount && result.amount != null) receipts[idx].amount = String(result.amount);
+    if (!receipts[idx].vendor && result.vendor) receipts[idx].vendor = String(result.vendor);
+    if (result.category && ['gas','food','hotel','parts','other'].includes(result.category)) {
+      receipts[idx].category = result.category;
+    }
+    receipts[idx]._aiExtracted = true;
+  }
+  renderReceipts();
+  scheduleAutoSave();
+  if (result) showToast(`🤖 Receipt: $${result.amount} ${result.vendor || ''}`, 'good', 3000);
+}
+
 function renderReceipts() {
   const sec = document.getElementById('receiptsSection');
   document.getElementById('receiptCount').textContent = receipts.length;
   if (!receipts.length) { sec.classList.add('hidden'); return; }
   sec.classList.remove('hidden');
-  document.getElementById('receiptGrid').innerHTML = receipts.map((r, i) => `
+  document.getElementById('receiptGrid').innerHTML = receipts.map((r, i) => {
+    const aiBadge = r._extracting
+      ? `<div style="position:absolute;top:6px;left:6px;background:rgba(79,140,255,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">🤖 Reading...</div>`
+      : (r._aiExtracted ? `<div style="position:absolute;top:6px;left:6px;background:rgba(34,197,94,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">🤖 Auto</div>` : '');
+    return `
     <div class="receipt-card">
       <img src="${r.dataURL}" alt="Receipt" onclick="window.open(this.src,'_blank')">
-      <button class="remove-btn" onclick="receipts.splice(${i},1);renderReceipts()">×</button>
+      ${aiBadge}
+      <button class="remove-btn" onclick="receipts.splice(${i},1);renderReceipts();scheduleAutoSave()">×</button>
       <div class="r-fields">
-        <input type="number" placeholder="Amount ($)" step="0.01" min="0" value="${r.amount}" onchange="receipts[${i}].amount=this.value;updateExpenseTotal()">
-        <input type="text" placeholder="Vendor" value="${esc(r.vendor)}" onchange="receipts[${i}].vendor=this.value">
-        <select onchange="receipts[${i}].category=this.value">
+        <input type="number" placeholder="Amount ($)" step="0.01" min="0" value="${r.amount}" onchange="receipts[${i}].amount=this.value;updateExpenseTotal();scheduleAutoSave()">
+        <input type="text" placeholder="Vendor" value="${esc(r.vendor)}" onchange="receipts[${i}].vendor=this.value;scheduleAutoSave()">
+        <select onchange="receipts[${i}].category=this.value;scheduleAutoSave()">
           <option value="gas"${r.category==='gas'?' selected':''}>Gas</option>
           <option value="food"${r.category==='food'?' selected':''}>Food</option>
           <option value="hotel"${r.category==='hotel'?' selected':''}>Hotel</option>
           <option value="parts"${r.category==='parts'?' selected':''}>Parts</option>
           <option value="other"${r.category==='other'?' selected':''}>Other</option>
         </select>
+        <button class="action-btn-sm" style="margin:4px 0 0;padding:6px 8px;font-size:11px;width:100%" onclick="reExtractReceipt(${i})">🤖 Re-extract from photo</button>
       </div>
     </div>
-  `).join('');
+  `;}).join('');
   updateExpenseTotal();
+}
+
+async function reExtractReceipt(idx) {
+  if (!localStorage.getItem('anthropicApiKey')) {
+    if (confirm('AI extraction needs an Anthropic API key. Open Settings to add one?')) openSettings();
+    return;
+  }
+  // Reset the AI-fields so auto-extract will overwrite them
+  if (receipts[idx]) {
+    receipts[idx].amount = '';
+    receipts[idx].vendor = '';
+    receipts[idx]._aiExtracted = false;
+  }
+  await autoExtractReceipt(idx);
 }
 
 function updateExpenseTotal() {
@@ -3024,16 +3148,43 @@ document.getElementById('segOdoInput').addEventListener('change', async function
     const stamped = await stampImage(ev.target.result, gps);
     if (target.which === 'start') {
       seg.startOdoPhoto = stamped.dataURL;
-      const m = prompt('Start odometer reading (miles):');
-      if (m != null && m !== '') seg.startOdoMiles = parseInt(m.replace(/[^0-9]/g,''), 10) || null;
     } else {
       seg.endOdoPhoto = stamped.dataURL;
-      const m = prompt('End odometer reading (miles):');
-      if (m != null && m !== '') seg.endOdoMiles = parseInt(m.replace(/[^0-9]/g,''), 10) || null;
     }
     renderSegments();
     updateDashboard();
     scheduleAutoSave();
+    // Try AI extraction first (if API key set), then fall back to manual prompt
+    let aiValue = null;
+    if (localStorage.getItem('anthropicApiKey')) {
+      showToast('🤖 Reading odometer...', 'info', 4000);
+      const result = await extractOdometer(stamped.dataURL);
+      if (result && typeof result.miles === 'number') {
+        aiValue = result.miles;
+        // High confidence = autofill silently. Lower = autofill but ask user to verify.
+        if (target.which === 'start') seg.startOdoMiles = aiValue;
+        else seg.endOdoMiles = aiValue;
+        renderSegments();
+        updateDashboard();
+        scheduleAutoSave();
+        const conf = result.confidence || 'medium';
+        const verb = conf === 'high' ? 'Got' : 'Best guess';
+        showToast(`🤖 ${verb}: ${aiValue.toLocaleString()} mi · tap segment Edit to fix`, conf === 'high' ? 'good' : 'warn', 4500);
+        return;
+      } else {
+        showToast('🤖 Couldn\'t read odometer — type it in', 'warn', 3000);
+      }
+    }
+    // Fallback: ask manually
+    const m = prompt((target.which === 'start' ? 'Start' : 'End') + ' odometer reading (miles):');
+    if (m != null && m !== '') {
+      const num = parseInt(m.replace(/[^0-9]/g,''), 10) || null;
+      if (target.which === 'start') seg.startOdoMiles = num;
+      else seg.endOdoMiles = num;
+      renderSegments();
+      updateDashboard();
+      scheduleAutoSave();
+    }
   };
   reader.readAsDataURL(file);
 });

@@ -992,6 +992,7 @@
   <button class="generate-btn" style="background:var(--yellow);color:#111" onclick="generateSummary()">PROJECT SUMMARY</button>
   <button class="generate-btn" style="background:#a78bfa;color:#fff" onclick="generateDailyReport()">📅 DAILY REPORT</button>
   <button class="generate-btn" style="background:#ec4899;color:#fff" onclick="generateWeeklyDigest()">📊 WEEKLY DIGEST</button>
+  <button class="generate-btn" style="background:#0ea5e9;color:#fff;grid-column:1 / -1" onclick="openMasterLog()">📋 MASTER LOG — EVERY JOB, EVERY HOUR, EVERY RECEIPT</button>
   <button class="send-btn" onclick="sendReport()" style="grid-column:1 / -1">SEND REPORT ✉</button>
 </div>
 
@@ -1009,6 +1010,91 @@
     <button onclick="document.getElementById('importInput').click()">📥 Restore</button>
   </div>
   <div class="sidebar-body" id="sidebarBody"></div>
+</div>
+
+<!-- Master Log modal — full-screen spreadsheet of all activity -->
+<div id="masterLogModal" style="display:none;position:fixed;inset:0;background:#fff;color:#111;z-index:300;overflow-y:auto">
+  <div style="max-width:1400px;margin:0 auto;padding:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #111;padding-bottom:12px;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div>
+        <h1 style="font-size:22px;font-weight:700;text-transform:uppercase;letter-spacing:1px">Work Activity Log</h1>
+        <div style="font-size:12px;color:#666;margin-top:2px">Lyle Krug · MistAmerica · auto-generated from real-time field data</div>
+      </div>
+      <button onclick="closeMasterLog()" style="padding:10px 18px;background:#111;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer">✕ Close</button>
+    </div>
+
+    <!-- Summary tiles -->
+    <div id="masterLogStats" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:10px;margin-bottom:16px"></div>
+
+    <!-- Filters -->
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding:12px;background:#f6f7fa;border-radius:6px;align-items:end">
+      <div>
+        <label style="display:block;font-size:11px;color:#555;font-weight:600;margin-bottom:3px">DATE RANGE</label>
+        <select id="mlDateRange" onchange="renderMasterLog()" style="padding:7px 10px;font-size:13px;border:1px solid #ccc;border-radius:4px;background:#fff">
+          <option value="all">All time</option>
+          <option value="thisweek">This week (Mon-Sun)</option>
+          <option value="lastweek">Last week</option>
+          <option value="last30">Last 30 days</option>
+          <option value="thismonth">This month</option>
+          <option value="custom">Custom...</option>
+        </select>
+      </div>
+      <div id="mlCustomDates" style="display:none;gap:8px">
+        <div>
+          <label style="display:block;font-size:11px;color:#555;font-weight:600;margin-bottom:3px">FROM</label>
+          <input type="date" id="mlFromDate" onchange="renderMasterLog()" style="padding:6px;font-size:13px;border:1px solid #ccc;border-radius:4px">
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:#555;font-weight:600;margin-bottom:3px">TO</label>
+          <input type="date" id="mlToDate" onchange="renderMasterLog()" style="padding:6px;font-size:13px;border:1px solid #ccc;border-radius:4px">
+        </div>
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;color:#555;font-weight:600;margin-bottom:3px">JOB</label>
+        <select id="mlJobFilter" onchange="renderMasterLog()" style="padding:7px 10px;font-size:13px;border:1px solid #ccc;border-radius:4px;background:#fff;min-width:160px"></select>
+      </div>
+      <div>
+        <label style="display:block;font-size:11px;color:#555;font-weight:600;margin-bottom:3px">TYPE</label>
+        <select id="mlTypeFilter" onchange="renderMasterLog()" style="padding:7px 10px;font-size:13px;border:1px solid #ccc;border-radius:4px;background:#fff">
+          <option value="all">All activity</option>
+          <option value="drive">🚗 Drives only</option>
+          <option value="workday">🏗️ Workdays only</option>
+          <option value="receipt">💰 Receipts only</option>
+        </select>
+      </div>
+      <div style="flex:1;text-align:right">
+        <button onclick="exportMasterLogCSV()" style="padding:8px 14px;background:#22c55e;color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer">📥 Download CSV (Excel)</button>
+        <button onclick="exportMasterLogPDF()" style="padding:8px 14px;background:#4f8cff;color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;margin-left:6px">📄 Print / PDF</button>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div style="overflow-x:auto;border:1px solid #ddd;border-radius:6px">
+      <table id="masterLogTable" style="width:100%;border-collapse:collapse;font-size:13px">
+        <thead style="background:#111;color:#fff;position:sticky;top:0">
+          <tr>
+            <th style="padding:9px 10px;text-align:left;font-weight:600;letter-spacing:.5px;font-size:11px">DATE</th>
+            <th style="padding:9px 10px;text-align:left;font-weight:600;letter-spacing:.5px;font-size:11px">TIME</th>
+            <th style="padding:9px 10px;text-align:left;font-weight:600;letter-spacing:.5px;font-size:11px">TYPE</th>
+            <th style="padding:9px 10px;text-align:left;font-weight:600;letter-spacing:.5px;font-size:11px">JOB / TRIP</th>
+            <th style="padding:9px 10px;text-align:left;font-weight:600;letter-spacing:.5px;font-size:11px">DETAIL</th>
+            <th style="padding:9px 10px;text-align:right;font-weight:600;letter-spacing:.5px;font-size:11px">HOURS</th>
+            <th style="padding:9px 10px;text-align:right;font-weight:600;letter-spacing:.5px;font-size:11px">MILES</th>
+            <th style="padding:9px 10px;text-align:right;font-weight:600;letter-spacing:.5px;font-size:11px">$ AMOUNT</th>
+            <th style="padding:9px 10px;text-align:center;font-weight:600;letter-spacing:.5px;font-size:11px">GPS</th>
+          </tr>
+        </thead>
+        <tbody id="masterLogBody"></tbody>
+      </table>
+    </div>
+    <div id="masterLogEmpty" style="display:none;padding:60px 20px;text-align:center;color:#888;font-size:14px">No activity matches the current filters.</div>
+
+    <!-- Footer / verification -->
+    <div style="margin-top:20px;padding:14px;background:#f6f7fa;border-left:4px solid #4f8cff;font-size:12px;color:#444;line-height:1.5">
+      <strong>About this log:</strong> Every row was captured in real-time from a field-worker's mobile device. Time segments (drive/workday) are timestamped to the second when the worker tapped Start/Stop. Receipt totals and vendors are extracted from photos of paper receipts. GPS coordinates are recorded at each segment start/end when available. The data is synced to a secure cloud database (Firebase Firestore) the moment it's captured.<br><br>
+      Report generated: <span id="mlGenStamp"></span>
+    </div>
+  </div>
 </div>
 
 <!-- Hidden file input for restore -->
@@ -1535,6 +1621,255 @@ function mergeStatesPreservingBinaries(localState, cloudState) {
     });
   }
   return merged;
+}
+
+// ═══════════════════════════════
+// MASTER LOG — flat spreadsheet of all activity across all jobs/trips
+// ═══════════════════════════════
+let masterLogEvents = []; // cached after each open
+
+async function openMasterLog() {
+  document.getElementById('masterLogModal').style.display = 'block';
+  document.body.style.overflow = 'hidden';
+  // Save current draft so its segments/receipts are included
+  if (typeof autoSave === 'function') await autoSave();
+  await loadMasterLogData();
+  populateJobFilter();
+  document.getElementById('mlGenStamp').textContent = new Date().toLocaleString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
+  // Show custom date controls when "custom" is picked
+  document.getElementById('mlDateRange').addEventListener('change', e => {
+    document.getElementById('mlCustomDates').style.display = (e.target.value === 'custom') ? 'flex' : 'none';
+  });
+  renderMasterLog();
+}
+
+function closeMasterLog() {
+  document.getElementById('masterLogModal').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// Pull all segments/receipts/etc from all drafts + completed jobs, flatten to event rows
+async function loadMasterLogData() {
+  const events = [];
+  // Drafts (in-progress)
+  const drafts = await dbGetAllDrafts();
+  drafts.forEach(d => {
+    const jobName = d.name || 'Untitled';
+    const tripId = d.tripId || null;
+    if (d.state) extractEvents(d.state, jobName, 'In progress', tripId, events);
+  });
+  // Completed jobs
+  const jobs = await dbGetAll();
+  jobs.forEach(j => {
+    if (j.rawState) extractEvents(j.rawState, j.client || 'Untitled', 'Completed', j.tripId || null, events);
+  });
+  // Sort newest first
+  events.sort((a, b) => b.startedAt - a.startedAt);
+  masterLogEvents = events;
+}
+
+function extractEvents(state, jobName, status, tripId, out) {
+  // Segments (drives + workdays)
+  (state.segments || []).forEach(s => {
+    const dur = (s.endedAt || Date.now()) - s.startedAt;
+    const hours = dur / 3600000;
+    const miles = (s.type === 'drive' && s.startOdoMiles && s.endOdoMiles) ? Math.max(0, s.endOdoMiles - s.startOdoMiles) : 0;
+    out.push({
+      startedAt: s.startedAt,
+      endedAt: s.endedAt,
+      type: s.type, // 'drive' | 'workday'
+      jobName, status, tripId,
+      detail: (s.note || '') + (s.tripLevel ? ' 🌍 Trip-level' : ''),
+      hours, miles, amount: 0,
+      gps: s.startGps || s.endGps || null,
+      _raw: s
+    });
+  });
+  // Receipts
+  (state.receipts || []).forEach(r => {
+    let stamp = r.stamp;
+    let ts = stamp ? parseStampToTimestamp(stamp) : null;
+    if (!ts) ts = Date.now(); // fallback
+    out.push({
+      startedAt: ts,
+      endedAt: ts,
+      type: 'receipt',
+      jobName, status, tripId,
+      detail: (r.vendor || 'Receipt') + ' · ' + (r.category || 'other'),
+      hours: 0, miles: 0,
+      amount: parseFloat(r.amount) || 0,
+      gps: r.gps || null,
+      _raw: r
+    });
+  });
+}
+
+function parseStampToTimestamp(stamp) {
+  // stamps look like "5/14/2026 8:42 AM"
+  const m = stamp && stamp.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4}),?\s+(\d{1,2}):(\d{2})\s*([AP]M)?/i);
+  if (!m) return null;
+  let hour = parseInt(m[4], 10);
+  const min = parseInt(m[5], 10);
+  if (m[6] && m[6].toUpperCase() === 'PM' && hour < 12) hour += 12;
+  if (m[6] && m[6].toUpperCase() === 'AM' && hour === 12) hour = 0;
+  return new Date(parseInt(m[3]), parseInt(m[1]) - 1, parseInt(m[2]), hour, min).getTime();
+}
+
+function populateJobFilter() {
+  const jobNames = new Set();
+  masterLogEvents.forEach(e => jobNames.add(e.jobName));
+  const sel = document.getElementById('mlJobFilter');
+  sel.innerHTML = '<option value="all">All jobs</option>' +
+    [...jobNames].sort().map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+}
+
+function getMasterLogFilteredEvents() {
+  const range = document.getElementById('mlDateRange').value;
+  const jobFilter = document.getElementById('mlJobFilter').value;
+  const typeFilter = document.getElementById('mlTypeFilter').value;
+  let from = -Infinity, to = Infinity;
+  const now = new Date();
+  if (range === 'thisweek') {
+    const ws = getWeekStart(now).getTime();
+    from = ws; to = ws + 7 * 86400000;
+  } else if (range === 'lastweek') {
+    const ws = getWeekStart(now).getTime();
+    from = ws - 7 * 86400000; to = ws;
+  } else if (range === 'last30') {
+    from = now.getTime() - 30 * 86400000;
+  } else if (range === 'thismonth') {
+    from = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    to = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+  } else if (range === 'custom') {
+    const f = document.getElementById('mlFromDate').value;
+    const t = document.getElementById('mlToDate').value;
+    if (f) from = new Date(f + 'T00:00:00').getTime();
+    if (t) to = new Date(t + 'T23:59:59').getTime();
+  }
+  return masterLogEvents.filter(e => {
+    if (e.startedAt < from || e.startedAt >= to) return false;
+    if (jobFilter !== 'all' && e.jobName !== jobFilter) return false;
+    if (typeFilter !== 'all' && e.type !== typeFilter) return false;
+    return true;
+  });
+}
+
+function renderMasterLog() {
+  if (!masterLogEvents) return;
+  const filtered = getMasterLogFilteredEvents();
+  // Stats
+  let totDrive = 0, totWork = 0, totMiles = 0, totSpent = 0;
+  const days = new Set(), jobsTouched = new Set();
+  filtered.forEach(e => {
+    if (e.type === 'drive') totDrive += e.hours;
+    else if (e.type === 'workday') totWork += e.hours;
+    totMiles += e.miles;
+    totSpent += e.amount;
+    days.add(new Date(e.startedAt).toDateString());
+    jobsTouched.add(e.jobName);
+  });
+  const stats = document.getElementById('masterLogStats');
+  stats.innerHTML = [
+    { v: (totDrive + totWork).toFixed(1) + ' hr', l: 'Total Hours' },
+    { v: totDrive.toFixed(1) + ' hr', l: 'Drive Time' },
+    { v: totWork.toFixed(1) + ' hr', l: 'Workday Time' },
+    { v: totMiles.toLocaleString(), l: 'Total Miles' },
+    { v: '$' + totSpent.toFixed(2), l: 'Total Expenses' },
+    { v: days.size, l: 'Days Worked' },
+    { v: jobsTouched.size, l: 'Jobs Touched' }
+  ].map(s => `<div style="background:#f6f7fa;padding:14px 12px;border-radius:6px;text-align:center;border:1px solid #e5e7eb"><div style="font-size:22px;font-weight:700;color:#111">${s.v}</div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-top:3px">${s.l}</div></div>`).join('');
+
+  // Body rows
+  const body = document.getElementById('masterLogBody');
+  const empty = document.getElementById('masterLogEmpty');
+  if (!filtered.length) {
+    body.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+  empty.style.display = 'none';
+  body.innerHTML = filtered.map((e, i) => {
+    const d = new Date(e.startedAt);
+    const dateStr = d.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric', year: '2-digit' });
+    const timeStr = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const endTimeStr = e.endedAt ? new Date(e.endedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+    const fullTime = e.type === 'receipt' ? timeStr : (endTimeStr ? `${timeStr} → ${endTimeStr}` : timeStr);
+    const typeLabel = {
+      drive: '🚗 Drive',
+      workday: '🏗️ Workday',
+      receipt: '💰 Receipt'
+    }[e.type] || e.type;
+    const gpsLink = e.gps ? `<a href="https://www.google.com/maps?q=${e.gps.lat},${e.gps.lng}" target="_blank" style="color:#4f8cff;text-decoration:none;font-size:11px">📍</a>` : '';
+    const stripe = i % 2 === 0 ? '#fff' : '#fafafa';
+    return `<tr style="background:${stripe};border-bottom:1px solid #eee">
+      <td style="padding:7px 10px;white-space:nowrap">${dateStr}</td>
+      <td style="padding:7px 10px;white-space:nowrap;color:#555;font-size:12px">${fullTime}</td>
+      <td style="padding:7px 10px;white-space:nowrap">${typeLabel}</td>
+      <td style="padding:7px 10px">${esc(e.jobName)}</td>
+      <td style="padding:7px 10px;color:#555">${esc(e.detail)}</td>
+      <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">${e.hours > 0 ? e.hours.toFixed(2) : ''}</td>
+      <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">${e.miles > 0 ? e.miles.toLocaleString() : ''}</td>
+      <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">${e.amount > 0 ? '$' + e.amount.toFixed(2) : ''}</td>
+      <td style="padding:7px 10px;text-align:center">${gpsLink}</td>
+    </tr>`;
+  }).join('');
+}
+
+function exportMasterLogCSV() {
+  const filtered = getMasterLogFilteredEvents();
+  if (!filtered.length) { alert('Nothing to export with the current filters.'); return; }
+  const rows = [
+    ['Date', 'Start Time', 'End Time', 'Type', 'Job', 'Status', 'Detail', 'Hours', 'Miles', 'Amount ($)', 'GPS Lat', 'GPS Lng']
+  ];
+  filtered.forEach(e => {
+    const d = new Date(e.startedAt);
+    const dateStr = d.toLocaleDateString('en-CA'); // YYYY-MM-DD for Excel-friendly
+    const startTime = d.toLocaleTimeString('en-US', { hour12: false });
+    const endTime = e.endedAt ? new Date(e.endedAt).toLocaleTimeString('en-US', { hour12: false }) : '';
+    rows.push([
+      dateStr, startTime, endTime, e.type, e.jobName, e.status, e.detail || '',
+      e.hours > 0 ? e.hours.toFixed(2) : '',
+      e.miles > 0 ? String(e.miles) : '',
+      e.amount > 0 ? e.amount.toFixed(2) : '',
+      e.gps ? e.gps.lat.toFixed(6) : '',
+      e.gps ? e.gps.lng.toFixed(6) : ''
+    ]);
+  });
+  const csv = rows.map(row => row.map(cell => {
+    const s = String(cell == null ? '' : cell);
+    if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `mistamerica-work-log-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+function exportMasterLogPDF() {
+  // The modal is already styled for print — just trigger print dialog
+  // Add a print-specific style to hide controls
+  const printStyle = document.createElement('style');
+  printStyle.id = '__mlPrintStyle';
+  printStyle.textContent = `
+    @media print {
+      body > *:not(#masterLogModal) { display: none !important; }
+      #masterLogModal { position: static !important; }
+      #masterLogModal button { display: none !important; }
+      #masterLogModal select, #masterLogModal input[type=date] { border: none !important; padding: 0 !important; background: transparent !important; appearance: none; }
+      @page { margin: 0.5in; size: landscape; }
+    }
+  `;
+  document.head.appendChild(printStyle);
+  setTimeout(() => {
+    window.print();
+    setTimeout(() => { const e = document.getElementById('__mlPrintStyle'); if (e) e.remove(); }, 1000);
+  }, 100);
 }
 
 // Manual sync button handler

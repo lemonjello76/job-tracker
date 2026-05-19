@@ -1026,6 +1026,9 @@
     <!-- Summary tiles -->
     <div id="masterLogStats" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:10px;margin-bottom:16px"></div>
 
+    <!-- Heat map of hours worked -->
+    <div id="mlHeatmap" style="margin-bottom:16px"></div>
+
     <!-- Filters -->
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;padding:12px;background:#f6f7fa;border-radius:6px;align-items:end">
       <div>
@@ -1799,20 +1802,134 @@ function renderMasterLog() {
       workday: '🏗️ Workday',
       receipt: '💰 Receipt'
     }[e.type] || e.type;
-    const gpsLink = e.gps ? `<a href="https://www.google.com/maps?q=${e.gps.lat},${e.gps.lng}" target="_blank" style="color:#4f8cff;text-decoration:none;font-size:11px">📍</a>` : '';
+
+    // Clickable job name → Google search for the place
+    const searchQuery = encodeURIComponent(e.jobName + ' ' + (e._raw && e._raw.gps ? `near ${e._raw.gps.lat.toFixed(3)},${e._raw.gps.lng.toFixed(3)}` : ''));
+    const jobLink = `<a href="https://www.google.com/search?q=${searchQuery}" target="_blank" style="color:#0ea5e9;text-decoration:none;font-weight:600" title="Search for this place online">${esc(e.jobName)}</a>`;
+
+    // Detail column — for drives, append MPH if we have miles + hours
+    let detailExtra = '';
+    if (e.type === 'drive' && e.hours > 0 && e.miles > 0) {
+      const mph = e.miles / e.hours;
+      detailExtra = ` <span style="color:#666;font-size:11px;font-style:italic">· ${mph.toFixed(0)} mph avg</span>`;
+    }
+
+    // GPS column — route for drives (start → end), single point for workday/receipt
+    let gpsLink = '';
+    if (e.type === 'drive' && e._raw && e._raw.startGps && e._raw.endGps) {
+      const s = e._raw.startGps, ee = e._raw.endGps;
+      gpsLink = `<a href="https://www.google.com/maps/dir/${s.lat},${s.lng}/${ee.lat},${ee.lng}" target="_blank" style="color:#4f8cff;text-decoration:none;font-size:11px;font-weight:600" title="View driving route on Google Maps">🗺️ Route</a>`;
+    } else if (e.gps) {
+      gpsLink = `<a href="https://www.google.com/maps?q=${e.gps.lat},${e.gps.lng}" target="_blank" style="color:#4f8cff;text-decoration:none;font-size:11px;font-weight:600" title="View location on Google Maps">📍 Map</a>`;
+    }
+
     const stripe = i % 2 === 0 ? '#fff' : '#fafafa';
     return `<tr style="background:${stripe};border-bottom:1px solid #eee">
       <td style="padding:7px 10px;white-space:nowrap">${dateStr}</td>
       <td style="padding:7px 10px;white-space:nowrap;color:#555;font-size:12px">${fullTime}</td>
       <td style="padding:7px 10px;white-space:nowrap">${typeLabel}</td>
-      <td style="padding:7px 10px">${esc(e.jobName)}</td>
-      <td style="padding:7px 10px;color:#555">${esc(e.detail)}</td>
+      <td style="padding:7px 10px">${jobLink}</td>
+      <td style="padding:7px 10px;color:#555">${esc(e.detail)}${detailExtra}</td>
       <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">${e.hours > 0 ? e.hours.toFixed(2) : ''}</td>
       <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">${e.miles > 0 ? e.miles.toLocaleString() : ''}</td>
       <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">${e.amount > 0 ? '$' + e.amount.toFixed(2) : ''}</td>
       <td style="padding:7px 10px;text-align:center">${gpsLink}</td>
     </tr>`;
   }).join('');
+
+  // Render heatmap
+  renderHoursHeatmap(filtered);
+}
+
+// Heat map — days x hours, color-coded by how much time was worked
+function renderHoursHeatmap(events) {
+  const container = document.getElementById('mlHeatmap');
+  if (!container) return;
+  const workEvents = events.filter(e => e.type === 'drive' || e.type === 'workday');
+  if (!workEvents.length) { container.innerHTML = ''; return; }
+
+  // Build day → 24-hour minutes matrix
+  const dateSet = new Set();
+  workEvents.forEach(e => dateSet.add(new Date(e.startedAt).toLocaleDateString('en-CA')));
+  const dates = [...dateSet].sort();
+  const matrix = {};
+  dates.forEach(d => matrix[d] = new Array(24).fill(0));
+
+  workEvents.forEach(e => {
+    const start = e.startedAt;
+    const end = e.endedAt || Date.now();
+    let cur = start;
+    let safety = 0;
+    while (cur < end && safety < 200) {
+      safety++;
+      const dt = new Date(cur);
+      const dateKey = dt.toLocaleDateString('en-CA');
+      const hourSlot = dt.getHours();
+      const nextHour = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), hourSlot + 1, 0, 0).getTime();
+      const stop = Math.min(end, nextHour);
+      const minutesInThisHour = (stop - cur) / 60000;
+      if (matrix[dateKey]) {
+        matrix[dateKey][hourSlot] = (matrix[dateKey][hourSlot] || 0) + minutesInThisHour;
+      }
+      cur = nextHour;
+    }
+  });
+
+  // Color scale: light yellow → dark red, max 60 min per cell
+  function cellColor(mins) {
+    if (mins === 0) return '#ffffff';
+    const intensity = Math.min(1, mins / 60);
+    const r = 255;
+    const g = Math.round(255 - intensity * 200);
+    const b = Math.round(255 - intensity * 255);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  // Header: hours 0-23
+  let html = '<table style="border-collapse:collapse;font-size:11px;background:#fff"><thead><tr><th style="padding:2px 8px"></th>';
+  for (let h = 0; h < 24; h++) {
+    const label = h === 0 ? '12a' : h < 12 ? h + 'a' : h === 12 ? '12p' : (h - 12) + 'p';
+    html += `<th style="padding:2px 3px;text-align:center;color:#666;font-weight:600;font-size:10px">${label}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  // Rows: each day
+  dates.forEach(d => {
+    const dt = new Date(d + 'T12:00:00');
+    const label = dt.toLocaleDateString('en-US', { weekday: 'short', month: 'numeric', day: 'numeric' });
+    const dayTotal = matrix[d].reduce((a, b) => a + b, 0) / 60;
+    html += `<tr><td style="padding:2px 8px;text-align:right;color:#444;white-space:nowrap;font-weight:600;font-size:11px" title="Total ${dayTotal.toFixed(1)} hrs">${label} <span style="color:#888;font-weight:400">(${dayTotal.toFixed(1)}h)</span></td>`;
+    for (let h = 0; h < 24; h++) {
+      const mins = matrix[d][h];
+      const tooltip = mins > 0 ? `${dt.toLocaleDateString()} ${h}:00 — ${(mins/60).toFixed(2)} hrs` : `${dt.toLocaleDateString()} ${h}:00 — idle`;
+      html += `<td style="width:18px;height:18px;background:${cellColor(mins)};border:1px solid #eee" title="${tooltip}"></td>`;
+    }
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  container.innerHTML = `
+    <div style="border:1px solid #e5e7eb;border-radius:6px;padding:14px;background:#fafbfc">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div>
+          <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;color:#111;margin:0">🔥 Hours-Worked Heat Map</h3>
+          <div style="font-size:11px;color:#666;margin-top:2px">Each cell = one hour of one day. Color intensity = how much of that hour was on the clock.</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#666">
+          <span>Less</span>
+          <div style="display:flex;gap:1px">
+            <div style="width:16px;height:16px;background:${cellColor(0)};border:1px solid #ccc"></div>
+            <div style="width:16px;height:16px;background:${cellColor(15)};border:1px solid #ccc"></div>
+            <div style="width:16px;height:16px;background:${cellColor(30)};border:1px solid #ccc"></div>
+            <div style="width:16px;height:16px;background:${cellColor(45)};border:1px solid #ccc"></div>
+            <div style="width:16px;height:16px;background:${cellColor(60)};border:1px solid #ccc"></div>
+          </div>
+          <span>More</span>
+        </div>
+      </div>
+      <div style="overflow-x:auto;background:#fff;border:1px solid #eee;border-radius:4px;padding:8px">${html}</div>
+    </div>
+  `;
 }
 
 function exportMasterLogCSV() {

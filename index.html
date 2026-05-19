@@ -740,7 +740,15 @@
   </select>
   <button class="action-btn-sm" style="margin:0;padding:8px 12px" onclick="newDraft()" title="Start a new in-progress job (in current trip)">+ New</button>
   <button class="action-btn-sm" style="margin:0;padding:8px 10px" onclick="deleteCurrentDraft()" title="Delete this in-progress job">🗑</button>
+  <button class="action-btn-sm" style="margin:0;padding:8px 10px;background:var(--accent);color:#fff" onclick="composeEodEmail()" title="Email today's end-of-day summary to Robert + Seann">📧 EOD</button>
   <span id="autoSaveIndicator" style="font-size:11px;color:var(--green);min-width:54px;text-align:right;opacity:0;transition:opacity .3s">✓ Saved</span>
+</div>
+
+<!-- END-OF-DAY BANNER (shown after 4pm if today has unsent activity) -->
+<div id="eodBanner" style="display:none;position:fixed;bottom:16px;left:10px;right:10px;z-index:9999;background:var(--accent);color:#fff;padding:14px 16px;border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.4);align-items:center;gap:10px;flex-wrap:wrap;max-width:560px;margin:0 auto">
+  <div style="flex:1;min-width:180px;font-weight:600;font-size:14px">📧 Send today's EOD summary to Robert + Seann?</div>
+  <button onclick="composeEodEmail()" style="padding:8px 16px;background:#fff;color:var(--accent);border:none;border-radius:var(--radius);font-weight:700;cursor:pointer;font-family:inherit">Send</button>
+  <button onclick="dismissEodBanner()" style="padding:8px 12px;background:transparent;color:#fff;border:1px solid #fff;border-radius:var(--radius);cursor:pointer;font-family:inherit">Later</button>
 </div>
 
 <!-- JOB INFO -->
@@ -1243,7 +1251,9 @@ let notes = [];      // { title, text }
 let trips = [];      // { startPhoto, startStamp, startMiles, startGps, endPhoto, endStamp, endMiles, endGps }
 let contacts = [];   // { name, role, phone, email, discussed }
 let foundContactsBuffer = []; // staged AI-extracted contacts awaiting user confirmation
-let checklist = { type: '', items: [] }; // { label, checked }
+let checklist = { type: '', items: [] }; // { label, checked } — label starting with "── " renders as section header
+const isChecklistHeader = (it) => !!(it && it.label && it.label.startsWith('── '));
+const checklistHeaderText = (it) => it.label.replace(/^──\s*|\s*──$/g, '').trim();
 let voiceMemos = []; // { audioURL, transcript, stamp, duration }
 let clockState = { running: false, startedAt: 0, accumulatedMs: 0 }; // legacy — kept for old-draft compat
 let segments = [];   // { id, type:'drive'|'workday', startedAt, endedAt, startGps, endGps, startOdoPhoto, startOdoMiles, endOdoPhoto, endOdoMiles, note, tripLevel }
@@ -1267,13 +1277,16 @@ const CHECKLIST_TEMPLATES = {
     'Confirm site is ready (water, power, mounting)',
     'Walk site with GC / property manager',
     'Verify line voltage at supply',
-    'Pressure test water supply',
-    'Mount pump unit, secure to structure',
-    'Run high-pressure line, anchor every 4 ft',
-    'Install nozzles, verify spacing',
-    'Wire pump to switch / thermostat',
+    'Confirm 1/2" FIP on ball valve at water supply',
+    'Mount equipment',
+    'Identify sleeve start and end points',
+    'Identify breakers in box w location and switches',
     'Pressurize and check every fitting for leaks',
     'Operational test — full cycle',
+    '── FINAL TOUCHES ──',
+    'Craftsmanship — clean professional finish',
+    'Hardware painted to match',
+    'Clean cord management',
     'Walk customer through start/stop, maintenance',
     'Photograph completed install (panel, line, nozzles)',
     'Collect signature / sign-off'
@@ -3296,13 +3309,19 @@ function renderChecklist() {
   const list = document.getElementById('checklistItems');
   document.getElementById('addChecklistBtn').style.display = checklist.type ? '' : 'none';
   if (!checklist.items.length) { list.innerHTML = ''; return; }
-  list.innerHTML = checklist.items.map((it, i) => `
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
+  list.innerHTML = checklist.items.map((it, i) => {
+    if (isChecklistHeader(it)) {
+      return `<div style="display:flex;align-items:center;gap:10px;padding:10px 4px 6px;margin:14px 0 4px;border-top:1px solid var(--border);font-weight:700;font-size:12px;letter-spacing:1.5px;color:var(--accent);text-transform:uppercase">
+        <span style="flex:1">${esc(checklistHeaderText(it))}</span>
+        <button class="remove-btn" style="position:static" onclick="checklist.items.splice(${i},1);renderChecklist()" title="Remove section">×</button>
+      </div>`;
+    }
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);margin-bottom:6px">
       <input type="checkbox" ${it.checked?'checked':''} onchange="checklist.items[${i}].checked=this.checked" style="width:20px;height:20px;flex-shrink:0;cursor:pointer">
       <input type="text" value="${esc(it.label)}" onchange="checklist.items[${i}].label=this.value" style="flex:1;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;outline:none${it.checked?';text-decoration:line-through;color:var(--dim)':''}">
       <button class="remove-btn" style="position:static" onclick="checklist.items.splice(${i},1);renderChecklist()">×</button>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
 }
 
 // ═══════════════════════════════
@@ -4408,10 +4427,15 @@ function generateReport() {
   // Checklist
   if (checklist.items.length > 0) {
     const labelMap = { new_install: 'New Install', service_call: 'Service Call', ro_setup: 'RO System Setup', warranty: 'Warranty Work' };
-    const done = checklist.items.filter(it => it.checked).length;
-    html += `<h2>Checklist${checklist.type ? ' — ' + esc(labelMap[checklist.type] || checklist.type) : ''} (${done}/${checklist.items.length})</h2><ul style="list-style:none;padding:0;margin:8px 0">`;
+    const realItems = checklist.items.filter(it => !isChecklistHeader(it));
+    const done = realItems.filter(it => it.checked).length;
+    html += `<h2>Checklist${checklist.type ? ' — ' + esc(labelMap[checklist.type] || checklist.type) : ''} (${done}/${realItems.length})</h2><ul style="list-style:none;padding:0;margin:8px 0">`;
     checklist.items.forEach(it => {
-      html += `<li style="padding:6px 0;font-size:14px${it.checked?';color:#666':''}">${it.checked ? '☑' : '☐'} ${esc(it.label)}</li>`;
+      if (isChecklistHeader(it)) {
+        html += `<li style="padding:12px 0 4px;font-size:13px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:1px;border-top:1px solid #ddd;margin-top:8px">${esc(checklistHeaderText(it))}</li>`;
+      } else {
+        html += `<li style="padding:6px 0;font-size:14px${it.checked?';color:#666':''}">${it.checked ? '☑' : '☐'} ${esc(it.label)}</li>`;
+      }
     });
     html += `</ul>`;
   }
@@ -4618,8 +4642,9 @@ function generateSummary() {
   }
 
   const heroPhotos = photos.slice(0, 4);
-  const checklistDone = checklist.items.filter(it => it.checked).length;
-  const checklistTotal = checklist.items.length;
+  const _realChecklist = checklist.items.filter(it => !isChecklistHeader(it));
+  const checklistDone = _realChecklist.filter(it => it.checked).length;
+  const checklistTotal = _realChecklist.length;
   const status = (dateEnd && checklistTotal > 0 && checklistDone === checklistTotal) ? 'Completed'
               : (dateEnd ? 'Completed (no checklist)'
               : (checklistTotal > 0 && checklistDone < checklistTotal) ? 'Punch List Remaining' : 'In Progress');
@@ -5247,11 +5272,20 @@ async function saveAndReset() {
     contactCount: contacts.filter(c => c.name || c.role || c.discussed).length,
     voiceMemoCount: voiceMemos.length,
     checklistType: checklist.type,
-    checklistDone: checklist.items.filter(it => it.checked).length,
-    checklistTotal: checklist.items.length,
+    checklistDone: checklist.items.filter(it => !isChecklistHeader(it) && it.checked).length,
+    checklistTotal: checklist.items.filter(it => !isChecklistHeader(it)).length,
     clockMs: clockState.accumulatedMs,
   };
-  await dbPut(job);
+  try {
+    await dbPut(job);
+  } catch (e) {
+    console.error('Save failed:', e);
+    const msg = (e && e.name === 'QuotaExceededError')
+      ? 'Save failed — storage is full. Try deleting some old completed jobs from the sidebar, then hit Save & New Job again. Your current draft is still safe.'
+      : 'Save failed: ' + ((e && e.message) || e) + '\n\nYour current draft is still safe — try again, or screenshot this error.';
+    alert(msg);
+    return; // Bail out — leave the draft + form intact so nothing is lost
+  }
   // Graduate this draft to a completed job — remove from drafts
   if (currentDraftId) {
     try { await dbDeleteDraft(currentDraftId); } catch (e) {}
@@ -6375,6 +6409,228 @@ async function deleteCurrentDraft() {
 }
 
 // ═══════════════════════════════
+// END-OF-DAY EMAIL
+// ═══════════════════════════════
+const EOD_RECIPIENTS = ['robertl@mistamerica.com', 'seann@mistamerica.com'];
+const EOD_TRIGGER_HOUR = 16; // 4pm local
+
+function eodTodayBounds() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  return {
+    start,
+    end: start + 86400000,
+    dateStr: now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  };
+}
+
+function eodSegOverlapsToday(seg, b) {
+  const segEnd = seg.endedAt || Date.now();
+  return seg.startedAt < b.end && segEnd > b.start;
+}
+
+function eodClipMs(seg, b) {
+  const segEnd = seg.endedAt || Date.now();
+  return Math.max(0, Math.min(segEnd, b.end) - Math.max(seg.startedAt, b.start));
+}
+
+function eodIsToday(stampStr, b) {
+  if (!stampStr) return false;
+  const t = Date.parse(stampStr);
+  if (isNaN(t)) return false;
+  return t >= b.start && t < b.end;
+}
+
+function eodFmtHM(ms) {
+  const totalMin = Math.round(ms / 60000);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return m + ' min';
+  if (m === 0) return h + ' hr';
+  return h + ' hr ' + m + ' min';
+}
+
+async function buildTodaySummary() {
+  const b = eodTodayBounds();
+  const out = {
+    type: 'empty', dateStr: b.dateStr, clientName: '', city: '',
+    driveMs: 0, workMs: 0, miles: 0,
+    photoCount: 0, receiptCount: 0, receiptTotal: 0,
+    workCompleted: '', blockers: '', selfNotes: ''
+  };
+
+  // Track which client to attribute the day to (most recent workday wins)
+  let latestWorkdayStart = 0;
+
+  // 1) In-memory active state
+  const inMemClient = document.getElementById('client').value.trim();
+  for (const seg of (segments || [])) {
+    if (!eodSegOverlapsToday(seg, b)) continue;
+    const ms = eodClipMs(seg, b);
+    if (seg.type === 'drive') {
+      out.driveMs += ms;
+      if (seg.startOdoMiles && seg.endOdoMiles && seg.endOdoMiles > seg.startOdoMiles) {
+        out.miles += (seg.endOdoMiles - seg.startOdoMiles);
+      }
+    } else if (seg.type === 'workday') {
+      out.workMs += ms;
+      if (seg.startedAt > latestWorkdayStart) {
+        latestWorkdayStart = seg.startedAt;
+        if (inMemClient) { out.clientName = inMemClient; out.city = document.getElementById('city').value.trim(); }
+      }
+    }
+  }
+  // In-memory photos/receipts
+  for (const p of (photos || [])) if (eodIsToday(p.stamp, b)) out.photoCount++;
+  for (const r of (receipts || [])) {
+    if (eodIsToday(r.stamp, b)) {
+      out.receiptCount++;
+      out.receiptTotal += (parseFloat(r.amount) || 0);
+    }
+  }
+  if (dailyNotes) {
+    out.workCompleted = dailyNotes.workCompleted || '';
+    out.blockers = dailyNotes.blockers || '';
+    out.selfNotes = dailyNotes.selfNotes || '';
+  }
+
+  // 2) Other drafts (skip the active one — already counted from memory)
+  try {
+    const drafts = await dbGetAllDrafts();
+    for (const d of drafts) {
+      if (d.id === currentDraftId) continue;
+      const s = d.state || {};
+      for (const seg of (s.segments || [])) {
+        if (!eodSegOverlapsToday(seg, b)) continue;
+        const ms = eodClipMs(seg, b);
+        if (seg.type === 'drive') {
+          out.driveMs += ms;
+          if (seg.startOdoMiles && seg.endOdoMiles && seg.endOdoMiles > seg.startOdoMiles) {
+            out.miles += (seg.endOdoMiles - seg.startOdoMiles);
+          }
+        } else if (seg.type === 'workday') {
+          out.workMs += ms;
+          if (seg.startedAt > latestWorkdayStart) {
+            latestWorkdayStart = seg.startedAt;
+            if (s.client) { out.clientName = s.client; out.city = s.city || ''; }
+          }
+        }
+      }
+      for (const p of (s.photos || [])) if (eodIsToday(p.stamp, b)) out.photoCount++;
+      for (const r of (s.receipts || [])) {
+        if (eodIsToday(r.stamp, b)) {
+          out.receiptCount++;
+          out.receiptTotal += (parseFloat(r.amount) || 0);
+        }
+      }
+    }
+  } catch (e) { console.warn('EOD draft scan failed:', e); }
+
+  // 3) Completed jobs whose segments overlap today (multi-day jobs)
+  try {
+    const jobs = await dbGetAll();
+    for (const j of jobs) {
+      const s = j.rawState;
+      if (!s || !s.segments) continue;
+      for (const seg of s.segments) {
+        if (!eodSegOverlapsToday(seg, b)) continue;
+        const ms = eodClipMs(seg, b);
+        if (seg.type === 'drive') {
+          out.driveMs += ms;
+          if (seg.startOdoMiles && seg.endOdoMiles && seg.endOdoMiles > seg.startOdoMiles) {
+            out.miles += (seg.endOdoMiles - seg.startOdoMiles);
+          }
+        } else if (seg.type === 'workday') {
+          out.workMs += ms;
+          if (seg.startedAt > latestWorkdayStart) {
+            latestWorkdayStart = seg.startedAt;
+            if (j.client) { out.clientName = j.client; out.city = j.city || ''; }
+          }
+        }
+      }
+    }
+  } catch (e) { console.warn('EOD jobs scan failed:', e); }
+
+  if (out.workMs > 0) out.type = 'job';
+  else if (out.driveMs > 0 || out.miles > 0) out.type = 'drive';
+  return out;
+}
+
+async function composeEodEmail() {
+  hideEodBanner();
+  let sum;
+  try {
+    sum = await buildTodaySummary();
+  } catch (e) {
+    alert('Could not build EOD summary: ' + (e.message || e));
+    return;
+  }
+  if (sum.type === 'empty') {
+    alert('Nothing logged today — no drive or workday segments started after midnight.\n\nIf you have time/miles/photos to send, tap them in first, then hit 📧 EOD again.');
+    return;
+  }
+
+  const subject = sum.type === 'job'
+    ? `Lyle EOD — ${sum.clientName || 'Job'} — ${sum.dateStr}`
+    : `Lyle EOD — Drive Day — ${sum.dateStr}`;
+
+  const lines = [];
+  if (sum.type === 'job') {
+    lines.push(`End-of-day update for ${sum.clientName || 'job'}${sum.city ? ' (' + sum.city + ')' : ''}.`);
+    lines.push('');
+    lines.push(`Time on site today: ${eodFmtHM(sum.workMs)}`);
+    if (sum.driveMs > 0) lines.push(`Drive time today: ${eodFmtHM(sum.driveMs)}`);
+    if (sum.miles > 0) lines.push(`Miles driven today: ${sum.miles.toLocaleString()}`);
+    if (sum.photoCount > 0) lines.push(`Site photos captured today: ${sum.photoCount}`);
+    if (sum.receiptCount > 0) lines.push(`Expenses today: ${sum.receiptCount} receipt(s), $${sum.receiptTotal.toFixed(2)} total`);
+    if (sum.workCompleted) { lines.push(''); lines.push('Work completed:'); lines.push(sum.workCompleted); }
+    if (sum.blockers) { lines.push(''); lines.push('Blockers / issues:'); lines.push(sum.blockers); }
+  } else {
+    lines.push(`Drive day summary for ${sum.dateStr}.`);
+    lines.push('');
+    if (sum.driveMs > 0) lines.push(`Total drive time: ${eodFmtHM(sum.driveMs)}`);
+    if (sum.miles > 0) lines.push(`Miles driven: ${sum.miles.toLocaleString()}`);
+    if (sum.receiptCount > 0) lines.push(`Expenses: ${sum.receiptCount} receipt(s), $${sum.receiptTotal.toFixed(2)} total`);
+  }
+  lines.push('');
+  lines.push('— Lyle');
+  lines.push('(Sent from Job Tracker)');
+
+  const body = lines.join('\n');
+  const to = EOD_RECIPIENTS.join(',');
+  const url = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+
+  try { localStorage.setItem('eodLastSent', String(eodTodayBounds().start)); } catch (e) {}
+  window.location.href = url;
+}
+
+function dismissEodBanner() {
+  hideEodBanner();
+  try { localStorage.setItem('eodDismissed', String(eodTodayBounds().start)); } catch (e) {}
+}
+
+function hideEodBanner() {
+  const b = document.getElementById('eodBanner');
+  if (b) b.style.display = 'none';
+}
+
+async function maybeShowEodBanner() {
+  try {
+    const now = new Date();
+    if (now.getHours() < EOD_TRIGGER_HOUR) return;
+    const todayStart = eodTodayBounds().start;
+    if (parseInt(localStorage.getItem('eodLastSent') || '0', 10) >= todayStart) return;
+    if (parseInt(localStorage.getItem('eodDismissed') || '0', 10) >= todayStart) return;
+    const sum = await buildTodaySummary();
+    if (sum.type === 'empty') return;
+    const banner = document.getElementById('eodBanner');
+    if (banner) banner.style.display = 'flex';
+  } catch (e) {
+    console.warn('EOD banner check failed:', e);
+  }
+}
+
+// ═══════════════════════════════
 // INIT
 // ═══════════════════════════════
 (async function init() {
@@ -6473,6 +6729,11 @@ async function deleteCurrentDraft() {
 
   // Periodic safety net — every 30 seconds force a save if there's any content
   setInterval(() => { if (hasAnyContent()) scheduleAutoSave(); }, 30000);
+
+  // EOD banner — after 4pm, if today has unsent activity, show the prompt
+  setTimeout(() => { maybeShowEodBanner(); }, 1500);
+  // Re-check every 30 min in case the user has the app open through 4pm
+  setInterval(() => { maybeShowEodBanner(); }, 30 * 60 * 1000);
 })();
 </script>
 

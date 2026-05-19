@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Job Report Builder</title>
+<!-- Firebase (cloud sync between phone and laptop) -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -700,7 +703,8 @@
 <!-- Header -->
 <div class="header">
   <h1><span>Mist</span>America</h1>
-  <div style="display:flex;gap:8px">
+  <div style="display:flex;gap:8px;align-items:center">
+    <span id="cloudSyncIndicator" style="font-size:12px;color:#8b90a0;cursor:pointer;font-weight:600" onclick="manualSync()" title="Tap to sync now">☁️ ...</span>
     <button class="header-btn" onclick="openSettings()" title="Settings">⚙️</button>
     <button class="header-btn" onclick="openSidebar()">Completed Jobs (<span id="completedCount">0</span>)</button>
   </div>
@@ -1212,7 +1216,7 @@ function dbPutTrip(trip) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('trips', 'readwrite');
     tx.objectStore('trips').put(trip);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => { resolve(); cloudPushTrip(trip); };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -1236,7 +1240,7 @@ function dbDeleteTrip(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('trips', 'readwrite');
     tx.objectStore('trips').delete(id);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => { resolve(); cloudDeleteTrip(id); };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -1246,7 +1250,7 @@ function dbPutDraft(draft) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('drafts', 'readwrite');
     tx.objectStore('drafts').put(draft);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => { resolve(); cloudPushDraft(draft); };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -1270,7 +1274,7 @@ function dbDeleteDraft(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('drafts', 'readwrite');
     tx.objectStore('drafts').delete(id);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => { resolve(); cloudDeleteDraft(id); };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -1278,7 +1282,7 @@ function dbPut(job) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('jobs', 'readwrite');
     tx.objectStore('jobs').put(job);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => { resolve(); cloudPushJob(job); };
     tx.onerror = e => reject(e.target.error);
   });
 }
@@ -1302,9 +1306,248 @@ function dbDelete(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('jobs', 'readwrite');
     tx.objectStore('jobs').delete(id);
-    tx.oncomplete = () => resolve();
+    tx.oncomplete = () => { resolve(); cloudDeleteJob(id); };
     tx.onerror = e => reject(e.target.error);
   });
+}
+
+// ═══════════════════════════════
+// CLOUD SYNC — Firebase Firestore
+// ═══════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyDsx-VoWLfIqpKuYUaDsp0MFlc-24xwH8s",
+  authDomain: "mistamerica-job-tracker.firebaseapp.com",
+  projectId: "mistamerica-job-tracker",
+  storageBucket: "mistamerica-job-tracker.firebasestorage.app",
+  messagingSenderId: "491853979701",
+  appId: "1:491853979701:web:64da6ffeb49e9c6e4d517c"
+};
+const CLOUD_USER_ID = 'lyle-mistamerica';  // fixed for now — single-user app
+let cloudReady = false;
+let fdb = null;
+let cloudUserRef = null;
+let cloudSyncQueue = []; // pending operations while offline / not initialized
+let cloudSyncSilenced = false; // true during pullFromCloud to prevent loop
+
+try {
+  if (typeof firebase !== 'undefined' && firebase.initializeApp) {
+    firebase.initializeApp(firebaseConfig);
+    fdb = firebase.firestore();
+    cloudUserRef = fdb.collection('users').doc(CLOUD_USER_ID);
+    cloudReady = true;
+  }
+} catch (e) {
+  console.warn('Firebase init failed:', e);
+  cloudReady = false;
+}
+
+// Strip heavy binary (photos, audio, big embedded HTML) before cloud upload
+function stripBinaryForCloud(state) {
+  if (!state) return state;
+  const clean = JSON.parse(JSON.stringify(state));
+  if (clean.photos) clean.photos.forEach(p => { p.dataURL = ''; if (p.annotatedURL) p.annotatedURL = ''; });
+  if (clean.receipts) clean.receipts.forEach(r => { r.dataURL = ''; });
+  if (clean.jobFiles) clean.jobFiles.forEach(f => { f.dataURL = ''; });
+  if (clean.segments) clean.segments.forEach(s => { if (s.startOdoPhoto) s.startOdoPhoto = ''; if (s.endOdoPhoto) s.endOdoPhoto = ''; });
+  if (clean.voiceMemos) clean.voiceMemos.forEach(v => { v.audioURL = ''; });
+  return clean;
+}
+
+function setSyncStatus(state, label) {
+  const el = document.getElementById('cloudSyncIndicator');
+  if (!el) return;
+  const colors = {
+    syncing: '#fbbf24',
+    synced: '#22c55e',
+    error: '#ef4444',
+    offline: '#8b90a0',
+    pulling: '#4f8cff'
+  };
+  el.style.color = colors[state] || '#8b90a0';
+  el.textContent = label || (state === 'synced' ? '☁️ Synced' : state === 'syncing' ? '☁️ Syncing...' : state === 'error' ? '☁️ Sync error' : state === 'pulling' ? '☁️ Pulling...' : '☁️ Offline');
+}
+
+async function cloudPushDraft(draft) {
+  if (!cloudReady || cloudSyncSilenced) return;
+  setSyncStatus('syncing');
+  try {
+    const safeDraft = { ...draft, state: stripBinaryForCloud(draft.state) };
+    await cloudUserRef.collection('drafts').doc(draft.id).set(safeDraft);
+    setSyncStatus('synced');
+  } catch (e) {
+    console.warn('cloudPushDraft failed:', e);
+    setSyncStatus('error');
+  }
+}
+
+async function cloudDeleteDraft(id) {
+  if (!cloudReady || cloudSyncSilenced) return;
+  try { await cloudUserRef.collection('drafts').doc(id).delete(); setSyncStatus('synced'); }
+  catch (e) { console.warn('cloudDeleteDraft failed:', e); setSyncStatus('error'); }
+}
+
+async function cloudPushJob(job) {
+  if (!cloudReady || cloudSyncSilenced) return;
+  setSyncStatus('syncing');
+  try {
+    // Strip the heavy reportHTML and rawState binaries — keep just the metadata + structured rawState
+    const safeJob = { ...job, reportHTML: '[Generated locally — open the device where this job was saved to view the full report]' };
+    if (safeJob.rawState) safeJob.rawState = stripBinaryForCloud(safeJob.rawState);
+    if (safeJob.summaryHTML) safeJob.summaryHTML = '';
+    await cloudUserRef.collection('jobs').doc(String(job.id)).set(safeJob);
+    setSyncStatus('synced');
+  } catch (e) {
+    console.warn('cloudPushJob failed:', e);
+    setSyncStatus('error');
+  }
+}
+
+async function cloudDeleteJob(id) {
+  if (!cloudReady || cloudSyncSilenced) return;
+  try { await cloudUserRef.collection('jobs').doc(String(id)).delete(); setSyncStatus('synced'); }
+  catch (e) { console.warn('cloudDeleteJob failed:', e); setSyncStatus('error'); }
+}
+
+async function cloudPushTrip(trip) {
+  if (!cloudReady || cloudSyncSilenced) return;
+  setSyncStatus('syncing');
+  try {
+    await cloudUserRef.collection('trips').doc(trip.id).set(trip);
+    setSyncStatus('synced');
+  } catch (e) { console.warn('cloudPushTrip failed:', e); setSyncStatus('error'); }
+}
+
+async function cloudDeleteTrip(id) {
+  if (!cloudReady || cloudSyncSilenced) return;
+  try { await cloudUserRef.collection('trips').doc(id).delete(); setSyncStatus('synced'); }
+  catch (e) { console.warn('cloudDeleteTrip failed:', e); setSyncStatus('error'); }
+}
+
+// Pull EVERYTHING from cloud and merge into local IndexedDB
+// Strategy: cloud is source of truth for non-binary fields. Local binaries are PRESERVED if they exist.
+async function pullFromCloud() {
+  if (!cloudReady) { setSyncStatus('offline'); return; }
+  setSyncStatus('pulling');
+  cloudSyncSilenced = true;
+  try {
+    // Trips
+    const tripsSnap = await cloudUserRef.collection('trips').get();
+    const cloudTrips = tripsSnap.docs.map(d => d.data());
+    for (const t of cloudTrips) {
+      await dbPutTrip(t);
+    }
+    // Drafts — preserve local binaries when merging
+    const draftsSnap = await cloudUserRef.collection('drafts').get();
+    for (const dSnap of draftsSnap.docs) {
+      const cloudDraft = dSnap.data();
+      const localDraft = await dbGetDraft(cloudDraft.id);
+      const mergedState = mergeStatesPreservingBinaries(localDraft && localDraft.state, cloudDraft.state);
+      await dbPutDraft({ ...cloudDraft, state: mergedState });
+    }
+    // Jobs — preserve local rawState binaries + reportHTML if local has them
+    const jobsSnap = await cloudUserRef.collection('jobs').get();
+    for (const jSnap of jobsSnap.docs) {
+      const cloudJob = jSnap.data();
+      const localJob = await dbGet(parseInt(jSnap.id, 10));
+      const merged = { ...cloudJob };
+      if (localJob) {
+        // Local report HTML wins (has the photos baked in)
+        if (localJob.reportHTML && !cloudJob.reportHTML?.startsWith('[Generated locally')) {
+          // both have it — cloud also has full — use cloud's (unlikely path)
+        } else if (localJob.reportHTML) {
+          merged.reportHTML = localJob.reportHTML;
+        }
+        if (localJob.summaryHTML) merged.summaryHTML = localJob.summaryHTML;
+        // Preserve binaries in rawState
+        if (localJob.rawState && cloudJob.rawState) {
+          merged.rawState = mergeStatesPreservingBinaries(localJob.rawState, cloudJob.rawState);
+        } else if (localJob.rawState) {
+          merged.rawState = localJob.rawState;
+        }
+      }
+      merged.id = parseInt(jSnap.id, 10);
+      await dbPut(merged);
+    }
+    setSyncStatus('synced');
+    // Refresh visible UI
+    await refreshTripSelector();
+    await refreshDraftSelector();
+    await refreshSidebar();
+    // If a draft is currently open, reload its state from disk
+    if (currentDraftId) {
+      const refreshed = await dbGetDraft(currentDraftId);
+      if (refreshed) applyDraftState(refreshed.state);
+    }
+  } catch (e) {
+    console.warn('pullFromCloud failed:', e);
+    setSyncStatus('error');
+  } finally {
+    cloudSyncSilenced = false;
+  }
+}
+
+// Merge cloud state into local state, preserving local binary fields (photo dataURLs, audio, odo photos)
+function mergeStatesPreservingBinaries(localState, cloudState) {
+  if (!cloudState) return localState;
+  if (!localState) return cloudState;
+  const merged = { ...cloudState };
+  // Photos — match by ordering; preserve local dataURL/annotatedURL
+  if (cloudState.photos && localState.photos) {
+    merged.photos = cloudState.photos.map((cp, i) => {
+      const lp = localState.photos[i];
+      if (lp && lp.dataURL) cp.dataURL = lp.dataURL;
+      if (lp && lp.annotatedURL) cp.annotatedURL = lp.annotatedURL;
+      return cp;
+    });
+  }
+  if (cloudState.receipts && localState.receipts) {
+    merged.receipts = cloudState.receipts.map((cr, i) => {
+      const lr = localState.receipts[i];
+      if (lr && lr.dataURL) cr.dataURL = lr.dataURL;
+      return cr;
+    });
+  }
+  if (cloudState.jobFiles && localState.jobFiles) {
+    merged.jobFiles = cloudState.jobFiles.map((cf, i) => {
+      const lf = localState.jobFiles[i];
+      if (lf && lf.dataURL) cf.dataURL = lf.dataURL;
+      return cf;
+    });
+  }
+  if (cloudState.segments && localState.segments) {
+    // Match segments by id
+    const byId = {};
+    localState.segments.forEach(s => byId[s.id] = s);
+    merged.segments = cloudState.segments.map(cs => {
+      const ls = byId[cs.id];
+      if (ls) {
+        if (ls.startOdoPhoto) cs.startOdoPhoto = ls.startOdoPhoto;
+        if (ls.endOdoPhoto) cs.endOdoPhoto = ls.endOdoPhoto;
+      }
+      return cs;
+    });
+  }
+  if (cloudState.voiceMemos && localState.voiceMemos) {
+    merged.voiceMemos = cloudState.voiceMemos.map((cv, i) => {
+      const lv = localState.voiceMemos[i];
+      if (lv && lv.audioURL) cv.audioURL = lv.audioURL;
+      return cv;
+    });
+  }
+  return merged;
+}
+
+// Manual sync button handler
+async function manualSync() {
+  if (!cloudReady) {
+    alert('Cloud sync not available right now (offline or Firebase failed to load). Try refreshing the page.');
+    return;
+  }
+  // Push current state to cloud first, then pull
+  showToast('☁️ Syncing...', 'info', 2000);
+  await autoSave();
+  await pullFromCloud();
+  showToast('☁️ Sync complete', 'good', 2500);
 }
 
 // ═══════════════════════════════
@@ -5451,6 +5694,14 @@ async function deleteCurrentDraft() {
 (async function init() {
   try {
     db = await openDB();
+    // Initial cloud sync: pull down whatever's in Firestore so this device matches
+    if (cloudReady) {
+      setSyncStatus('pulling');
+      // Don't block UI — run in background. UI may briefly show old state then refresh.
+      pullFromCloud().catch(e => console.warn('Initial cloud pull failed:', e));
+    } else {
+      setSyncStatus('offline');
+    }
     const jobs = await dbGetAll();
     document.getElementById('completedCount').textContent = jobs.length;
 

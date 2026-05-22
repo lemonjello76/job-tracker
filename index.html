@@ -852,9 +852,6 @@
   <button class="action-btn" onclick="toggleSection('checklistSection')">
     <span class="icon">✅</span> CHECKLIST
   </button>
-  <button class="action-btn" onclick="toggleSection('voiceSection')">
-    <span class="icon">🎙️</span> VOICE MEMOS
-  </button>
   <button class="action-btn" onclick="toggleSection('communicationsSection'); addCommunicationIfEmpty()">
     <span class="icon">📧</span> COMM LOG
   </button>
@@ -968,17 +965,6 @@
   </div>
   <div id="checklistItems"></div>
   <button class="action-btn-sm" onclick="addChecklistItem()" id="addChecklistBtn" style="display:none">+ Add Custom Item</button>
-</div>
-
-<!-- VOICE MEMOS -->
-<div id="voiceSection" class="section hidden">
-  <h2>Voice Memos (<span id="voiceCount">0</span>)</h2>
-  <div id="voiceUnsupported" style="display:none;color:var(--yellow);font-size:13px;margin-bottom:10px">
-    ⚠ Voice transcription needs Chrome or Edge. Recording will still work; transcript may be blank.
-  </div>
-  <button class="action-btn-sm" id="recordBtn" onclick="toggleRecord()">🎙️ Start Recording</button>
-  <div id="recordStatus" style="display:none;color:var(--red);font-weight:700;margin:8px 0">● Recording — <span id="recordTimer">0:00</span></div>
-  <div id="voiceList" style="margin-top:12px"></div>
 </div>
 
 <!-- COMMUNICATIONS LOG -->
@@ -1242,14 +1228,8 @@
 // ═══════════════════════════════
 // STATE
 // ═══════════════════════════════
-let photos = [];     // { dataURL, notes, gps, area, phase, component, voiceNote }
+let photos = [];     // { dataURL, notes, gps, area, phase, component }
 let photoFilter = { phase: '', area: '' }; // active photo grid filter
-let pendingVoicePhotoIndex = null;
-let photoVoiceMediaRecorder = null;
-let photoVoiceChunks = [];
-let photoVoiceSpeechRec = null;
-let photoVoiceTranscript = '';
-let photoVoiceStartedAt = 0;
 // Markup state
 let markupTargetIndex = -1;
 let markupAnnotations = [];
@@ -1267,7 +1247,6 @@ let foundContactsBuffer = []; // staged AI-extracted contacts awaiting user conf
 let checklist = { type: '', items: [] }; // { label, checked } — label starting with "── " renders as section header
 const isChecklistHeader = (it) => !!(it && it.label && it.label.startsWith('── '));
 const checklistHeaderText = (it) => it.label.replace(/^──\s*|\s*──$/g, '').trim();
-let voiceMemos = []; // { audioURL, transcript, stamp, duration }
 let clockState = { running: false, startedAt: 0, accumulatedMs: 0 }; // legacy — kept for old-draft compat
 let segments = [];   // { id, type:'drive'|'workday', startedAt, endedAt, startGps, endGps, startOdoPhoto, startOdoMiles, endOdoPhoto, endOdoMiles, note, tripLevel }
 let pinnedLocation = null; // { lat, lng, acc, pinnedAt } — the pinned site GPS for this draft
@@ -1494,7 +1473,6 @@ function stripBinaryForCloud(state) {
   if (clean.receipts) clean.receipts.forEach(r => { r.dataURL = ''; });
   if (clean.jobFiles) clean.jobFiles.forEach(f => { f.dataURL = ''; });
   if (clean.segments) clean.segments.forEach(s => { if (s.startOdoPhoto) s.startOdoPhoto = ''; if (s.endOdoPhoto) s.endOdoPhoto = ''; });
-  if (clean.voiceMemos) clean.voiceMemos.forEach(v => { v.audioURL = ''; });
   if (clean.videos) clean.videos.forEach(v => { delete v.blob; delete v._url; });
   return clean;
 }
@@ -1673,13 +1651,6 @@ function mergeStatesPreservingBinaries(localState, cloudState) {
       return cs;
     });
   }
-  if (cloudState.voiceMemos && localState.voiceMemos) {
-    merged.voiceMemos = cloudState.voiceMemos.map((cv, i) => {
-      const lv = localState.voiceMemos[i];
-      if (lv && lv.audioURL) cv.audioURL = lv.audioURL;
-      return cv;
-    });
-  }
   // Videos — match by id (more reliable than index for videos)
   if (cloudState.videos && localState.videos) {
     const byId = {};
@@ -1791,8 +1762,7 @@ function renderPhotoSearch() {
     if (photoSearchPhase && p.phase !== photoSearchPhase) return false;
     if (!q) return true;
     const haystack = [
-      p.notes, p.area, p.component, p.phase, p._jobName,
-      p.voiceNote?.transcript || ''
+      p.notes, p.area, p.component, p.phase, p._jobName
     ].join(' ').toLowerCase();
     return haystack.includes(q);
   });
@@ -2506,7 +2476,7 @@ document.getElementById('photoInput').addEventListener('change', async function(
       const idx = photos.length;
       photos.push({
         dataURL: stamped.dataURL, notes: '', gps, stamp: stamped.stamp,
-        area: '', phase: '', component: '', voiceNote: null
+        area: '', phase: '', component: ''
       });
       newPhotoIndices.push(idx);
       loaded++;
@@ -2717,12 +2687,7 @@ function renderPhotos() {
     return true;
   });
 
-  const isRecording = photoVoiceMediaRecorder && photoVoiceMediaRecorder.state === 'recording';
-
   document.getElementById('photoGrid').innerHTML = visible.map(({p, i}) => {
-    const recordBtn = (isRecording && pendingVoicePhotoIndex === i)
-      ? `<button class="action-btn-sm" style="margin:6px 0 0;padding:6px 10px;font-size:12px;background:var(--red);color:#fff;width:100%" onclick="recordPhotoVoice(${i})">■ Stop Recording</button>`
-      : `<button class="action-btn-sm" style="margin:6px 0 0;padding:6px 10px;font-size:12px;width:100%" onclick="recordPhotoVoice(${i})">🎙️ ${p.voiceNote ? 'Re-record' : 'Voice Note'}</button>`;
     const displayURL = photoDisplayURL(p);
     const annotatedBadge = p.annotatedURL ? `<div style="position:absolute;top:6px;left:6px;background:rgba(239,68,68,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.5px">✏ MARKED</div>` : '';
     const aiBadge = p._describing
@@ -2758,11 +2723,6 @@ function renderPhotos() {
           <option value="other"${p.component==='other'?' selected':''}>❔ Other</option>
         </select>
       </div>
-      ${recordBtn}
-      ${p.voiceNote ? `
-        <audio controls src="${p.voiceNote.audioURL}" style="width:100%;margin-top:6px"></audio>
-        ${p.voiceNote.transcript ? `<div style="font-size:11px;color:var(--dim);font-style:italic;padding:4px 8px;background:var(--surface);border-radius:var(--radius);margin-top:4px">"${esc(p.voiceNote.transcript)}"</div>` : ''}
-      ` : ''}
       <textarea placeholder="Notes — what does this photo show?" onchange="photos[${i}].notes=this.value;scheduleAutoSave()">${esc(p.notes)}</textarea>
     </div>
   `;}).join('');
@@ -2771,67 +2731,6 @@ function renderPhotos() {
 function setPhotoFilter(key, val) {
   photoFilter[key] = val;
   renderPhotos();
-}
-
-// Per-photo voice notes
-async function recordPhotoVoice(index) {
-  // If currently recording, stop
-  if (photoVoiceMediaRecorder && photoVoiceMediaRecorder.state === 'recording') {
-    photoVoiceMediaRecorder.stop();
-    if (photoVoiceSpeechRec) { try { photoVoiceSpeechRec.stop(); } catch(e) {} }
-    return;
-  }
-  pendingVoicePhotoIndex = index;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    photoVoiceChunks = [];
-    photoVoiceTranscript = '';
-    photoVoiceStartedAt = Date.now();
-    photoVoiceMediaRecorder = new MediaRecorder(stream);
-    photoVoiceMediaRecorder.ondataavailable = e => { if (e.data.size > 0) photoVoiceChunks.push(e.data); };
-    photoVoiceMediaRecorder.onstop = async () => {
-      stream.getTracks().forEach(t => t.stop());
-      const blob = new Blob(photoVoiceChunks, { type: 'audio/webm' });
-      const reader = new FileReader();
-      reader.onload = ev => {
-        const duration = Math.floor((Date.now() - photoVoiceStartedAt) / 1000);
-        if (photos[pendingVoicePhotoIndex]) {
-          photos[pendingVoicePhotoIndex].voiceNote = {
-            audioURL: ev.target.result,
-            transcript: photoVoiceTranscript.trim(),
-            duration
-          };
-        }
-        photoVoiceMediaRecorder = null;
-        pendingVoicePhotoIndex = null;
-        renderPhotos();
-        scheduleAutoSave();
-      };
-      reader.readAsDataURL(blob);
-    };
-    photoVoiceMediaRecorder.start();
-
-    // Live transcription (Chrome/Edge only)
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
-      photoVoiceSpeechRec = new SR();
-      photoVoiceSpeechRec.continuous = true;
-      photoVoiceSpeechRec.interimResults = false;
-      photoVoiceSpeechRec.lang = 'en-US';
-      photoVoiceSpeechRec.onresult = e => {
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          if (e.results[i].isFinal) photoVoiceTranscript += e.results[i][0].transcript + ' ';
-        }
-      };
-      photoVoiceSpeechRec.onerror = () => {};
-      try { photoVoiceSpeechRec.start(); } catch(e) {}
-    }
-    renderPhotos(); // re-render to show "Stop" button
-  } catch (e) {
-    pendingVoicePhotoIndex = null;
-    photoVoiceMediaRecorder = null;
-    alert('Could not start mic: ' + e.message + '\n\nMake sure you granted mic permission.');
-  }
 }
 
 // ═══════════════════════════════
@@ -3536,94 +3435,6 @@ function restoreClock() {
     }
     tickClock();
   } catch(e) {}
-}
-
-// ═══════════════════════════════
-// VOICE MEMOS
-// ═══════════════════════════════
-let mediaRecorder = null;
-let recordChunks = [];
-let recordStartedAt = 0;
-let recordTimerInterval = null;
-let speechRec = null;
-let liveTranscript = '';
-
-async function toggleRecord() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-    if (speechRec) { try { speechRec.stop(); } catch(e) {} }
-    return;
-  }
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    recordChunks = [];
-    liveTranscript = '';
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordChunks.push(e.data); };
-    mediaRecorder.onstop = async () => {
-      stream.getTracks().forEach(t => t.stop());
-      const blob = new Blob(recordChunks, { type: 'audio/webm' });
-      const reader = new FileReader();
-      reader.onload = ev => {
-        const duration = Math.floor((Date.now() - recordStartedAt) / 1000);
-        voiceMemos.push({
-          audioURL: ev.target.result,
-          transcript: liveTranscript.trim(),
-          stamp: nowStamp(),
-          duration
-        });
-        renderVoiceMemos();
-      };
-      reader.readAsDataURL(blob);
-      document.getElementById('recordBtn').textContent = '🎙️ Start Recording';
-      document.getElementById('recordBtn').style.background = '';
-      document.getElementById('recordStatus').style.display = 'none';
-      clearInterval(recordTimerInterval); recordTimerInterval = null;
-    };
-    mediaRecorder.start();
-    recordStartedAt = Date.now();
-
-    // Web Speech API for live transcription (Chrome/Edge only)
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SR) {
-      speechRec = new SR();
-      speechRec.continuous = true;
-      speechRec.interimResults = false;
-      speechRec.lang = 'en-US';
-      speechRec.onresult = e => {
-        for (let i = e.resultIndex; i < e.results.length; i++) {
-          if (e.results[i].isFinal) liveTranscript += e.results[i][0].transcript + ' ';
-        }
-      };
-      speechRec.onerror = () => {};
-      try { speechRec.start(); } catch(e) {}
-    } else {
-      document.getElementById('voiceUnsupported').style.display = '';
-    }
-
-    document.getElementById('recordBtn').textContent = '■ Stop Recording';
-    document.getElementById('recordBtn').style.background = 'var(--red)';
-    document.getElementById('recordBtn').style.color = '#fff';
-    document.getElementById('recordStatus').style.display = '';
-    recordTimerInterval = setInterval(() => {
-      const s = Math.floor((Date.now() - recordStartedAt) / 1000);
-      document.getElementById('recordTimer').textContent = Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
-    }, 500);
-  } catch (err) {
-    alert('Could not start microphone: ' + err.message + '\n\nMake sure you granted mic permission.');
-  }
-}
-
-function renderVoiceMemos() {
-  document.getElementById('voiceCount').textContent = voiceMemos.length;
-  document.getElementById('voiceList').innerHTML = voiceMemos.map((v, i) => `
-    <div class="note-card">
-      <button class="remove-btn" onclick="voiceMemos.splice(${i},1);renderVoiceMemos()">×</button>
-      <div style="font-size:12px;color:var(--dim);margin-bottom:6px">${esc(v.stamp)} — ${Math.floor(v.duration/60)}:${String(v.duration%60).padStart(2,'0')}</div>
-      <audio controls src="${v.audioURL}" style="width:100%;margin-bottom:8px"></audio>
-      <textarea placeholder="Transcript (edit if needed)..." onchange="voiceMemos[${i}].transcript=this.value">${esc(v.transcript)}</textarea>
-    </div>
-  `).join('');
 }
 
 // ═══════════════════════════════
@@ -4580,10 +4391,6 @@ async function generateReport() {
       if (p.annotatedURL) s += `<div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:2px;background:#fee2e2;padding:2px 6px;border-radius:3px;display:inline-block">✏ MARKED</div> `;
       if (p.component) s += `<div style="font-size:11px;color:#0c4a6e;font-weight:700;margin-top:2px;background:#e0f2fe;padding:2px 6px;border-radius:3px;display:inline-block">${esc(p.component.toUpperCase())}</div>`;
       if (p.notes) s += `<div class="photo-notes">${esc(p.notes)}</div>`;
-      if (p.voiceNote) {
-        s += `<audio controls src="${p.voiceNote.audioURL}" style="width:100%;margin-top:4px"></audio>`;
-        if (p.voiceNote.transcript) s += `<div style="font-size:11px;color:#555;font-style:italic;margin-top:2px">"${esc(p.voiceNote.transcript)}"</div>`;
-      }
       if (p.gps) s += `<div style="font-size:11px;color:#666;margin-top:2px"><a href="${gpsMapsLink(p.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">📍 ${fmtGps(p.gps)}</a></div>`;
       s += `</div>`;
       return s;
@@ -4694,18 +4501,6 @@ async function generateReport() {
       html += `<tr><td>${esc(c.name) || '—'}</td><td>${esc(c.role) || '—'}</td><td>${phoneCell}</td><td>${emailCell}</td><td>${esc(c.discussed) || '—'}</td></tr>`;
     });
     html += `</tbody></table>`;
-  }
-
-  // Voice memos
-  if (voiceMemos.length > 0) {
-    html += `<h2>Voice Memos (${voiceMemos.length})</h2>`;
-    voiceMemos.forEach((v, i) => {
-      html += `<div class="note-block">
-        <h3>Memo ${i+1} — ${esc(v.stamp)} (${Math.floor(v.duration/60)}:${String(v.duration%60).padStart(2,'0')})</h3>
-        <audio controls src="${v.audioURL}" style="width:100%;margin:6px 0"></audio>
-        ${v.transcript ? `<p>${esc(v.transcript)}</p>` : `<p style="color:#888;font-style:italic">No transcript</p>`}
-      </div>`;
-    });
   }
 
   // Notes
@@ -4971,7 +4766,6 @@ function generateDailyReport() {
   const todaysPhotos = photos.filter(p => !p.stamp || isSameDay(p.stamp, today));
   const todaysReceipts = receipts.filter(r => !r.stamp || isSameDay(r.stamp, today));
   const todaysSpent = todaysReceipts.reduce((s, r) => s + (parseFloat(r.amount) || 0), 0);
-  const todaysVoice = voiceMemos.filter(v => !v.stamp || isSameDay(v.stamp, today));
   const todaysComms = communications.filter(c => c.sentAt === todayStr || c.responseAt === todayStr);
   const todaysDisc = discrepancies.filter(d => d.flaggedAt === todayStr);
 
@@ -5079,12 +4873,11 @@ function generateDailyReport() {
   }
 
   // Photos today (counts)
-  if (todaysPhotos.length || todaysReceipts.length || todaysVoice.length) {
+  if (todaysPhotos.length || todaysReceipts.length) {
     html += `<h2>📎 Attachments</h2><ul>`;
     if (todaysPhotos.length) html += `<li>${todaysPhotos.length} job photos</li>`;
     if (todaysReceipts.length) html += `<li>${todaysReceipts.length} receipts ($${todaysSpent.toFixed(2)} total)</li>`;
-    if (todaysVoice.length) html += `<li>${todaysVoice.length} voice memos</li>`;
-    html += `</ul><p style="font-size:12px;color:#666">(Full photos/receipts/audio in the FULL REPORT)</p>`;
+    html += `</ul><p style="font-size:12px;color:#666">(Full photos/receipts in the FULL REPORT)</p>`;
   }
 
   if (!todaysSegs.length && !dailyNotes.workCompleted && !dailyNotes.blockers && !todaysPhotos.length) {
@@ -5442,7 +5235,6 @@ async function saveAndReset() {
     reportHTML: lastReportHTML,
     summaryHTML: lastSummaryHTML,
     contactCount: contacts.filter(c => c.name || c.role || c.discussed).length,
-    voiceMemoCount: voiceMemos.length,
     checklistType: checklist.type,
     checklistDone: checklist.items.filter(it => !isChecklistHeader(it) && it.checked).length,
     checklistTotal: checklist.items.filter(it => !isChecklistHeader(it)).length,
@@ -5481,7 +5273,7 @@ function clearForm() {
   document.getElementById('driveBackHours').value = '';
   document.getElementById('totalHours').textContent = '0';
   photos = []; receipts = []; jobFiles = []; notes = []; trips = [];
-  contacts = []; voiceMemos = [];
+  contacts = [];
   // Free any object URLs we created for videos before dropping references
   videos.forEach(v => { if (v && v._url) { try { URL.revokeObjectURL(v._url); } catch(e) {} } });
   videos = [];
@@ -5508,7 +5300,6 @@ function clearForm() {
   renderMileage();
   renderContacts();
   renderChecklist();
-  renderVoiceMemos();
   renderVideos();
   refreshPinDisplay();
   renderSegments();
@@ -5519,7 +5310,6 @@ function clearForm() {
   document.getElementById('notesSection').classList.add('hidden');
   document.getElementById('contactsSection').classList.add('hidden');
   document.getElementById('checklistSection').classList.add('hidden');
-  document.getElementById('voiceSection').classList.add('hidden');
   document.getElementById('communicationsSection').classList.add('hidden');
   document.getElementById('discrepanciesSection').classList.add('hidden');
   window.scrollTo(0, 0);
@@ -6389,7 +6179,7 @@ function serializeCurrentState() {
     driveBackHours: document.getElementById('driveBackHours').value,
     crewSize: document.getElementById('crewSize').value,
     stdCrewSize: document.getElementById('stdCrewSize').value,
-    photos, receipts, jobFiles, notes, trips, contacts, voiceMemos, videos,
+    photos, receipts, jobFiles, notes, trips, contacts, videos,
     checklist, clockState, segments, pinnedLocation,
     communications, discrepancies, dailyNotes
   };
@@ -6411,7 +6201,6 @@ function applyDraftState(s) {
   notes = s.notes || [];
   trips = s.trips || [];
   contacts = s.contacts || [];
-  voiceMemos = s.voiceMemos || [];
   videos = (s.videos || []).map(v => {
     // Rebuild blob URL for in-app playback after restore
     const v2 = { ...v };
@@ -6441,7 +6230,6 @@ function applyDraftState(s) {
   renderMileage();
   renderContacts();
   renderChecklist();
-  renderVoiceMemos();
   renderVideos();
   renderSegments();
   renderCommunications();
@@ -6460,7 +6248,6 @@ function applyDraftState(s) {
   if (notes.length) document.getElementById('notesSection').classList.remove('hidden');
   if (contacts.length) document.getElementById('contactsSection').classList.remove('hidden');
   if (checklist.items.length) document.getElementById('checklistSection').classList.remove('hidden');
-  if (voiceMemos.length) document.getElementById('voiceSection').classList.remove('hidden');
   if (s.siteHours || s.driveToHours || s.driveBackHours || trips.length) {
     document.getElementById('hoursSection').classList.remove('hidden');
   }
@@ -6525,7 +6312,7 @@ function hasAnyContent() {
   if (document.getElementById('client').value.trim()) return true;
   if (document.getElementById('city').value.trim()) return true;
   if (photos.length || receipts.length || jobFiles.length || videos.length) return true;
-  if (notes.length || trips.length || contacts.length || voiceMemos.length) return true;
+  if (notes.length || trips.length || contacts.length) return true;
   if (checklist.items.length) return true;
   if (segments.length) return true;
   if (communications.length || discrepancies.length) return true;

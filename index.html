@@ -834,6 +834,9 @@
   <button class="action-btn" onclick="document.getElementById('photoInput').click()">
     <span class="icon">📷</span> UPLOAD PHOTOS
   </button>
+  <button class="action-btn" onclick="document.getElementById('videoInput').click()">
+    <span class="icon">📹</span> UPLOAD VIDEOS
+  </button>
   <button class="action-btn" onclick="document.getElementById('receiptInput').click()">
     <span class="icon">🧾</span> UPLOAD RECEIPTS
   </button>
@@ -870,6 +873,7 @@
 <input type="file" id="odoInput" class="hidden" accept="image/*">
 <input type="file" id="segOdoInput" class="hidden" accept="image/*" capture="environment">
 <input type="file" id="photoReplaceInput" class="hidden" accept="image/*">
+<input type="file" id="videoInput" class="hidden" multiple accept="video/*">
 <input type="file" id="gasInput" class="hidden" accept="image/*" capture="environment">
 
 <!-- PHOTOS -->
@@ -901,6 +905,14 @@
   <h2>Job Files (<span id="jobFileCount">0</span>)</h2>
   <button class="action-btn-sm" onclick="document.getElementById('jobFileInput').click()">+ Add More Files</button>
   <div id="jobFileList"></div>
+</div>
+
+<!-- VIDEOS -->
+<div id="videosSection" class="section hidden">
+  <h2>Job Videos (<span id="videoCount">0</span>)</h2>
+  <button class="action-btn-sm" onclick="document.getElementById('videoInput').click()">+ Add More Videos</button>
+  <div style="font-size:12px;color:var(--dim);margin-top:6px;margin-bottom:8px">💡 Tip: trim clips in the Insta360 app FIRST (target 30-90 sec, &lt; 50MB) before uploading. Big files slow the app and bloat reports.</div>
+  <div id="videoGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));gap:12px;margin-top:10px"></div>
 </div>
 
 <!-- HOURS & MILEAGE -->
@@ -1100,6 +1112,7 @@
           <option value="drive">🚗 Drives only</option>
           <option value="workday">🏗️ Workdays only</option>
           <option value="receipt">💰 Receipts only</option>
+          <option value="video">📹 Videos only</option>
         </select>
       </div>
       <div style="flex:1;text-align:right">
@@ -1260,6 +1273,7 @@ let segments = [];   // { id, type:'drive'|'workday', startedAt, endedAt, startG
 let pinnedLocation = null; // { lat, lng, acc, pinnedAt } — the pinned site GPS for this draft
 let driftCheckInterval = null; // re-checks GPS every 5min during active workday
 let editingSegmentId = null;   // id of segment currently in edit mode (null = none)
+let videos = [];   // { id, blob, mimeType, fileName, size, stamp, gps, notes, phase, area, _url } — _url is the in-memory object URL (rebuilt on load)
 let segmentTickInterval = null;
 let pendingOdoTarget = null; // { segId, which:'start'|'end' }
 let communications = []; // { id, kind:'email'|'text'|'call'|'in-person', to, subject, summary, sentAt, responseReceived, responseAt, responseSummary }
@@ -1481,6 +1495,7 @@ function stripBinaryForCloud(state) {
   if (clean.jobFiles) clean.jobFiles.forEach(f => { f.dataURL = ''; });
   if (clean.segments) clean.segments.forEach(s => { if (s.startOdoPhoto) s.startOdoPhoto = ''; if (s.endOdoPhoto) s.endOdoPhoto = ''; });
   if (clean.voiceMemos) clean.voiceMemos.forEach(v => { v.audioURL = ''; });
+  if (clean.videos) clean.videos.forEach(v => { delete v.blob; delete v._url; });
   return clean;
 }
 
@@ -1662,6 +1677,19 @@ function mergeStatesPreservingBinaries(localState, cloudState) {
     merged.voiceMemos = cloudState.voiceMemos.map((cv, i) => {
       const lv = localState.voiceMemos[i];
       if (lv && lv.audioURL) cv.audioURL = lv.audioURL;
+      return cv;
+    });
+  }
+  // Videos — match by id (more reliable than index for videos)
+  if (cloudState.videos && localState.videos) {
+    const byId = {};
+    localState.videos.forEach(v => { if (v.id) byId[v.id] = v; });
+    merged.videos = cloudState.videos.map(cv => {
+      const lv = byId[cv.id];
+      if (lv && lv.blob) {
+        cv.blob = lv.blob;
+        cv._url = lv._url || (() => { try { return URL.createObjectURL(lv.blob); } catch(e) { return ''; } })();
+      }
       return cv;
     });
   }
@@ -1875,6 +1903,23 @@ function extractEvents(state, jobName, status, tripId, out) {
       _raw: r
     });
   });
+  // Videos
+  (state.videos || []).forEach(v => {
+    let ts = v.stamp ? parseStampToTimestamp(v.stamp) : null;
+    if (!ts) ts = Date.now();
+    const tag = [v.phase, v.area].filter(Boolean).join(' · ');
+    const sz = v.size ? (v.size < 1048576 ? (v.size/1024).toFixed(0)+' KB' : (v.size/1048576).toFixed(1)+' MB') : '';
+    out.push({
+      startedAt: ts,
+      endedAt: ts,
+      type: 'video',
+      jobName, status, tripId,
+      detail: (v.notes || v.fileName || 'Video') + (tag ? ' · ' + tag : '') + (sz ? ' · ' + sz : ''),
+      hours: 0, miles: 0, amount: 0,
+      gps: v.gps || null,
+      _raw: v
+    });
+  });
 }
 
 function parseStampToTimestamp(stamp) {
@@ -1970,7 +2015,8 @@ function renderMasterLog() {
     const typeLabel = {
       drive: '🚗 Drive',
       workday: '🏗️ Workday',
-      receipt: '💰 Receipt'
+      receipt: '💰 Receipt',
+      video: '📹 Video'
     }[e.type] || e.type;
 
     // Clickable job name → Google search for the place
@@ -2490,6 +2536,82 @@ async function autoDescribePhoto(idx) {
     photos[idx]._aiDescribed = true;
   }
   renderPhotos();
+  scheduleAutoSave();
+}
+
+// ═══════════════════════════════
+// VIDEOS — upload, store, render, attach to reports
+// ═══════════════════════════════
+document.getElementById('videoInput').addEventListener('change', async function(e) {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+  const gps = await getGps();
+  const stamp = nowStamp();
+
+  // Warn on big files
+  const tooBig = files.filter(f => f.size > 200 * 1024 * 1024); // 200 MB
+  if (tooBig.length) {
+    const ok = confirm(`${tooBig.length} of these videos is over 200MB.\n\nLarge videos will work but slow the app and bloat reports. We strongly recommend trimming in the Insta360 app first.\n\nUpload anyway?`);
+    if (!ok) { e.target.value = ''; return; }
+  }
+
+  for (const file of files) {
+    const id = 'vid_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const url = URL.createObjectURL(file);
+    videos.push({
+      id,
+      blob: file,                 // stored as Blob — IndexedDB persists this natively
+      mimeType: file.type || 'video/mp4',
+      fileName: file.name,
+      size: file.size,
+      stamp, gps,
+      notes: '', phase: '', area: '',
+      _url: url                   // runtime-only, recomputed on load
+    });
+  }
+  renderVideos();
+  scheduleAutoSave();
+  e.target.value = '';
+  showToast(`📹 ${files.length} video${files.length === 1 ? '' : 's'} uploaded`, 'good', 2500);
+});
+
+function renderVideos() {
+  const sec = document.getElementById('videosSection');
+  const grid = document.getElementById('videoGrid');
+  if (!sec || !grid) return;
+  document.getElementById('videoCount').textContent = videos.length;
+  if (!videos.length) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+
+  grid.innerHTML = videos.map((v, i) => {
+    // Ensure _url is fresh (blob URLs can be revoked across reloads)
+    if (!v._url && v.blob) v._url = URL.createObjectURL(v.blob);
+    const sz = v.size < 1048576 ? (v.size / 1024).toFixed(0) + ' KB' : (v.size / 1048576).toFixed(1) + ' MB';
+    return `
+      <div class="receipt-card" style="position:relative">
+        <video src="${v._url || ''}" controls preload="metadata" playsinline style="width:100%;display:block;background:#000;max-height:240px"></video>
+        <button class="remove-btn" onclick="removeVideo(${i})">×</button>
+        <div class="r-fields">
+          <div style="font-size:12px;color:var(--dim);margin-bottom:6px">${esc(v.fileName)} · ${sz}${v.stamp ? ' · ' + esc(v.stamp) : ''}</div>
+          <select onchange="videos[${i}].phase=this.value;scheduleAutoSave()" style="margin-bottom:6px">
+            <option value=""${!v.phase?' selected':''}>— Phase —</option>
+            <option value="before"${v.phase==='before'?' selected':''}>📷 Before</option>
+            <option value="during"${v.phase==='during'?' selected':''}>🔧 During</option>
+            <option value="after"${v.phase==='after'?' selected':''}>✅ After</option>
+          </select>
+          <input type="text" placeholder="Area (Patio, Roof, Pump room...)" value="${esc(v.area || '')}" onchange="videos[${i}].area=this.value;scheduleAutoSave()" style="margin-bottom:6px">
+          <textarea placeholder="Notes — what does this video show?" onchange="videos[${i}].notes=this.value;scheduleAutoSave()" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:vertical;min-height:50px">${esc(v.notes || '')}</textarea>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function removeVideo(idx) {
+  if (!confirm('Remove this video?')) return;
+  if (videos[idx] && videos[idx]._url) URL.revokeObjectURL(videos[idx]._url);
+  videos.splice(idx, 1);
+  renderVideos();
   scheduleAutoSave();
 }
 
@@ -4163,7 +4285,17 @@ document.getElementById('gasInput').addEventListener('change', async function(e)
 // ═══════════════════════════════
 // REPORT
 // ═══════════════════════════════
-function generateReport() {
+// Helper: convert a Blob to a base64 data URL (Promise)
+function blobToDataURL(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+async function generateReport() {
   const client = document.getElementById('client').value.trim() || 'N/A';
   const city = document.getElementById('city').value.trim();
   const state = document.getElementById('state').value.trim().toUpperCase();
@@ -4507,6 +4639,27 @@ function generateReport() {
     }
   }
 
+  // Videos — small clips embedded; large clips listed by filename
+  if (videos.length > 0) {
+    html += `<h2>Job Videos (${videos.length})</h2>`;
+    const EMBED_LIMIT = 25 * 1024 * 1024; // 25 MB — keep report HTML reasonably sized
+    videos.forEach((v, i) => {
+      const sz = v.size < 1048576 ? (v.size / 1024).toFixed(0) + ' KB' : (v.size / 1048576).toFixed(1) + ' MB';
+      const tag = [v.phase, v.area].filter(Boolean).join(' · ');
+      html += `<div style="margin:14px 0;page-break-inside:avoid;border:1px solid #ddd;border-radius:6px;padding:10px">`;
+      html += `<div style="font-size:13px;color:#333;margin-bottom:6px"><strong>${esc(v.fileName)}</strong> · ${sz}${v.stamp ? ' · ' + esc(v.stamp) : ''}${tag ? ' · ' + esc(tag) : ''}</div>`;
+      if (v.blob && v.size <= EMBED_LIMIT) {
+        // Embed as data URL (sync placeholder — actual embedding happens below in async pass)
+        html += `<video data-video-idx="${i}" controls preload="metadata" playsinline style="max-width:100%;display:block;background:#000;max-height:360px"></video>`;
+      } else if (v.size > EMBED_LIMIT) {
+        html += `<div style="font-size:12px;color:#666;padding:10px;background:#fef3c7;border-radius:4px">📹 Video too large to embed in this report (${sz}). Available on the device where it was uploaded.</div>`;
+      }
+      if (v.notes) html += `<div style="font-size:13px;color:#444;margin-top:8px;padding:8px;background:#f9f9f9;border-radius:4px;font-style:italic">"${esc(v.notes)}"</div>`;
+      if (v.gps) html += `<div style="font-size:11px;margin-top:6px"><a href="${gpsMapsLink(v.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">📍 ${fmtGps(v.gps)}</a></div>`;
+      html += `</div>`;
+    });
+  }
+
   // Receipts with images
   if (receipts.length > 0) {
     html += `<h2>Receipts (${receipts.length})</h2>`;
@@ -4568,6 +4721,25 @@ function generateReport() {
   }
 
   html += `</body></html>`;
+
+  // Embed video data URLs into the report HTML for any clips that were marked embeddable
+  // (We did this in a second pass because Blob → base64 is async.)
+  if (videos.length > 0) {
+    const EMBED_LIMIT = 25 * 1024 * 1024;
+    for (let i = 0; i < videos.length; i++) {
+      const v = videos[i];
+      if (!v.blob || v.size > EMBED_LIMIT) continue;
+      try {
+        const dataURL = await blobToDataURL(v.blob);
+        const tag = `<video data-video-idx="${i}" controls preload="metadata" playsinline`;
+        const withSrc = `<video src="${dataURL}" controls preload="metadata" playsinline`;
+        html = html.replace(tag, withSrc);
+      } catch (e) {
+        console.warn('Failed to embed video', i, e);
+      }
+    }
+  }
+
   lastReportHTML = html;
 
   // Open the report in a new tab via Blob URL (handles big reports reliably)
@@ -5206,9 +5378,9 @@ ${totalH >= 40 ? `<div class="overage-banner">⚠️ ${totalH.toFixed(1)} HOURS 
 // ═══════════════════════════════
 // SEND REPORT
 // ═══════════════════════════════
-function sendReport() {
+async function sendReport() {
   // Generate the report first (opens in new tab for Ctrl+P → Save as PDF)
-  generateReport();
+  await generateReport();
 
   // Build the email subject
   const client = document.getElementById('client').value.trim() || 'N/A';
@@ -5310,6 +5482,9 @@ function clearForm() {
   document.getElementById('totalHours').textContent = '0';
   photos = []; receipts = []; jobFiles = []; notes = []; trips = [];
   contacts = []; voiceMemos = [];
+  // Free any object URLs we created for videos before dropping references
+  videos.forEach(v => { if (v && v._url) { try { URL.revokeObjectURL(v._url); } catch(e) {} } });
+  videos = [];
   checklist = { type: '', items: [] };
   segments = [];
   communications = []; discrepancies = [];
@@ -5334,6 +5509,7 @@ function clearForm() {
   renderContacts();
   renderChecklist();
   renderVoiceMemos();
+  renderVideos();
   refreshPinDisplay();
   renderSegments();
   renderCommunications();
@@ -6213,7 +6389,7 @@ function serializeCurrentState() {
     driveBackHours: document.getElementById('driveBackHours').value,
     crewSize: document.getElementById('crewSize').value,
     stdCrewSize: document.getElementById('stdCrewSize').value,
-    photos, receipts, jobFiles, notes, trips, contacts, voiceMemos,
+    photos, receipts, jobFiles, notes, trips, contacts, voiceMemos, videos,
     checklist, clockState, segments, pinnedLocation,
     communications, discrepancies, dailyNotes
   };
@@ -6236,6 +6412,14 @@ function applyDraftState(s) {
   trips = s.trips || [];
   contacts = s.contacts || [];
   voiceMemos = s.voiceMemos || [];
+  videos = (s.videos || []).map(v => {
+    // Rebuild blob URL for in-app playback after restore
+    const v2 = { ...v };
+    if (v2.blob && !v2._url) {
+      try { v2._url = URL.createObjectURL(v2.blob); } catch (e) { v2._url = ''; }
+    }
+    return v2;
+  });
   checklist = s.checklist || { type: '', items: [] };
   clockState = s.clockState || { running: false, startedAt: 0, accumulatedMs: 0 };
   segments = s.segments || [];
@@ -6258,6 +6442,7 @@ function applyDraftState(s) {
   renderContacts();
   renderChecklist();
   renderVoiceMemos();
+  renderVideos();
   renderSegments();
   renderCommunications();
   renderDiscrepancies();
@@ -6339,7 +6524,7 @@ function flashAutoSaved() {
 function hasAnyContent() {
   if (document.getElementById('client').value.trim()) return true;
   if (document.getElementById('city').value.trim()) return true;
-  if (photos.length || receipts.length || jobFiles.length) return true;
+  if (photos.length || receipts.length || jobFiles.length || videos.length) return true;
   if (notes.length || trips.length || contacts.length || voiceMemos.length) return true;
   if (checklist.items.length) return true;
   if (segments.length) return true;

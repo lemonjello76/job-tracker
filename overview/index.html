@@ -267,7 +267,7 @@ footer .name { color: white; font-weight: 700; font-size: 16px; margin-bottom: 4
         </div>
         <div class="feature" data-id="10">
           <span class="num">10</span><h3>Feature grid</h3>
-          <p>Ten one-tap captures: <strong>Photos</strong> (auto-described by AI, GPS-stamped), <strong>Receipts</strong> (AI extracts vendor/amount/category), <strong>Job Files</strong> (PDFs, work orders), <strong>Notes</strong>, <strong>Contacts</strong> (everyone I spoke to), <strong>Checklist</strong> (job-type-specific templates), <strong>Voice Memos</strong> (auto-transcribed), <strong>Comm Log</strong> (calls in/out), <strong>Discrepancies</strong> (spec vs. actual issues flagged), and a fallback <strong>Manual Hours</strong> entry.</p>
+          <p>One-tap captures for everything that happens on a job: <strong>Photos</strong> (auto-described by AI, GPS-stamped, grouped in reports by system — Equipment / Fans / Switching / Site — with a 🚩 flag any photo as a "discrepancy" + proposed solution), <strong>Videos</strong> (POV clips from Insta360 GO 3 or phone — auto-thumbnailed, click any thumbnail in the report to play in-place), <strong>Receipts</strong> (AI extracts vendor/amount/category), <strong>Job Files</strong> (PDFs, work orders, spec drawings), <strong>Notes</strong>, <strong>Contacts</strong> (everyone I spoke to + role), <strong>Checklist</strong> (job-type-specific templates with FINAL TOUCHES section), <strong>Comm Log</strong> (every email/text/call sent + whether they responded), <strong>Discrepancies</strong> (spec vs. actual issues flagged in a running log), and a fallback <strong>Manual Hours</strong> entry.</p>
         </div>
         <div class="feature" data-id="11">
           <span class="num">11</span><h3>Daily self-notes</h3>
@@ -296,7 +296,7 @@ footer .name { color: white; font-weight: 700; font-size: 16px; margin-bottom: 4
       <div class="bts-card">
         <span class="icon">🤖</span>
         <h3>AI vision</h3>
-        <p>Anthropic Claude reads odometer photos for mileage, extracts vendor/amount from receipts, and writes descriptions for site photos automatically.</p>
+        <p>Anthropic Claude reads odometer photos for mileage, extracts vendor / amount / category from receipts, and writes descriptions for site photos automatically. Uploaded videos get a still-frame thumbnail extracted on the fly so reports show clean clickable previews instead of giant inline players.</p>
       </div>
       <div class="bts-card">
         <span class="icon">📍</span>
@@ -336,13 +336,15 @@ footer .name { color: white; font-weight: 700; font-size: 16px; margin-bottom: 4
       </div>
       <div class="deliv-card">
         <h3>📦 Closeout Package (per job)</h3>
-        <p class="intro">When a job is closed, the app auto-generates a complete delivery — five PDFs, all tied together.</p>
+        <p class="intro">When a job is closed, the app auto-generates a complete delivery — a single full report with every section, plus separate PDFs by category if needed.</p>
         <ul>
+          <li>Discrepancies Found (any flagged photos surfaced at the top with reason + proposed solution)</li>
           <li>Project Summary (one-page overview)</li>
-          <li>Job Photos Report (all site photos, GPS-stamped)</li>
-          <li>Travel + Time Report (daily breakdown)</li>
-          <li>Expense Report (itemized per job)</li>
-          <li>Notes + Contacts Report (transcripts, contact log, issues flagged)</li>
+          <li>Job Photos Report — grouped by system (Equipment / Fans / Switching / Site), then by phase (Before / During / After), all GPS-stamped</li>
+          <li>Job Videos — POV clips as clickable thumbnails, click any to play</li>
+          <li>Travel + Time Report (day-by-day GPS-stamped time log with route links)</li>
+          <li>Expense Report (itemized per job, AI-extracted from receipt photos)</li>
+          <li>Notes + Contacts Report (contact log, comm log, issues flagged)</li>
         </ul>
       </div>
     </div>

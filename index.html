@@ -1228,8 +1228,29 @@
 // ═══════════════════════════════
 // STATE
 // ═══════════════════════════════
-let photos = [];     // { dataURL, notes, gps, area, phase, component }
+let photos = [];     // { dataURL, notes, gps, area, phase, component, system, isDiscrepancy, discrepancyReason, solutionAvailable, solutionDetail }
 let photoFilter = { phase: '', area: '' }; // active photo grid filter
+
+// Section/System mapping helper — derive system from a chosen component
+const COMPONENT_TO_SYSTEM = {
+  pump: 'equipment',
+  ro: 'equipment',
+  drain: 'equipment',
+  line: 'equipment',
+  nozzle: 'fans',
+  mounting: 'fans',
+  switch: 'switching',
+  electrical: 'switching',
+  overall: 'site',
+  other: ''
+};
+const SYSTEM_LABELS = {
+  equipment: '🛠️ Equipment',
+  fans: '🌀 Fans',
+  switching: '🎛️ Switching',
+  site: '📐 Site / Overall'
+};
+const SYSTEM_ORDER = ['equipment', 'fans', 'switching', 'site'];
 // Markup state
 let markupTargetIndex = -1;
 let markupAnnotations = [];
@@ -2737,18 +2758,40 @@ function renderPhotos() {
   document.getElementById('photoGrid').innerHTML = visible.map(({p, i}) => {
     const displayURL = photoDisplayURL(p);
     const annotatedBadge = p.annotatedURL ? `<div style="position:absolute;top:6px;left:6px;background:rgba(239,68,68,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.5px">✏ MARKED</div>` : '';
+    const discrepancyBadge = p.isDiscrepancy ? `<div style="position:absolute;top:6px;left:${p.annotatedURL?'70px':'6px'};background:rgba(220,38,38,0.95);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.5px">🚩 ISSUE</div>` : '';
     const aiBadge = p._describing
       ? `<div style="position:absolute;bottom:6px;left:6px;background:rgba(79,140,255,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">🤖 Describing...</div>`
       : (p._aiDescribed ? `<div style="position:absolute;bottom:6px;left:6px;background:rgba(34,197,94,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">🤖 Auto-described</div>` : '');
+    const cardBorder = p.isDiscrepancy ? 'border:2px solid #dc2626' : '';
+    const discrepancyPanel = p.isDiscrepancy ? `
+      <div style="padding:10px;background:#fef2f2;border-top:2px solid #dc2626">
+        <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">🚩 Discrepancy</div>
+        <textarea placeholder="What's wrong? (required)" onchange="photos[${i}].discrepancyReason=this.value;scheduleAutoSave()" style="width:100%;padding:6px 8px;background:#fff;border:1px solid #fca5a5;border-radius:4px;color:#111;font-size:12px;font-family:inherit;outline:none;resize:vertical;min-height:40px;margin-bottom:6px">${esc(p.discrepancyReason || '')}</textarea>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#991b1b;cursor:pointer">
+          <input type="checkbox" ${p.solutionAvailable?'checked':''} onchange="photos[${i}].solutionAvailable=this.checked;renderPhotos();scheduleAutoSave()" style="width:auto;margin:0">
+          Solution available
+        </label>
+        ${p.solutionAvailable ? `<textarea placeholder="What's the solution?" onchange="photos[${i}].solutionDetail=this.value;scheduleAutoSave()" style="width:100%;padding:6px 8px;background:#fff;border:1px solid #fca5a5;border-radius:4px;color:#111;font-size:12px;font-family:inherit;outline:none;resize:vertical;min-height:40px;margin-top:6px">${esc(p.solutionDetail || '')}</textarea>` : ''}
+        <button onclick="clearDiscrepancy(${i})" style="margin-top:6px;padding:4px 10px;font-size:11px;background:transparent;border:1px solid #fca5a5;color:#991b1b;border-radius:4px;cursor:pointer">Clear flag</button>
+      </div>
+    ` : '';
     return `
-    <div class="photo-card">
+    <div class="photo-card" style="${cardBorder}">
       <img src="${displayURL}" alt="Photo ${i+1}" onclick="window.open(this.src,'_blank')">
       ${annotatedBadge}
+      ${discrepancyBadge}
       ${aiBadge}
       <button class="remove-btn" onclick="photos.splice(${i},1);renderPhotos()">×</button>
       <button class="action-btn-sm" style="position:absolute;bottom:auto;top:6px;right:38px;margin:0;padding:4px 8px;font-size:11px" onclick="openMarkup(${i})">✏ Markup</button>
       <button class="action-btn-sm" style="position:absolute;bottom:auto;top:6px;right:108px;margin:0;padding:4px 8px;font-size:11px" onclick="replacePhoto(${i})">🔄 Replace</button>
       <div style="padding:8px 10px;display:flex;flex-direction:column;gap:5px;border-top:1px solid var(--border)">
+        <select onchange="photos[${i}].system=this.value;renderPhotos();scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
+          <option value="">— System (which part?) —</option>
+          <option value="equipment"${p.system==='equipment'?' selected':''}>🛠️ Equipment (pump, RO, lines, drain)</option>
+          <option value="fans"${p.system==='fans'?' selected':''}>🌀 Fans (nozzles, mounting)</option>
+          <option value="switching"${p.system==='switching'?' selected':''}>🎛️ Switching (switches, electrical)</option>
+          <option value="site"${p.system==='site'?' selected':''}>📐 Site / Overall</option>
+        </select>
         <select onchange="photos[${i}].phase=this.value;renderPhotos();scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
           <option value="">— Phase —</option>
           <option value="before"${p.phase==='before'?' selected':''}>📷 Before</option>
@@ -2756,7 +2799,7 @@ function renderPhotos() {
           <option value="after"${p.phase==='after'?' selected':''}>✅ After</option>
         </select>
         <input list="photoAreaList" type="text" placeholder="Area (Patio, Roof, Pump room...)" value="${esc(p.area||'')}" onchange="photos[${i}].area=this.value;renderPhotos();scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
-        <select onchange="photos[${i}].component=this.value;scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
+        <select onchange="onPhotoComponentChange(${i}, this.value)" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
           <option value="">— Component (optional) —</option>
           <option value="pump"${p.component==='pump'?' selected':''}>🔧 Pump</option>
           <option value="line"${p.component==='line'?' selected':''}>⚡ Line / tubing</option>
@@ -2771,8 +2814,43 @@ function renderPhotos() {
         </select>
       </div>
       <textarea placeholder="Notes — what does this photo show?" onchange="photos[${i}].notes=this.value;scheduleAutoSave()">${esc(p.notes)}</textarea>
+      ${p.isDiscrepancy ? '' : `<button onclick="flagDiscrepancy(${i})" style="margin:6px 10px 0;padding:6px 10px;font-size:11px;background:transparent;border:1px solid #dc2626;color:#dc2626;border-radius:4px;cursor:pointer;font-weight:600">🚩 Flag Discrepancy</button>`}
+      ${discrepancyPanel}
     </div>
   `;}).join('');
+}
+
+// Auto-suggest system when component is set
+function onPhotoComponentChange(idx, component) {
+  if (!photos[idx]) return;
+  photos[idx].component = component;
+  // If user hasn't picked a system yet, auto-fill it from the component mapping
+  if (!photos[idx].system && component && COMPONENT_TO_SYSTEM[component]) {
+    photos[idx].system = COMPONENT_TO_SYSTEM[component];
+  }
+  renderPhotos();
+  scheduleAutoSave();
+}
+
+function flagDiscrepancy(idx) {
+  if (!photos[idx]) return;
+  photos[idx].isDiscrepancy = true;
+  photos[idx].discrepancyReason = photos[idx].discrepancyReason || '';
+  photos[idx].solutionAvailable = photos[idx].solutionAvailable || false;
+  photos[idx].solutionDetail = photos[idx].solutionDetail || '';
+  renderPhotos();
+  scheduleAutoSave();
+}
+
+function clearDiscrepancy(idx) {
+  if (!photos[idx]) return;
+  if (!confirm('Clear the discrepancy flag for this photo? Your reason / solution text will be cleared too.')) return;
+  photos[idx].isDiscrepancy = false;
+  delete photos[idx].discrepancyReason;
+  delete photos[idx].solutionAvailable;
+  delete photos[idx].solutionDetail;
+  renderPhotos();
+  scheduleAutoSave();
 }
 
 function setPhotoFilter(key, val) {
@@ -4317,6 +4395,28 @@ async function generateReport() {
     <p class="meta"><strong>Location:</strong> ${esc(location)}</p>
     <p class="meta"><strong>Dates:</strong> ${fmtDate(dateStart) || 'N/A'}${dateEnd ? ' — ' + fmtDate(dateEnd) : ''}</p>`;
 
+  // DISCREPANCIES FOUND — surfaces flagged photos at the very top of the report
+  const flaggedPhotos = photos.filter(p => p.isDiscrepancy && p.dataURL);
+  if (flaggedPhotos.length > 0) {
+    html += `<h2 style="color:#991b1b;border-color:#dc2626">🚩 Discrepancies Found (${flaggedPhotos.length})</h2>`;
+    html += `<p style="font-size:12px;color:#666;margin-bottom:10px;font-style:italic">Each issue is shown here at the top of the report and tied to its photo evidence below. Click any photo to view full size.</p>`;
+    html += `<div style="border:1px solid #fca5a5;border-radius:6px;overflow:hidden;margin:10px 0">`;
+    flaggedPhotos.forEach((p, idx) => {
+      const sysLabel = p.system && SYSTEM_LABELS[p.system] ? SYSTEM_LABELS[p.system] : '';
+      const url = p.annotatedURL || p.dataURL;
+      const tagLine = [sysLabel, p.area, p.phase].filter(Boolean).join(' · ');
+      html += `<div style="display:grid;grid-template-columns:200px 1fr;gap:14px;padding:14px;${idx > 0 ? 'border-top:1px solid #fca5a5;' : ''}background:${idx % 2 ? '#fef2f2' : '#fff'}">
+        <a href="${url}" target="_blank" style="display:block"><img src="${url}" style="width:100%;height:auto;border:1px solid #fca5a5;border-radius:4px;display:block"></a>
+        <div>
+          <div style="font-size:11px;color:#991b1b;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">🚩 ${tagLine || 'Issue'}</div>
+          <div style="font-size:14px;color:#111;margin-bottom:8px"><strong>What's wrong:</strong> ${esc(p.discrepancyReason || '(not described)')}</div>
+          ${p.solutionAvailable && p.solutionDetail ? `<div style="font-size:14px;color:#064e3b;background:#d1fae5;padding:8px 10px;border-radius:4px;border-left:3px solid #10b981"><strong>✓ Solution:</strong> ${esc(p.solutionDetail)}</div>` : (p.solutionAvailable ? `<div style="font-size:13px;color:#064e3b;font-style:italic">Solution noted but not yet documented.</div>` : `<div style="font-size:13px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:4px;border-left:3px solid #f59e0b;font-style:italic">⚠ No solution available — needs office decision.</div>`)}
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
   // Hours summary
   if (totalH > 0) {
     html += `<h2>Hours Summary</h2><table>
@@ -4430,30 +4530,26 @@ async function generateReport() {
     html += `</ul>`;
   }
 
-  // Photos — grouped by area, then by phase
+  // Photos — grouped by SYSTEM (Equipment / Fans / Switching / Site), then by phase
   if (photos.length > 0) {
     const renderPhotoCard = (p) => {
       const url = p.annotatedURL || p.dataURL;
-      let s = `<div class="photo-item"><img src="${url}">`;
-      if (p.annotatedURL) s += `<div style="font-size:10px;color:#dc2626;font-weight:700;margin-top:2px;background:#fee2e2;padding:2px 6px;border-radius:3px;display:inline-block">✏ MARKED</div> `;
-      if (p.component) s += `<div style="font-size:11px;color:#0c4a6e;font-weight:700;margin-top:2px;background:#e0f2fe;padding:2px 6px;border-radius:3px;display:inline-block">${esc(p.component.toUpperCase())}</div>`;
+      const cardWrapStyle = p.isDiscrepancy ? 'border:2px solid #dc2626;padding:6px;background:#fef2f2;border-radius:6px' : '';
+      let s = `<div class="photo-item" style="${cardWrapStyle}"><img src="${url}">`;
+      const badges = [];
+      if (p.isDiscrepancy) badges.push(`<span style="font-size:10px;color:#fff;font-weight:700;background:#dc2626;padding:2px 6px;border-radius:3px;display:inline-block">🚩 ISSUE</span>`);
+      if (p.annotatedURL) badges.push(`<span style="font-size:10px;color:#dc2626;font-weight:700;background:#fee2e2;padding:2px 6px;border-radius:3px;display:inline-block">✏ MARKED</span>`);
+      if (p.component) badges.push(`<span style="font-size:11px;color:#0c4a6e;font-weight:700;background:#e0f2fe;padding:2px 6px;border-radius:3px;display:inline-block">${esc(p.component.toUpperCase())}</span>`);
+      if (p.area) badges.push(`<span style="font-size:11px;color:#555;background:#f0f0f0;padding:2px 6px;border-radius:3px;display:inline-block">${esc(p.area)}</span>`);
+      if (badges.length) s += `<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">${badges.join('')}</div>`;
       if (p.notes) s += `<div class="photo-notes">${esc(p.notes)}</div>`;
+      if (p.isDiscrepancy && p.discrepancyReason) {
+        s += `<div style="font-size:12px;color:#991b1b;background:#fef2f2;border-left:3px solid #dc2626;padding:6px 8px;margin-top:4px;border-radius:3px"><strong>🚩 ${esc(p.discrepancyReason)}</strong>${p.solutionAvailable && p.solutionDetail ? `<br><span style="color:#065f46">✓ Solution: ${esc(p.solutionDetail)}</span>` : (p.solutionAvailable ? '' : `<br><span style="color:#92400e;font-style:italic">⚠ Needs office decision</span>`)}</div>`;
+      }
       if (p.gps) s += `<div style="font-size:11px;color:#666;margin-top:2px"><a href="${gpsMapsLink(p.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">📍 ${fmtGps(p.gps)}</a></div>`;
       s += `</div>`;
       return s;
     };
-
-    // Bucket by area
-    const byArea = {};
-    photos.forEach(p => {
-      const area = (p.area || '').trim() || '__untagged__';
-      if (!byArea[area]) byArea[area] = { before: [], during: [], after: [], untagged: [] };
-      byArea[area][p.phase || 'untagged'].push(p);
-    });
-
-    const taggedAreas = Object.keys(byArea).filter(a => a !== '__untagged__').sort();
-    const hasUntaggedArea = !!byArea['__untagged__'];
-    const useGrouping = taggedAreas.length > 0 || photos.some(p => p.phase);
 
     // BEFORE/AFTER pairs — find matches and render as interactive sliders first
     const baPairs = findBeforeAfterPairs(photos);
@@ -4467,30 +4563,33 @@ async function generateReport() {
 
     html += `<h2>Job Photos (${photos.length})</h2>`;
 
-    if (!useGrouping) {
-      // No tags at all → flat grid (legacy behavior)
-      html += `<div class="photo-grid">`;
-      photos.forEach(p => { html += renderPhotoCard(p); });
-      html += `</div>`;
-    } else {
-      const phaseLabels = { before: '📷 Before', during: '🔧 During', after: '✅ After', untagged: '📁 Other' };
-      const renderArea = (areaName, groups) => {
-        const total = groups.before.length + groups.during.length + groups.after.length + groups.untagged.length;
-        if (total === 0) return '';
-        let s = `<h3 style="font-size:14px;margin:14px 0 6px;color:#222;background:#f0f0f0;padding:6px 10px;border-radius:4px">${esc(areaName)} <span style="font-weight:400;color:#666;font-size:12px">(${total} ${total === 1 ? 'photo' : 'photos'})</span></h3>`;
-        ['before', 'during', 'after', 'untagged'].forEach(phase => {
-          if (!groups[phase].length) return;
-          s += `<h4 style="margin:8px 0 4px;font-size:12px;color:#555;font-weight:600;text-transform:uppercase;letter-spacing:.5px">${phaseLabels[phase]} (${groups[phase].length})</h4>`;
-          s += `<div class="photo-grid">`;
-          groups[phase].forEach(p => { s += renderPhotoCard(p); });
-          s += `</div>`;
-        });
-        return s;
-      };
+    // Bucket by System
+    const bySystem = { equipment: [], fans: [], switching: [], site: [], untagged: [] };
+    photos.forEach(p => {
+      const sys = (p.system || '').trim();
+      const key = (sys && bySystem[sys]) ? sys : 'untagged';
+      bySystem[key].push(p);
+    });
 
-      taggedAreas.forEach(area => { html += renderArea(area, byArea[area]); });
-      if (hasUntaggedArea) html += renderArea('Untagged Area', byArea['__untagged__']);
-    }
+    const phaseLabels = { before: '📷 Before', during: '🔧 During', after: '✅ After', untagged: '📁 Other' };
+    const renderSystemBlock = (sysKey, label) => {
+      const bucket = bySystem[sysKey] || [];
+      if (!bucket.length) return '';
+      let s = `<h3 style="font-size:15px;margin:18px 0 8px;color:#fff;background:#1e40af;padding:10px 14px;border-radius:6px;display:flex;align-items:center;justify-content:space-between"><span>${label}</span><span style="font-size:12px;font-weight:400;opacity:0.85">${bucket.length} ${bucket.length === 1 ? 'photo' : 'photos'}</span></h3>`;
+      const byPhase = { before: [], during: [], after: [], untagged: [] };
+      bucket.forEach(p => byPhase[p.phase || 'untagged'].push(p));
+      ['before', 'during', 'after', 'untagged'].forEach(phase => {
+        if (!byPhase[phase].length) return;
+        s += `<h4 style="margin:10px 0 6px;font-size:12px;color:#555;font-weight:600;text-transform:uppercase;letter-spacing:.5px">${phaseLabels[phase]} (${byPhase[phase].length})</h4>`;
+        s += `<div class="photo-grid">`;
+        byPhase[phase].forEach(p => { s += renderPhotoCard(p); });
+        s += `</div>`;
+      });
+      return s;
+    };
+
+    SYSTEM_ORDER.forEach(sysKey => { html += renderSystemBlock(sysKey, SYSTEM_LABELS[sysKey]); });
+    if (bySystem.untagged.length) html += renderSystemBlock('untagged', '❔ Uncategorized');
   }
 
   // Videos — thumbnail grid; click any thumbnail to play in-place

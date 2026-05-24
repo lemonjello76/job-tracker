@@ -6198,92 +6198,236 @@ async function generateUserGuide() {
     ? `<div class="fan-line"><div class="fan-label">${esc(label)}</div><div class="fan-loc">Switch: <strong>${esc(switchLoc)}</strong></div></div>`
     : `<div class="fan-line dim"><div class="fan-label">${esc(label)}</div><div class="fan-loc">(switch location not documented)</div></div>`;
 
-  // Helper to render a photo card
+  // Helper to render a photo frame (new visual style)
   const photoCard = (p, caption) => p
-    ? `<div class="photo-card"><img src="${p.annotatedURL || p.dataURL}" alt=""><div class="photo-cap">${esc(caption)}</div></div>`
-    : `<div class="photo-card empty"><div class="empty-text">📷<br>Photo not available</div><div class="photo-cap">${esc(caption)}</div></div>`;
+    ? `<div class="photo-frame"><img src="${p.annotatedURL || p.dataURL}" alt=""><div class="ph-cap">${esc(caption)}</div></div>`
+    : `<div class="photo-frame empty"><div class="ph-empty"><div class="em">📷</div><div class="et">${esc(caption)}<br><span style="opacity:0.7;font-weight:400">photo not yet tagged</span></div></div></div>`;
 
-  // Helper for a canopy section (fan + switch photos side-by-side)
-  const canopySection = (num, color, label, description, switchLoc, fanPhoto, switchPhoto) => `
-    <div class="section fans">
-      <div class="section-header" style="background:${color}">
-        <span class="num">${num}</span>
-        <span class="icon">🌀</span>
-        <span>${esc(label)}</span>
+  // SVG icon set — used as section header art
+  const ICONS = {
+    fan: `<svg viewBox="0 0 64 64" fill="none"><circle cx="32" cy="32" r="28" stroke="white" stroke-width="2" opacity="0.4"/><path d="M32 12 Q40 20 32 32 Q24 20 32 12 Z" fill="white" opacity="0.95"/><path d="M52 32 Q44 40 32 32 Q44 24 52 32 Z" fill="white" opacity="0.95"/><path d="M32 52 Q24 44 32 32 Q40 44 32 52 Z" fill="white" opacity="0.95"/><path d="M12 32 Q20 24 32 32 Q20 40 12 32 Z" fill="white" opacity="0.95"/><circle cx="32" cy="32" r="5" fill="white"/></svg>`,
+    pump: `<svg viewBox="0 0 64 64" fill="none"><rect x="16" y="20" width="32" height="32" rx="4" fill="white" opacity="0.95"/><rect x="20" y="10" width="24" height="14" rx="2" fill="white" opacity="0.7"/><circle cx="32" cy="36" r="6" fill="#15803d"/><rect x="29" y="14" width="6" height="8" fill="#15803d"/></svg>`,
+    drop: `<svg viewBox="0 0 64 64" fill="none"><path d="M32 8 Q14 30 14 42 a18 18 0 0 0 36 0 Q50 30 32 8 Z" fill="white" opacity="0.95"/><ellipse cx="38" cy="38" rx="4" ry="6" fill="#fff" opacity="0.4"/></svg>`,
+    book: `<svg viewBox="0 0 64 64" fill="none"><rect x="12" y="14" width="40" height="38" rx="2" fill="white" opacity="0.95"/><line x1="32" y1="14" x2="32" y2="52" stroke="#1e3a8a" stroke-width="1.5"/><line x1="18" y1="24" x2="28" y2="24" stroke="#1e3a8a" stroke-width="1"/><line x1="18" y1="30" x2="28" y2="30" stroke="#1e3a8a" stroke-width="1"/><line x1="18" y1="36" x2="28" y2="36" stroke="#1e3a8a" stroke-width="1"/><line x1="36" y1="24" x2="46" y2="24" stroke="#1e3a8a" stroke-width="1"/><line x1="36" y1="30" x2="46" y2="30" stroke="#1e3a8a" stroke-width="1"/><line x1="36" y1="36" x2="46" y2="36" stroke="#1e3a8a" stroke-width="1"/></svg>`,
+    filter: `<svg viewBox="0 0 64 64" fill="none"><path d="M14 14 H50 L40 30 V48 L24 54 V30 Z" fill="white" opacity="0.95"/><circle cx="32" cy="40" r="3" fill="#7c2d12"/></svg>`,
+    wrench: `<svg viewBox="0 0 64 64" fill="none"><path d="M20 14 L30 24 L24 30 L14 20 a8 8 0 0 1 6-6 Z" fill="white" opacity="0.95"/><rect x="26" y="26" width="24" height="6" rx="3" transform="rotate(45 38 29)" fill="white" opacity="0.95"/></svg>`,
+    pin: '📍', switch: '⚙', alert: '⚠', check: '✓'
+  };
+
+  // Helper for a canopy section — visual layout with header card + photos + switch pill + warning
+  const canopySection = (num, label, description, switchLoc, fanPhoto, switchPhoto) => `
+    <div class="card fans">
+      <div class="card-head">
+        <div class="num-badge">${num}</div>
+        <div class="head-text">
+          <div class="label">Canopy</div>
+          <div class="title">${esc(label)}</div>
+        </div>
+        <div class="icon-art">${ICONS.fan}</div>
       </div>
-      <div class="section-body" style="background:${color}10">
-        <div class="info-line" style="color:${color}">${description}</div>
-        <div class="info-line" style="color:${color}"><strong>Fan switch location:</strong> ${switchLoc ? `<strong>${esc(switchLoc)}</strong>` : '<em>(location not documented)</em>'}</div>
-        <div class="photo-grid" style="grid-template-columns:1fr 1fr">
+      <div class="card-body">
+        <div style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:8px">${description}</div>
+
+        <div class="switch-pill blue">
+          <div class="ic">⚙</div>
+          <div class="deets">
+            <div class="lbl">Fan switch location</div>
+            <div class="loc">${switchLoc ? esc(switchLoc) : '<em style="opacity:0.6">Not yet documented for this site</em>'}</div>
+          </div>
+        </div>
+
+        <div class="photo-pair">
           ${photoCard(fanPhoto, 'The fan')}
           ${photoCard(switchPhoto, 'The switch')}
         </div>
-        <div class="warning">⚠ This switch controls THE FAN ONLY. The mist is on a separate switch at the pump (see the Mist Pump section below).</div>
+
+        <div class="callout warn">
+          <div class="ic">⚠</div>
+          <div class="body"><strong>This switch controls THE FAN ONLY.</strong> The mist is on a separate switch at the pump (see the Mist Pump section).</div>
+        </div>
       </div>
     </div>`;
 
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Misting System User Guide — ${esc(client)}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1a202c;background:#f7fafc;font-size:13px;line-height:1.5;padding-top:80px}
-  .doc{max-width:8.5in;margin:0 auto;padding:24px;background:#fff;box-shadow:0 2px 20px rgba(0,0,0,0.08)}
-  /* Action bar (sticky, hidden when printing) */
-  .action-bar{position:fixed;top:0;left:0;right:0;background:#1a1d26;padding:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.2);z-index:1000}
-  .action-bar button{padding:12px 18px;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;color:#fff;min-width:110px}
+  :root{
+    --ink:#0f172a; --ink-soft:#334155; --muted:#64748b;
+    --blue:#1d4ed8; --blue-deep:#1e3a8a; --blue-light:#dbeafe; --blue-bg:#eff6ff;
+    --green:#15803d; --green-deep:#14532d; --green-light:#dcfce7; --green-bg:#f0fdf4;
+    --amber:#c2410c; --amber-deep:#7c2d12; --amber-light:#ffedd5; --amber-bg:#fff7ed;
+    --purple:#7c3aed; --purple-light:#ede9fe; --purple-bg:#faf5ff;
+    --danger:#dc2626; --danger-bg:#fef2f2;
+    --warn:#d97706; --warn-bg:#fef3c7;
+  }
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:var(--ink);background:linear-gradient(180deg,#e2e8f0 0%,#cbd5e1 100%);font-size:13px;line-height:1.55;padding-top:80px;-webkit-font-smoothing:antialiased}
+  .doc{max-width:8.5in;margin:20px auto;background:#fff;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25);border-radius:12px;overflow:hidden}
+  /* Action bar */
+  .action-bar{position:fixed;top:0;left:0;right:0;background:#0f172a;padding:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;box-shadow:0 4px 20px rgba(0,0,0,0.3);z-index:1000}
+  .action-bar button{padding:12px 18px;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;color:#fff;min-width:110px;font-family:inherit;transition:transform .1s}
+  .action-bar button:active{transform:scale(0.97)}
   .btn-share{background:#22c55e}
-  .btn-print{background:#4f8cff}
-  .btn-dl{background:#8b90a0}
+  .btn-print{background:#3b82f6}
+  .btn-dl{background:#64748b}
   .btn-mail{background:#16a34a}
-  @media print {body{padding-top:0;background:#fff}.doc{box-shadow:none;max-width:100%}.action-bar{display:none !important}@page{size:letter;margin:0.4in}}
-  /* Header */
-  .doc-header{text-align:center;padding-bottom:14px;border-bottom:3px solid #1e3a8a;margin-bottom:18px}
-  .doc-header .brand{font-size:11px;color:#1e3a8a;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin-bottom:4px}
-  .doc-header h1{font-size:24px;font-weight:800;color:#1a202c;letter-spacing:-0.5px}
-  .doc-header .subtitle{font-size:13px;color:#666;margin-top:4px}
-  .doc-header .meta{display:flex;justify-content:center;gap:18px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:#555}
-  .doc-header .meta span{display:inline-flex;align-items:center;gap:5px}
-  .doc-header .meta strong{color:#1a202c;font-weight:600}
-  /* Sections */
-  .section{margin:18px 0;border-radius:8px;overflow:hidden;page-break-inside:avoid}
-  .section-header{padding:10px 14px;display:flex;align-items:center;gap:10px;color:#fff;font-weight:700;font-size:15px;text-transform:uppercase;letter-spacing:1px}
-  .section-header .num{font-size:18px;font-weight:800;opacity:0.7}
-  .section-header .icon{font-size:22px}
-  .section-body{padding:14px;background:#fff;border-left:1px solid #e5e7eb;border-right:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;border-radius:0 0 8px 8px}
-  /* Section colors */
-  .fans .section-header{background:#1e40af}
-  .fans .section-body{background:#eff6ff}
-  .pump .section-header{background:#15803d}
-  .pump .section-body{background:#f0fdf4}
-  .ro .section-header{background:#ea580c}
-  .ro .section-body{background:#fff7ed}
-  .additional .section-header{background:#7c3aed}
-  .additional .section-body{background:#faf5ff}
-  /* Fan list */
-  .fan-list{display:flex;flex-direction:column;gap:6px;margin:8px 0}
-  .fan-line{padding:8px 10px;background:#fff;border-left:3px solid #1e40af;border-radius:4px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
-  .fan-line.dim{opacity:0.55;border-left-color:#94a3b8}
-  .fan-line .fan-label{font-weight:700;font-size:13px;color:#1e40af}
-  .fan-line .fan-loc{font-size:12px;color:#444}
-  /* Photo grid */
-  .photo-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));gap:8px;margin:10px 0}
-  .photo-card{border:1px solid #d1d5db;border-radius:4px;overflow:hidden;background:#fff}
-  .photo-card img{width:100%;height:110px;object-fit:cover;display:block}
-  .photo-card.empty{height:140px;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#f3f4f6}
-  .photo-card.empty .empty-text{font-size:11px;color:#9ca3af;text-align:center}
-  .photo-card .photo-cap{padding:4px 6px;font-size:10px;color:#444;text-align:center;background:#f9fafb;border-top:1px solid #e5e7eb}
-  /* Info / warnings */
-  .info-line{padding:8px 12px;background:#fff;border-left:3px solid currentColor;border-radius:4px;margin:8px 0;font-size:12px}
-  .info-line strong{color:inherit}
-  .warning{background:#fef3c7;border-left:4px solid #d97706;color:#92400e;padding:10px 14px;border-radius:4px;font-size:12px;margin:8px 0;font-weight:600}
-  .danger{background:#fef2f2;border-left:4px solid #dc2626;color:#991b1b;padding:10px 14px;border-radius:4px;font-size:12px;margin:8px 0;font-weight:700}
-  .danger-big{background:#dc2626;color:#fff;padding:12px 16px;border-radius:4px;font-size:13px;text-align:center;margin:8px 0;font-weight:700;letter-spacing:1px;text-transform:uppercase}
-  /* Footer */
-  .contact-box{margin-top:20px;background:linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);color:#fff;padding:14px 18px;border-radius:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
-  .contact-box .label{font-size:11px;text-transform:uppercase;letter-spacing:2px;opacity:0.8}
-  .contact-box .big{font-size:18px;font-weight:700;margin-top:2px}
-  .doc-footer{margin-top:14px;padding-top:10px;border-top:1px solid #e5e7eb;font-size:10px;color:#9ca3af;text-align:center}
+  @media print{body{padding-top:0;background:#fff}.doc{box-shadow:none;border-radius:0;margin:0;max-width:100%}.action-bar{display:none !important}@page{size:letter;margin:0.4in}}
+
+  /* HERO HEADER */
+  .hero{position:relative;background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);color:#fff;padding:36px 30px 30px;overflow:hidden}
+  .hero::before{content:'';position:absolute;top:-50%;right:-20%;width:80%;height:200%;background:radial-gradient(circle,rgba(255,255,255,0.08) 0%,transparent 70%);pointer-events:none}
+  .hero .brand-line{display:flex;align-items:center;gap:10px;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;opacity:0.9;margin-bottom:14px}
+  .hero .brand-line .badge{display:inline-block;padding:3px 10px;background:rgba(255,255,255,0.15);border-radius:4px;backdrop-filter:blur(8px)}
+  .hero h1{font-size:34px;font-weight:800;line-height:1.1;letter-spacing:-1px;margin-bottom:8px;position:relative}
+  .hero .subtitle{font-size:14px;opacity:0.85;margin-bottom:20px;position:relative;max-width:540px}
+  .hero .meta-row{display:flex;gap:8px;flex-wrap:wrap;position:relative}
+  .hero .meta-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);border-radius:20px;font-size:12px;backdrop-filter:blur(8px)}
+  .hero .meta-chip strong{font-weight:600}
+
+  /* DOC BODY */
+  .doc-body{padding:0 24px 24px}
+
+  /* SECTION CARD */
+  .card{margin:20px 0;border-radius:12px;overflow:hidden;box-shadow:0 4px 6px -1px rgba(0,0,0,0.08),0 2px 4px -1px rgba(0,0,0,0.04);page-break-inside:avoid}
+  .card-head{padding:14px 18px;color:#fff;display:flex;align-items:center;gap:14px;position:relative}
+  .card-head .num-badge{flex-shrink:0;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;backdrop-filter:blur(8px);border:1.5px solid rgba(255,255,255,0.3)}
+  .card-head .head-text{flex:1}
+  .card-head .head-text .label{font-size:11px;opacity:0.85;text-transform:uppercase;letter-spacing:2px;font-weight:600;margin-bottom:2px}
+  .card-head .head-text .title{font-size:18px;font-weight:700;line-height:1.2}
+  .card-head .icon-art{flex-shrink:0;width:46px;height:46px;display:flex;align-items:center;justify-content:center}
+  .card-head .icon-art svg{width:100%;height:100%}
+  .card-body{padding:16px 20px;background:#fff}
+
+  /* Section color variants */
+  .card.fans .card-head{background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%)}
+  .card.fans .card-body{background:var(--blue-bg)}
+  .card.pump .card-head{background:linear-gradient(135deg,#14532d 0%,#16a34a 100%)}
+  .card.pump .card-body{background:var(--green-bg)}
+  .card.ro .card-head{background:linear-gradient(135deg,#7c2d12 0%,#ea580c 100%)}
+  .card.ro .card-body{background:var(--amber-bg)}
+  .card.additional .card-head{background:linear-gradient(135deg,#5b21b6 0%,#8b5cf6 100%)}
+  .card.additional .card-body{background:var(--purple-bg)}
+  .card.preface .card-head{background:linear-gradient(135deg,#0f172a 0%,#1e40af 100%)}
+  .card.preface .card-body{background:#f8fafc}
+  .card.trouble .card-head{background:linear-gradient(135deg,#1f2937 0%,#475569 100%)}
+  .card.trouble .card-body{background:#f8fafc}
+
+  /* TWO-CONCEPT GRID (used in preface) */
+  .concepts{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch;margin:14px 0}
+  .concept{padding:16px;border-radius:10px;background:#fff;border:2px solid;display:flex;flex-direction:column;gap:8px}
+  .concept.fans{border-color:var(--blue)}
+  .concept.mist{border-color:var(--green)}
+  .concept .ic{width:54px;height:54px;display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:26px;margin-bottom:4px}
+  .concept.fans .ic{background:var(--blue-light);color:var(--blue-deep)}
+  .concept.mist .ic{background:var(--green-light);color:var(--green-deep)}
+  .concept h4{font-size:15px;font-weight:700}
+  .concept.fans h4{color:var(--blue-deep)}
+  .concept.mist h4{color:var(--green-deep)}
+  .concept p{font-size:12px;color:var(--ink-soft);line-height:1.5}
+  .vs{display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:var(--muted);writing-mode:vertical-lr;letter-spacing:2px;padding:6px 4px;background:#f1f5f9;border-radius:8px}
+
+  /* SWITCH-LOCATION CALLOUT (large pill style) */
+  .switch-pill{display:flex;align-items:center;gap:14px;padding:12px 16px;background:#fff;border-radius:10px;border:2px solid;margin:10px 0}
+  .switch-pill .ic{flex-shrink:0;width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:22px}
+  .switch-pill .deets{flex:1;min-width:0}
+  .switch-pill .deets .lbl{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;opacity:0.85}
+  .switch-pill .deets .loc{font-size:14px;font-weight:600;margin-top:2px;word-wrap:break-word}
+  .switch-pill.blue{border-color:var(--blue)}
+  .switch-pill.blue .ic{background:var(--blue-light);color:var(--blue-deep)}
+  .switch-pill.blue .deets .lbl{color:var(--blue-deep)}
+  .switch-pill.green{border-color:var(--green)}
+  .switch-pill.green .ic{background:var(--green-light);color:var(--green-deep)}
+  .switch-pill.green .deets .lbl{color:var(--green-deep)}
+  .switch-pill.amber{border-color:var(--amber)}
+  .switch-pill.amber .ic{background:var(--amber-light);color:var(--amber-deep)}
+  .switch-pill.amber .deets .lbl{color:var(--amber-deep)}
+
+  /* PHOTO TREATMENT */
+  .photo-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:14px 0}
+  .photo-frame{border-radius:10px;overflow:hidden;background:#1f2937;box-shadow:0 4px 6px -1px rgba(0,0,0,0.15);position:relative;aspect-ratio:4/3}
+  .photo-frame img{width:100%;height:100%;object-fit:cover;display:block}
+  .photo-frame .ph-cap{position:absolute;bottom:0;left:0;right:0;padding:8px 12px;background:linear-gradient(0deg,rgba(0,0,0,0.85) 0%,transparent 100%);color:#fff;font-size:12px;font-weight:600}
+  .photo-frame.empty{aspect-ratio:4/3;background:linear-gradient(135deg,#e2e8f0 0%,#cbd5e1 100%);display:flex;align-items:center;justify-content:center}
+  .photo-frame.empty .ph-empty{text-align:center;color:#64748b}
+  .photo-frame.empty .ph-empty .em{font-size:38px;margin-bottom:4px}
+  .photo-frame.empty .ph-empty .et{font-size:11px;font-weight:600}
+  .photo-single{margin:14px 0;border-radius:10px;overflow:hidden;background:#1f2937;box-shadow:0 4px 6px -1px rgba(0,0,0,0.15);max-width:480px;margin-left:auto;margin-right:auto;position:relative;aspect-ratio:16/10}
+  .photo-single img{width:100%;height:100%;object-fit:cover;display:block}
+  .photo-single .ph-cap{position:absolute;bottom:0;left:0;right:0;padding:10px 14px;background:linear-gradient(0deg,rgba(0,0,0,0.85) 0%,transparent 100%);color:#fff;font-size:13px;font-weight:600}
+
+  /* CALLOUT BOXES */
+  .callout{margin:12px 0;padding:12px 16px;border-radius:10px;font-size:13px;line-height:1.5;display:flex;gap:12px;align-items:flex-start}
+  .callout .ic{flex-shrink:0;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700}
+  .callout .body{flex:1}
+  .callout.warn{background:var(--warn-bg);color:var(--amber-deep);border-left:5px solid var(--warn)}
+  .callout.warn .ic{background:var(--warn);color:#fff}
+  .callout.danger{background:var(--danger-bg);color:#991b1b;border-left:5px solid var(--danger)}
+  .callout.danger .ic{background:var(--danger);color:#fff}
+  .callout.info-blue{background:var(--blue-bg);color:var(--blue-deep);border-left:5px solid var(--blue)}
+  .callout.info-blue .ic{background:var(--blue);color:#fff}
+  .callout.info-green{background:var(--green-bg);color:var(--green-deep);border-left:5px solid var(--green)}
+  .callout.info-green .ic{background:var(--green);color:#fff}
+
+  /* HUGE WARNING (RO Don't Touch) */
+  .mega-warn{background:linear-gradient(135deg,#7f1d1d 0%,#dc2626 100%);color:#fff;padding:24px;border-radius:12px;text-align:center;margin:14px 0;box-shadow:0 8px 16px -4px rgba(220,38,38,0.4)}
+  .mega-warn .icon{font-size:46px;margin-bottom:8px;display:block}
+  .mega-warn .title{font-size:20px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px}
+  .mega-warn .sub{font-size:13px;opacity:0.95;font-weight:500}
+
+  /* SWITCH HIERARCHY DIAGRAM */
+  .hierarchy{margin:14px 0;background:#fff;border-radius:10px;padding:16px;border:1px solid #e2e8f0}
+  .hierarchy h4{font-size:13px;color:var(--green-deep);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:12px;text-align:center}
+  .hier-row{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0;align-items:center;font-size:12px;background:#fff;border-radius:8px;overflow:hidden;border:1px solid #e2e8f0}
+  .hier-row.header{background:linear-gradient(135deg,#14532d 0%,#16a34a 100%);color:#fff;font-weight:700;text-transform:uppercase;font-size:11px;letter-spacing:1px}
+  .hier-row > div{padding:10px 12px;border-right:1px solid #e2e8f0;text-align:center}
+  .hier-row > div:last-child{border-right:none}
+  .hier-row.header > div{border-right-color:rgba(255,255,255,0.15)}
+  .hier-row:not(.header){border-top:1px solid #e2e8f0}
+  .pill-on{display:inline-block;padding:3px 12px;background:var(--green-light);color:var(--green-deep);border-radius:20px;font-weight:700;font-size:11px;letter-spacing:1px}
+  .pill-off{display:inline-block;padding:3px 12px;background:var(--danger-bg);color:#991b1b;border-radius:20px;font-weight:700;font-size:11px;letter-spacing:1px}
+  .pill-any{display:inline-block;padding:3px 10px;background:#f1f5f9;color:#64748b;border-radius:20px;font-weight:600;font-size:11px;font-style:italic}
+
+  /* TROUBLESHOOTING GRID */
+  .ts-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0}
+  .ts-item{background:#fff;border:1px solid #e2e8f0;border-left:4px solid #64748b;border-radius:8px;padding:10px 12px}
+  .ts-item .q{font-weight:700;color:var(--ink);font-size:12px;margin-bottom:4px}
+  .ts-item .a{font-size:12px;color:var(--ink-soft);line-height:1.5}
+
+  /* CONTACT FOOTER */
+  .contact-card{margin-top:24px;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#3b82f6 100%);color:#fff;padding:20px 24px;border-radius:12px;display:grid;grid-template-columns:1fr auto;gap:20px;align-items:center;box-shadow:0 10px 25px -5px rgba(15,23,42,0.4)}
+  .contact-card .lhs .lbl{font-size:11px;text-transform:uppercase;letter-spacing:2px;opacity:0.85;font-weight:600}
+  .contact-card .lhs .brand-name{font-size:22px;font-weight:800;margin-top:2px}
+  .contact-card .lhs .note{font-size:12px;opacity:0.85;margin-top:6px}
+  .contact-card .rhs{text-align:right}
+  .contact-card .rhs .lbl{font-size:11px;text-transform:uppercase;letter-spacing:2px;opacity:0.85;font-weight:600}
+  .contact-card .rhs .phone{font-size:22px;font-weight:800;margin-top:2px;font-variant-numeric:tabular-nums}
+  .contact-card .rhs .email{font-size:12px;opacity:0.85;margin-top:4px}
+
+  .doc-footer{margin-top:14px;padding:14px 0;border-top:1px solid #e2e8f0;font-size:11px;color:var(--muted);text-align:center}
+
+  /* Print tightening */
+  @media print{
+    .card{box-shadow:none;border:1px solid #ddd}
+    .contact-card{box-shadow:none}
+    .hero{padding:24px}
+    .hero h1{font-size:28px}
+  }
+  /* Mobile */
+  @media (max-width:560px){
+    .hero{padding:24px 18px}
+    .hero h1{font-size:24px}
+    .doc-body{padding:0 16px 16px}
+    .concepts{grid-template-columns:1fr;gap:10px}
+    .vs{writing-mode:horizontal-tb;padding:4px 8px}
+    .photo-pair{grid-template-columns:1fr}
+    .ts-grid{grid-template-columns:1fr}
+    .hier-row{font-size:11px}
+    .hier-row > div{padding:8px 6px}
+    .contact-card{grid-template-columns:1fr;text-align:center}
+    .contact-card .rhs{text-align:center}
+  }
 </style></head><body>
 <div class="action-bar" id="__actionBar">
   <button class="btn-share" onclick="__shareGuide()">📤 Share</button>
@@ -6330,208 +6474,293 @@ async function generateUserGuide() {
 
 <div class="doc">
 
-<div class="doc-header">
-  <div class="brand">MistAmerica · Installation Handoff</div>
+<!-- HERO -->
+<div class="hero">
+  <div class="brand-line">
+    <span class="badge">MistAmerica</span>
+    <span>Installation Handoff</span>
+  </div>
   <h1>Misting System User Guide</h1>
-  <div class="subtitle">Your system in plain English: fans, mist, and the filter behind the scenes</div>
-  <div class="meta">
-    <span>🏪 <strong>${esc(client)}</strong></span>
-    ${location ? `<span>📍 <strong>${esc(location)}</strong></span>` : ''}
-    <span>📅 Installed: <strong>${esc(installDate)}</strong></span>
-    <span>🛠️ Installer: <strong>Lyle Krug</strong></span>
+  <div class="subtitle">Your system in plain English: the fans cool, the pump mists, and everything else stays untouched.</div>
+  <div class="meta-row">
+    <span class="meta-chip">🏪 <strong>${esc(client)}</strong></span>
+    ${location ? `<span class="meta-chip">📍 <strong>${esc(location)}</strong></span>` : ''}
+    <span class="meta-chip">📅 <strong>${esc(installDate)}</strong></span>
+    <span class="meta-chip">🛠️ <strong>Lyle Krug</strong></span>
   </div>
 </div>
 
-<!-- PREFACE: the universal mental model -->
-<div class="section" style="border:2px solid #1e3a8a">
-  <div class="section-header" style="background:#1e3a8a">
-    <span class="icon">📖</span>
-    <span>Read This First — How to Think About Your System</span>
+<div class="doc-body">
+
+<!-- PREFACE -->
+<div class="card preface">
+  <div class="card-head">
+    <div class="num-badge">📖</div>
+    <div class="head-text">
+      <div class="label">Start Here</div>
+      <div class="title">How to Think About Your System</div>
+    </div>
+    <div class="icon-art">${ICONS.book}</div>
   </div>
-  <div class="section-body" style="background:#f8fafc">
-    <div class="info-line" style="color:#1e3a8a;font-size:13px;line-height:1.6">
-      <strong>Your misting system is really TWO systems on the same canopies that don't talk to each other:</strong>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0">
-      <div style="background:#dbeafe;border-left:4px solid #1e40af;padding:12px;border-radius:4px">
-        <div style="font-weight:700;color:#1e40af;font-size:14px;margin-bottom:6px">🌀 THE FANS</div>
-        <div style="font-size:12px;color:#1e3a8a">Move air to spread cool fog. Each canopy's fans have their own switch on the same column as the lights and heaters. Fans alone do not produce mist — they just move air.</div>
+  <div class="card-body">
+    <p style="font-size:14px;color:var(--ink);font-weight:600;margin-bottom:6px">Your misting system is really TWO independent systems on the same canopies:</p>
+
+    <div class="concepts">
+      <div class="concept fans">
+        <div class="ic">🌀</div>
+        <h4>THE FANS</h4>
+        <p>Move air to spread cool fog. Each canopy has its own switch on the same column as the lights and heaters. Fans alone do not produce mist — they just move air.</p>
       </div>
-      <div style="background:#dcfce7;border-left:4px solid #15803d;padding:12px;border-radius:4px">
-        <div style="font-weight:700;color:#15803d;font-size:14px;margin-bottom:6px">💧 THE MIST</div>
-        <div style="font-size:12px;color:#14532d">Pressurized water from the pump, sprayed through nozzles on each canopy. The pump has its own switch. The fans don't know mist exists; the mist doesn't know fans exist.</div>
+      <div class="vs">VS</div>
+      <div class="concept mist">
+        <div class="ic">💧</div>
+        <h4>THE MIST</h4>
+        <p>Pressurized water from the pump, sprayed through nozzles on each canopy. The pump has its own switch. Fans don't know mist exists; mist doesn't know fans exist.</p>
       </div>
     </div>
 
-    <div class="danger" style="margin-top:10px;font-size:13px;background:#fef3c7;color:#78350f;border-left-color:#d97706">
-      <strong>BOTH must be ON for cool mist:</strong> The FAN at that canopy must be on. The MIST PUMP must be on. Turn off either one and you lose the cooling effect.
+    <div class="callout warn">
+      <div class="ic">⚠</div>
+      <div class="body"><strong>BOTH must be ON for cool mist.</strong> The FAN at that canopy must be on. The MIST PUMP must be on. Turn off either one and you lose the cooling effect.</div>
     </div>
 
-    <div class="info-line" style="color:#1e3a8a;background:#eff6ff;border-left-color:#1e40af;margin-top:8px;font-size:13px">
-      <strong>One important rule about the mist plumbing:</strong> The OP canopy mist is <strong>always on</strong> whenever the main mist pump is on. There is no separate OP-only mist switch. The OMD canopy mist <strong>can be optionally turned off</strong> via a separate cutoff at the pump — but only while the main pump is running. If the main pump is off, nothing mists anywhere.
+    <div class="callout info-blue">
+      <div class="ic">i</div>
+      <div class="body"><strong>One important rule about the mist plumbing:</strong> OP canopy mist is <strong>always on</strong> whenever the main mist pump is on — there is no separate OP mist switch. OMD canopy mist <strong>can be optionally turned off</strong> via a separate cutoff at the pump, but only while the main pump is running. If the main pump is off, nothing mists anywhere.</div>
     </div>
   </div>
 </div>
 
-${canopySection('01', '#1e40af', 'OP Canopy (Order Point)',
-  'Where customers <strong>order</strong>. Fans mounted on the same columns as the lights and heaters, outside the building.<br><br><strong>Mist behavior:</strong> OP mist is <strong>always on whenever the main mist pump is on</strong>. There is no separate OP mist switch.',
+${canopySection('01',
+  'OP Canopy (Order Point)',
+  'Where customers <strong>order</strong>. Fans mounted on the same columns as the lights and heaters, outside the building.<br><br><strong>Mist behavior:</strong> OP mist is always on whenever the main mist pump is on. There is no separate OP mist switch.',
   ug.opSwitch, opFanPhoto, opSwitchPhoto)}
 
-${canopySection('02', '#1e40af', 'OMD Canopy (Order Meal Delivery)',
+${canopySection('02',
+  'OMD Canopy (Order Meal Delivery)',
   'Where customers <strong>pick up</strong> their food. Same setup as OP — fans on the columns with the lights and heaters, outside the building.<br><br><strong>Mist behavior:</strong> OMD mist can be turned off independently via the <strong>OMD cutoff switch</strong> at the pump. BUT — if the main mist pump is off, OMD mist won\\'t turn on either, no matter where the cutoff is set.',
   ug.omdSwitch, omdFanPhoto, omdSwitchPhoto)}
 
-${hasPatio ? canopySection('03', '#1e40af', 'Patio',
+${hasPatio ? canopySection('03',
+  'Patio',
   'Outdoor seating area cooling. Same rules as OP — fans on their own switch, mist comes from the main pump.',
   ug.patioSwitch, patioFanPhoto, patioSwitchPhoto) : ''}
 
-<!-- MIST PUMP SECTION -->
-<div class="section pump">
-  <div class="section-header">
-    <span class="num">${hasPatio ? '04' : '03'}</span>
-    <span class="icon">💧</span>
-    <span>The Mist Pump & Mist Switches</span>
+<!-- MIST PUMP -->
+<div class="card pump">
+  <div class="card-head">
+    <div class="num-badge">${hasPatio ? '04' : '03'}</div>
+    <div class="head-text">
+      <div class="label">The Source</div>
+      <div class="title">Mist Pump & Mist Switches</div>
+    </div>
+    <div class="icon-art">${ICONS.pump}</div>
   </div>
-  <div class="section-body">
-    <div class="info-line" style="color:#15803d"><strong>What it does:</strong> Pressurizes filtered water and pushes it to the canopies as mist. This pump is what creates the mist — nothing else does.</div>
-    <div class="info-line" style="color:#15803d"><strong>Pump unit location:</strong> ${ug.pumpLocation ? `<strong>${esc(ug.pumpLocation)}</strong>` : '<em>(not documented — see photo)</em>'}</div>
+  <div class="card-body">
+    <div style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:8px"><strong>What it does:</strong> Pressurizes filtered water and pushes it to the canopies as mist. This pump is what creates the mist — nothing else does.</div>
 
-    <div class="photo-grid" style="grid-template-columns:1fr">
-      ${photoCard(pumpPhoto, 'The Mist Pump')}
+    <div class="switch-pill green">
+      <div class="ic">📍</div>
+      <div class="deets">
+        <div class="lbl">Pump unit location</div>
+        <div class="loc">${ug.pumpLocation ? esc(ug.pumpLocation) : '<em style="opacity:0.6">Not yet documented for this site</em>'}</div>
+      </div>
     </div>
 
-    <h4 style="font-size:14px;color:#15803d;margin:16px 0 6px;font-weight:700">⚙ Your mist switches — the hierarchy:</h4>
-
-    <div style="background:#fff;border:2px solid #15803d;border-radius:6px;padding:14px;margin:8px 0">
-      <div style="font-weight:700;color:#15803d;font-size:14px;margin-bottom:6px">1️⃣ MAIN PUMP SWITCH (the master)</div>
-      <div style="font-size:12px;color:#14532d;margin-bottom:6px">Turns the whole mist system on/off. When this is <strong>ON</strong>, the OP canopy mist starts immediately and automatically.</div>
-      <div style="font-size:12px"><strong>Location:</strong> ${ug.pumpSwitch ? esc(ug.pumpSwitch) : '<em>(not documented)</em>'}</div>
-      ${pumpSwitchPhoto ? `<div style="margin-top:8px;max-width:280px">${photoCard(pumpSwitchPhoto, 'Main pump switch')}</div>` : ''}
+    <div class="photo-single">
+      ${pumpPhoto ? `<img src="${pumpPhoto.annotatedURL || pumpPhoto.dataURL}" alt=""><div class="ph-cap">The Mist Pump</div>` : `<div style="height:100%;background:linear-gradient(135deg,#e2e8f0 0%,#cbd5e1 100%);display:flex;align-items:center;justify-content:center;flex-direction:column;color:#64748b"><div style="font-size:48px">📷</div><div style="font-size:13px;font-weight:600;margin-top:6px">Pump photo not yet tagged</div></div>`}
     </div>
+
+    <h4 style="font-size:13px;color:var(--green-deep);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin:18px 0 8px;text-align:center">Your Mist Switches — The Hierarchy</h4>
+
+    <div class="switch-pill green">
+      <div class="ic">1️⃣</div>
+      <div class="deets">
+        <div class="lbl">Main pump switch (the master)</div>
+        <div class="loc">${ug.pumpSwitch ? esc(ug.pumpSwitch) : '<em style="opacity:0.6">Not yet documented</em>'}</div>
+        <div style="font-size:12px;color:var(--green-deep);margin-top:4px;opacity:0.85">Turns the whole mist system on/off. When ON, OP canopy mist starts immediately and automatically.</div>
+      </div>
+    </div>
+    ${pumpSwitchPhoto ? `<div class="photo-pair" style="grid-template-columns:1fr;max-width:480px;margin-left:auto;margin-right:auto">${photoCard(pumpSwitchPhoto, 'Main pump switch')}</div>` : ''}
 
     ${hasOmdMistSwitch ? `
-    <div style="background:#fff;border:2px solid #ea580c;border-radius:6px;padding:14px;margin:8px 0">
-      <div style="font-weight:700;color:#ea580c;font-size:14px;margin-bottom:6px">2️⃣ OMD MIST CUTOFF (optional layer)</div>
-      <div style="font-size:12px;color:#7c2d12;margin-bottom:6px">Turns off mist to the <strong>OMD canopy only</strong> without affecting OP mist or any fans. Only useful when the main pump is ON.</div>
-      <div style="font-size:12px"><strong>Location:</strong> ${esc(ug.omdMistSwitch)}</div>
-      ${omdMistSwitchPhoto ? `<div style="margin-top:8px;max-width:280px">${photoCard(omdMistSwitchPhoto, 'OMD mist cutoff')}</div>` : ''}
+    <div class="switch-pill amber">
+      <div class="ic">2️⃣</div>
+      <div class="deets">
+        <div class="lbl">OMD mist cutoff (optional layer)</div>
+        <div class="loc">${esc(ug.omdMistSwitch)}</div>
+        <div style="font-size:12px;color:var(--amber-deep);margin-top:4px;opacity:0.9">Turns off mist to the <strong>OMD canopy only</strong> without affecting OP mist or any fans. Only useful when the main pump is ON.</div>
+      </div>
     </div>
+    ${omdMistSwitchPhoto ? `<div class="photo-pair" style="grid-template-columns:1fr;max-width:480px;margin-left:auto;margin-right:auto">${photoCard(omdMistSwitchPhoto, 'OMD mist cutoff')}</div>` : ''}
     ` : ''}
 
-    <h4 style="font-size:14px;color:#15803d;margin:16px 0 6px;font-weight:700">📋 What turns on what — the rules:</h4>
-    <table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:12px;background:#fff;border:1px solid #15803d;border-radius:4px;overflow:hidden">
-      <thead style="background:#15803d;color:#fff">
-        <tr>
-          <th style="padding:8px 10px;text-align:left;font-weight:600">Main Pump</th>
-          ${hasOmdMistSwitch ? '<th style="padding:8px 10px;text-align:left;font-weight:600">OMD Cutoff</th>' : ''}
-          <th style="padding:8px 10px;text-align:center;font-weight:600">OP Mist</th>
-          <th style="padding:8px 10px;text-align:center;font-weight:600">OMD Mist</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr style="border-bottom:1px solid #d1fae5">
-          <td style="padding:8px 10px;color:#991b1b;font-weight:700">OFF</td>
-          ${hasOmdMistSwitch ? '<td style="padding:8px 10px;color:#6b7280">(doesn\\'t matter)</td>' : ''}
-          <td style="padding:8px 10px;text-align:center;color:#991b1b;font-weight:600">OFF</td>
-          <td style="padding:8px 10px;text-align:center;color:#991b1b;font-weight:600">OFF</td>
-        </tr>
-        <tr ${hasOmdMistSwitch ? 'style="border-bottom:1px solid #d1fae5"' : ''}>
-          <td style="padding:8px 10px;color:#15803d;font-weight:700">ON</td>
-          ${hasOmdMistSwitch ? '<td style="padding:8px 10px;color:#15803d;font-weight:700">ON</td>' : ''}
-          <td style="padding:8px 10px;text-align:center;color:#15803d;font-weight:700">ON ✓</td>
-          <td style="padding:8px 10px;text-align:center;color:#15803d;font-weight:700">ON ✓</td>
-        </tr>
-        ${hasOmdMistSwitch ? `
-        <tr>
-          <td style="padding:8px 10px;color:#15803d;font-weight:700">ON</td>
-          <td style="padding:8px 10px;color:#991b1b;font-weight:700">OFF</td>
-          <td style="padding:8px 10px;text-align:center;color:#15803d;font-weight:700">ON ✓</td>
-          <td style="padding:8px 10px;text-align:center;color:#991b1b;font-weight:700">OFF</td>
-        </tr>
-        ` : ''}
-      </tbody>
-    </table>
+    <div class="hierarchy">
+      <h4>📋 What turns on what — the rules</h4>
+      <div class="hier-row header">
+        <div>Main Pump</div>
+        ${hasOmdMistSwitch ? '<div>OMD Cutoff</div>' : ''}
+        <div>OP Mist</div>
+        <div>OMD Mist</div>
+      </div>
+      <div class="hier-row">
+        <div><span class="pill-off">OFF</span></div>
+        ${hasOmdMistSwitch ? '<div><span class="pill-any">any</span></div>' : ''}
+        <div><span class="pill-off">OFF</span></div>
+        <div><span class="pill-off">OFF</span></div>
+      </div>
+      <div class="hier-row">
+        <div><span class="pill-on">ON</span></div>
+        ${hasOmdMistSwitch ? '<div><span class="pill-on">ON</span></div>' : ''}
+        <div><span class="pill-on">ON ✓</span></div>
+        <div><span class="pill-on">ON ✓</span></div>
+      </div>
+      ${hasOmdMistSwitch ? `
+      <div class="hier-row">
+        <div><span class="pill-on">ON</span></div>
+        <div><span class="pill-off">OFF</span></div>
+        <div><span class="pill-on">ON ✓</span></div>
+        <div><span class="pill-off">OFF</span></div>
+      </div>
+      ` : ''}
+    </div>
 
-    <div class="warning"><strong>For cool mist at any canopy, you also need that canopy's fan ON</strong> (Sections 01-${hasPatio ? '03' : '02'}). The mist column above only addresses water — the fan is what spreads it.</div>
+    <div class="callout warn">
+      <div class="ic">⚠</div>
+      <div class="body"><strong>For cool mist at any canopy, you also need that canopy's fan ON</strong> (Sections 01-${hasPatio ? '03' : '02'}). The mist column above only addresses water — the fan is what spreads it.</div>
+    </div>
   </div>
 </div>
 
 <!-- REVERSE OSMOSIS -->
-<div class="section ro">
-  <div class="section-header">
-    <span class="num">${hasPatio ? '05' : '04'}</span>
-    <span class="icon">🧪</span>
-    <span>Reverse Osmosis Filter & All Other Equipment</span>
+<div class="card ro">
+  <div class="card-head">
+    <div class="num-badge">${hasPatio ? '05' : '04'}</div>
+    <div class="head-text">
+      <div class="label">Behind The Scenes</div>
+      <div class="title">RO Filter & All Other Equipment</div>
+    </div>
+    <div class="icon-art">${ICONS.filter}</div>
   </div>
-  <div class="section-body">
-    <div class="danger-big">⚠ DO NOT TOUCH. DO NOT ADJUST. DO NOT TURN OFF THE WATER.</div>
+  <div class="card-body">
+    <div class="mega-warn">
+      <span class="icon">⛔</span>
+      <div class="title">Do Not Touch</div>
+      <div class="sub">Do not adjust. Do not turn off the water. Everything is preset at install.</div>
+    </div>
 
-    <div class="info-line" style="color:#ea580c"><strong>What it is:</strong> The RO filter cleans your building water before it reaches the pump (removes minerals so mist doesn't leave spots). Everything is preset at install. Nothing needs adjustment from you, your staff, or any vendor.</div>
+    <p style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin:10px 0"><strong>What it is:</strong> The RO filter cleans your building water before it reaches the pump (removes minerals so the mist doesn't leave spots). Nothing on the equipment needs adjustment from you, your staff, or any vendor.</p>
 
-    <div class="photo-grid" style="grid-template-columns:1fr 1fr">
+    <div class="photo-pair">
       ${photoCard(roPhoto, 'RO Filter Unit')}
       ${photoCard(drainPhoto, 'RO Drain')}
     </div>
 
-    <div class="info-line" style="color:#ea580c">
-      <strong>The drain:</strong> ${ug.roDrain ? esc(ug.roDrain) : '<em>(routing not documented)</em>'} — leave the drain line and its routing alone.
+    <div class="switch-pill amber" style="margin-top:14px">
+      <div class="ic">💧</div>
+      <div class="deets">
+        <div class="lbl">The drain</div>
+        <div class="loc">${ug.roDrain ? esc(ug.roDrain) : '<em style="opacity:0.6">Routing not documented</em>'}</div>
+        <div style="font-size:12px;color:var(--amber-deep);margin-top:4px;opacity:0.9">Leave the drain line and its routing alone.</div>
+      </div>
     </div>
 
-    <div class="info-line" style="color:#ea580c">
-      <strong>If something happens (tripped breaker, hard-water spots returning, alarm light, leak):</strong> Call MistAmerica. Do not attempt to reset or adjust anything yourself.
+    <div class="callout danger">
+      <div class="ic">!</div>
+      <div class="body"><strong>If something happens</strong> (tripped breaker, hard-water spots returning, alarm light, leak): <strong>Call MistAmerica.</strong> Do not attempt to reset or adjust anything yourself.</div>
     </div>
 
-    <div style="background:#fef3c7;border-left:4px solid #d97706;padding:10px 14px;border-radius:4px;font-size:12px;margin-top:8px;color:#78350f">
-      <em>(Breaker location info will be added to this guide once confirmed at this site.)</em>
+    <div class="callout warn">
+      <div class="ic">📝</div>
+      <div class="body"><em>Breaker location info will be added to this guide once confirmed at this site.</em></div>
     </div>
   </div>
 </div>
 
 ${hasAdditional ? `
 <!-- ADDITIONAL FAN -->
-<div class="section additional">
-  <div class="section-header">
-    <span class="num">${hasPatio ? '06' : '05'}</span>
-    <span class="icon">🌀</span>
-    <span>Additional Fan</span>
+<div class="card additional">
+  <div class="card-head">
+    <div class="num-badge">${hasPatio ? '06' : '05'}</div>
+    <div class="head-text">
+      <div class="label">Extras</div>
+      <div class="title">Additional Fan</div>
+    </div>
+    <div class="icon-art">${ICONS.fan}</div>
   </div>
-  <div class="section-body">
-    <div class="info-line" style="color:#7c3aed"><strong>This site has an extra fan beyond the standard layout:</strong></div>
-    <div class="info-line" style="color:#7c3aed"><strong>${esc(ug.additionalFan)}</strong></div>
-    ${additionalFanPhoto ? `<div class="photo-grid">${photoCard(additionalFanPhoto, 'Additional fan')}</div>` : ''}
-    <div class="info-line" style="color:#7c3aed">Same rules: its switch controls THE FAN ONLY. For mist at this fan, the main pump switch must also be on.</div>
+  <div class="card-body">
+    <p style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:8px"><strong>This site has an extra fan beyond the standard layout:</strong></p>
+    <div class="switch-pill" style="border-color:var(--purple)">
+      <div class="ic" style="background:var(--purple-light);color:var(--purple)">🌀</div>
+      <div class="deets">
+        <div class="lbl" style="color:var(--purple)">Additional fan</div>
+        <div class="loc">${esc(ug.additionalFan)}</div>
+      </div>
+    </div>
+    ${additionalFanPhoto ? `<div class="photo-pair" style="grid-template-columns:1fr;max-width:480px;margin-left:auto;margin-right:auto">${photoCard(additionalFanPhoto, 'Additional fan')}</div>` : ''}
+    <div class="callout info-blue" style="background:var(--purple-bg);color:var(--purple);border-left-color:var(--purple)">
+      <div class="ic" style="background:var(--purple)">i</div>
+      <div class="body">Same rules: its switch controls THE FAN ONLY. For mist at this fan, the main pump switch must also be on.</div>
+    </div>
   </div>
 </div>
 ` : ''}
 
 <!-- TROUBLESHOOTING -->
-<div class="section" style="border:1px solid #d1d5db">
-  <div class="section-header" style="background:#374151">
-    <span class="icon">🛠️</span>
-    <span>Quick Troubleshooting</span>
+<div class="card trouble">
+  <div class="card-head">
+    <div class="num-badge">🛠️</div>
+    <div class="head-text">
+      <div class="label">If Something's Off</div>
+      <div class="title">Quick Troubleshooting</div>
+    </div>
+    <div class="icon-art">${ICONS.wrench}</div>
   </div>
-  <div class="section-body">
-    <div class="info-line" style="color:#374151"><strong>No mist anywhere:</strong> Main pump switch is probably off. Turn it ON. (If it's already on and still no mist, call MistAmerica — do not touch the RO or anything else.)</div>
-    <div class="info-line" style="color:#374151"><strong>OP mist works but OMD doesn't:</strong>${hasOmdMistSwitch ? ' Check the OMD MIST CUTOFF — make sure it\\'s ON.' : ' Likely clogged nozzles on the OMD line — call MistAmerica.'}</div>
-    <div class="info-line" style="color:#374151"><strong>Fan running but no mist at that canopy:</strong> Confirm the main pump switch is ON.${hasOmdMistSwitch ? ' For OMD: also confirm the OMD cutoff is ON.' : ''} If both are on and still no mist, nozzles may be clogged — call MistAmerica.</div>
-    <div class="info-line" style="color:#374151"><strong>Mist but no fan moving the air at that canopy:</strong> That canopy's fan switch is OFF. Turn the fan switch on (on the column near the lights and heaters).</div>
-    <div class="info-line" style="color:#374151"><strong>Loud or knocking pump:</strong> Don't keep running it. Switch the main pump OFF and call MistAmerica same day.</div>
-    <div class="info-line" style="color:#374151"><strong>Visible drip or leak:</strong> Photograph the spot and call MistAmerica.</div>
-    <div class="warning">⚠ <strong>End of season:</strong> If your location gets below 35°F, the pump and water lines must be drained to prevent freeze damage. Call MistAmerica well before the first cold snap.</div>
+  <div class="card-body">
+    <div class="ts-grid">
+      <div class="ts-item">
+        <div class="q">No mist anywhere</div>
+        <div class="a">Main pump switch is probably off. Turn it ON. If it's already on and still no mist, call MistAmerica — do not touch the RO or anything else.</div>
+      </div>
+      <div class="ts-item">
+        <div class="q">OP mist works but OMD doesn't</div>
+        <div class="a">${hasOmdMistSwitch ? 'Check the OMD MIST CUTOFF — make sure it\\'s ON.' : 'Likely clogged nozzles on the OMD line — call MistAmerica.'}</div>
+      </div>
+      <div class="ts-item">
+        <div class="q">Fan running but no mist at that canopy</div>
+        <div class="a">Confirm the main pump switch is ON.${hasOmdMistSwitch ? ' For OMD: also confirm the OMD cutoff is ON.' : ''} If both are on and still no mist, nozzles may be clogged — call MistAmerica.</div>
+      </div>
+      <div class="ts-item">
+        <div class="q">Mist but no air movement at that canopy</div>
+        <div class="a">That canopy's fan switch is OFF. Turn the fan switch on (on the column near the lights and heaters).</div>
+      </div>
+      <div class="ts-item">
+        <div class="q">Loud or knocking pump</div>
+        <div class="a">Don't keep running it. Switch the main pump OFF and call MistAmerica same day.</div>
+      </div>
+      <div class="ts-item">
+        <div class="q">Visible drip or leak</div>
+        <div class="a">Photograph the spot and call MistAmerica.</div>
+      </div>
+    </div>
+    <div class="callout warn">
+      <div class="ic">❄</div>
+      <div class="body"><strong>End of season:</strong> If your location gets below 35°F, the pump and water lines must be drained to prevent freeze damage. Call MistAmerica well before the first cold snap.</div>
+    </div>
   </div>
 </div>
 
 <!-- CONTACT -->
-<div class="contact-box">
-  <div>
-    <div class="label">Need service or have a question?</div>
-    <div class="big">MistAmerica</div>
-    <div style="font-size:12px;opacity:0.9;margin-top:2px">When calling, reference your install date: <strong>${esc(installDate)}</strong></div>
+<div class="contact-card">
+  <div class="lhs">
+    <div class="lbl">Need service or have a question?</div>
+    <div class="brand-name">MistAmerica</div>
+    <div class="note">When calling, reference your install date: <strong>${esc(installDate)}</strong></div>
   </div>
-  <div style="text-align:right">
-    <div class="label">Service phone</div>
-    <div class="big">(call) [PHONE]</div>
-    <div style="font-size:12px;opacity:0.9;margin-top:2px">service@mistamerica.com</div>
+  <div class="rhs">
+    <div class="lbl">Service phone</div>
+    <div class="phone">[PHONE]</div>
+    <div class="email">service@mistamerica.com</div>
   </div>
 </div>
 
@@ -6539,6 +6768,7 @@ ${hasAdditional ? `
   Generated ${new Date().toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})} for ${esc(client)} by Lyle Krug · MistAmerica · Save this document for ongoing reference
 </div>
 
+</div><!-- /doc-body -->
 </div><!-- /doc -->
 </body></html>`;
 

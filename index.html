@@ -1008,6 +1008,7 @@
   <button class="generate-btn" style="background:#ec4899;color:#fff" onclick="generateWeeklyDigest()">📊 WEEKLY DIGEST</button>
   <button class="generate-btn" style="background:#0ea5e9;color:#fff;grid-column:1 / -1" onclick="openMasterLog()">📋 MASTER LOG — EVERY JOB, EVERY HOUR, EVERY RECEIPT</button>
   <button class="generate-btn" style="background:#8b5cf6;color:#fff;grid-column:1 / -1" onclick="openPhotoSearch()">🔍 SEARCH PHOTOS — ACROSS EVERY JOB</button>
+  <button class="generate-btn" style="background:#16a34a;color:#fff;grid-column:1 / -1" onclick="generateUserGuide()">📘 USER GUIDE — ONE-PAGER FOR THE SITE CONTACT</button>
   <button class="send-btn" onclick="sendReport()" style="grid-column:1 / -1">SEND REPORT ✉</button>
 </div>
 
@@ -6095,6 +6096,248 @@ async function refreshTripSelector() {
 }
 
 // ── TRIP TOTALS REPORT ──
+// ═══════════════════════════════
+// USER GUIDE — one-page customer-facing document delivered at job closeout
+// ═══════════════════════════════
+async function generateUserGuide() {
+  const client = document.getElementById('client').value.trim() || 'Your Site';
+  const city = document.getElementById('city').value.trim();
+  const state = document.getElementById('state').value.trim().toUpperCase();
+  const dateEnd = document.getElementById('dateEnd').value || document.getElementById('dateStart').value;
+  const location = [city, state].filter(Boolean).join(', ');
+  const installDate = dateEnd ? fmtDate(dateEnd) : 'Recently';
+
+  // Pull a few good reference photos: prefer "after" photos from Equipment + Switching systems
+  const referencePhotos = photos
+    .filter(p => p.dataURL && (p.system === 'equipment' || p.system === 'switching') && p.phase === 'after')
+    .slice(0, 3);
+  // If we don't have system-tagged photos, fall back to any "after" photos
+  const fallbackPhotos = referencePhotos.length < 2
+    ? photos.filter(p => p.dataURL && p.phase === 'after').slice(0, 3)
+    : referencePhotos;
+  const guidePhotos = fallbackPhotos.length ? fallbackPhotos : photos.filter(p => p.dataURL).slice(0, 3);
+
+  // Collect site contact emails for the smart Email button
+  const siteContacts = (contacts || []).filter(c => c.email || c.phone);
+  const contactEmails = siteContacts.map(c => c.email).filter(Boolean).join(',');
+
+  const fileBase = ('user_guide_' + client + '_' + (city || '')).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'user_guide';
+
+  let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Misting System User Guide — ${esc(client)}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111;background:#fff;padding:30px 24px;max-width:8.5in;margin:0 auto;padding-top:80px;font-size:13px;line-height:1.45}
+  /* Action bar (sticky, hidden when printing) */
+  .action-bar{position:fixed;top:0;left:0;right:0;background:#1a1d26;padding:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,0.2);z-index:1000}
+  .action-bar button{padding:12px 18px;border:none;border-radius:6px;font-size:14px;font-weight:700;cursor:pointer;color:#fff;min-width:110px}
+  .btn-share{background:#22c55e}
+  .btn-print{background:#4f8cff}
+  .btn-dl{background:#8b90a0}
+  .btn-mail{background:#16a34a}
+  @media print {body{padding-top:0}.action-bar{display:none !important}@page{size:letter;margin:0.5in}}
+  /* Document */
+  h1{font-size:22px;color:#1e40af;border-bottom:3px solid #1e40af;padding-bottom:6px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
+  .header-meta{font-size:12px;color:#555;margin-bottom:14px;display:flex;gap:14px;flex-wrap:wrap}
+  .header-meta strong{color:#111}
+  h2{font-size:14px;color:#fff;background:#1e40af;padding:5px 10px;margin:14px 0 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.5px;font-weight:700}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:10px 0}
+  .box{border:1px solid #ddd;border-radius:4px;padding:8px 10px;background:#fafafa}
+  .box ul{list-style:none;margin:0;padding:0}
+  .box li{padding:3px 0;font-size:12px;display:flex;gap:6px;align-items:flex-start}
+  .box li::before{content:'›';color:#1e40af;font-weight:700;flex-shrink:0}
+  .warn{background:#fef3c7;border-color:#fbbf24}
+  .warn h2{background:#92400e}
+  .danger{background:#fef2f2;border-color:#dc2626}
+  .danger li::before{content:'✖';color:#dc2626}
+  .contact-box{background:#dbeafe;border:2px solid #1e40af;padding:10px 14px;border-radius:6px;margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
+  .contact-box .info{font-size:13px}
+  .contact-box .phone{font-size:18px;font-weight:700;color:#1e40af}
+  .photos{display:grid;grid-template-columns:repeat(${guidePhotos.length || 1}, 1fr);gap:8px;margin:10px 0}
+  .photos img{width:100%;height:auto;max-height:140px;object-fit:cover;border:1px solid #ddd;border-radius:4px}
+  .photos .cap{font-size:10px;color:#666;text-align:center;margin-top:2px}
+  .footer{margin-top:18px;padding-top:10px;border-top:1px solid #ddd;font-size:10px;color:#888;text-align:center}
+</style></head><body>
+<div class="action-bar" id="__actionBar">
+  <button class="btn-share" onclick="__shareGuide()">📤 Share</button>
+  ${contactEmails ? `<button class="btn-mail" onclick="__emailGuide()">📧 Email Site Contacts</button>` : ''}
+  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadGuide()">💾 Download</button>
+</div>
+<script>
+  const __guideName = ${JSON.stringify(fileBase)};
+  const __contactEmails = ${JSON.stringify(contactEmails)};
+  const __siteName = ${JSON.stringify(client)};
+  async function __shareGuide(){
+    const blob = new Blob([document.documentElement.outerHTML],{type:'text/html'});
+    const file = new File([blob], __guideName + '.html', {type:'text/html'});
+    try {
+      if (navigator.canShare && navigator.canShare({files:[file]})) {
+        await navigator.share({files:[file], title:'Misting System User Guide', text:'User guide for ' + __siteName});
+        return;
+      }
+      if (navigator.share) {
+        await navigator.share({title:'Misting System User Guide', text:'User guide for ' + __siteName, url: location.href});
+        return;
+      }
+    } catch(e) { if (e.name === 'AbortError') return; }
+    __downloadGuide();
+    alert('Sharing not supported here — guide downloaded instead.');
+  }
+  function __emailGuide(){
+    if (!__contactEmails) { alert('No site contact emails on file. Use Share instead, then pick Mail.'); return; }
+    const subject = encodeURIComponent('Misting System User Guide - ' + __siteName);
+    const body = encodeURIComponent('Attached is your misting system user guide.\\n\\nPlease save it for future reference. Daily operation, maintenance, and troubleshooting are covered.\\n\\nFor any service issues, contact MistAmerica directly.\\n\\n-- Lyle Krug, MistAmerica');
+    // Open mailto with all addresses; user attaches the page via Share if they want a file
+    location.href = 'mailto:' + __contactEmails + '?subject=' + subject + '&body=' + body;
+    setTimeout(() => alert('Email opened with site contacts. Use the Share button on this page to attach the PDF / HTML guide as a file.'), 500);
+  }
+  function __downloadGuide(){
+    const blob = new Blob([document.documentElement.outerHTML],{type:'text/html'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = __guideName + '.html';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  }
+<\/script>
+
+<h1>Misting System — User Guide</h1>
+<div class="header-meta">
+  <span><strong>Site:</strong> ${esc(client)}</span>
+  ${location ? `<span><strong>Location:</strong> ${esc(location)}</span>` : ''}
+  <span><strong>Installed:</strong> ${esc(installDate)}</span>
+  <span><strong>Installer:</strong> Lyle Krug · MistAmerica</span>
+</div>
+
+<h2>How It Works</h2>
+<div class="box">
+  Your system pulls building water through a high-pressure pump (often with a Reverse Osmosis filter for mineral-free output), then forces it through small nozzles on the misting fans. The fans throw a fine fog that cools the surrounding air by 15-30°F via evaporation. It is designed for outdoor seating, drive-thru, and patio areas — anywhere customers gather in heat.
+</div>
+
+<h2>How to Operate</h2>
+<div class="row">
+  <div class="box">
+    <strong style="font-size:12px">▶ Powering Up</strong>
+    <ul>
+      <li>Locate the system power switch (typically inside the pump room or on a wall switch near the controls).</li>
+      <li>Flip to <strong>ON</strong>. The pump should hum on within a few seconds.</li>
+      <li>Within 10-30 seconds, all fans begin running and water flows through the nozzles.</li>
+      <li>For systems with a thermostat: the fans run automatically when ambient temperature exceeds the set point (typically 85°F).</li>
+    </ul>
+  </div>
+  <div class="box">
+    <strong style="font-size:12px">■ Powering Down</strong>
+    <ul>
+      <li>Flip the system power switch to <strong>OFF</strong>.</li>
+      <li>Pump shuts off immediately. Fans stop within seconds as residual pressure bleeds off.</li>
+      <li>At end of season (cold-weather climates): drain the pump and water lines to prevent freeze damage. Call us if you need help with this.</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Daily Check (30 seconds)</h2>
+<div class="box">
+  <ul>
+    <li>Glance at the pump's pressure gauge during operation — should read in the green zone (typically 800-1000 PSI for high-pressure systems).</li>
+    <li>Look at the fans — water should be misting evenly from every nozzle. A nozzle that drips or streams instead of mists is clogged or worn.</li>
+    <li>Listen — pump should hum steadily. Loud knocking, screeching, or repeated on/off cycling means call us.</li>
+  </ul>
+</div>
+
+<h2>Weekly Maintenance (5 minutes)</h2>
+<div class="box">
+  <ul>
+    <li>Wipe each nozzle with a damp cloth. Mineral buildup is the #1 cause of nozzle problems.</li>
+    <li>Check fan rotation — fan blades should turn smoothly with no wobble or grinding.</li>
+    <li>Inspect fittings at the pump and along the line for any drips. A small drip today is a soaked wall tomorrow.</li>
+    <li>If your system has an RO filter, watch for a flashing light or alarm — this indicates the filter cartridge needs replacement. Call us.</li>
+  </ul>
+</div>
+
+<h2>⚠ Do Not Do This</h2>
+<div class="box danger">
+  <ul>
+    <li>Do not operate the system below 35°F ambient — water in the lines can freeze and rupture the system.</li>
+    <li>Do not spray cleaning chemicals (degreasers, bleach, etc.) directly into the fans or pump intake.</li>
+    <li>Do not store boxes, supplies, or equipment within 2 feet of the pump — it needs airflow to stay cool.</li>
+    <li>Do not ignore unusual noise, leaks, or smell from the pump room. Call us before it becomes a bigger repair.</li>
+  </ul>
+</div>
+
+<h2>Troubleshooting</h2>
+<div class="row">
+  <div class="box">
+    <strong style="font-size:12px">System won't start</strong>
+    <ul>
+      <li>Check that the wall switch / breaker is ON.</li>
+      <li>Confirm building water supply is on and not isolated by a valve.</li>
+      <li>For thermostat-controlled systems: check that ambient temperature is above the set point.</li>
+    </ul>
+  </div>
+  <div class="box">
+    <strong style="font-size:12px">Low / no mist from fans</strong>
+    <ul>
+      <li>Most common: clogged nozzles → clean per Weekly Maintenance, or replace.</li>
+      <li>Pressure gauge reads low → call us, the pump may need service.</li>
+      <li>Visible air bubbles in the line → call us, the supply line may have lost prime.</li>
+    </ul>
+  </div>
+</div>
+<div class="row">
+  <div class="box">
+    <strong style="font-size:12px">Drip onto patio / building</strong>
+    <ul>
+      <li>One worn or stuck-open nozzle. Easy fix. Call us with the location.</li>
+    </ul>
+  </div>
+  <div class="box">
+    <strong style="font-size:12px">Pump cycles on/off rapidly</strong>
+    <ul>
+      <li>Usually a leak or pressure-switch issue. Don't keep running it — call us same day.</li>
+    </ul>
+  </div>
+</div>
+
+${guidePhotos.length ? `<h2>Reference Photos</h2>
+<div class="photos">
+  ${guidePhotos.map((p, i) => `<div><img src="${p.annotatedURL || p.dataURL}"><div class="cap">${esc(p.notes || p.area || ('Reference ' + (i+1)))}</div></div>`).join('')}
+</div>` : ''}
+
+<div class="contact-box">
+  <div class="info">
+    <div style="font-weight:700;font-size:14px;color:#1e40af">Need Service?</div>
+    <div>Email: <strong>service@mistamerica.com</strong></div>
+    <div>Reference your install date when calling: <strong>${esc(installDate)}</strong></div>
+  </div>
+  <div style="text-align:right">
+    <div style="font-size:11px;color:#1e40af;text-transform:uppercase;letter-spacing:1px;font-weight:600">MistAmerica</div>
+    <div class="phone">(call) [PHONE]</div>
+  </div>
+</div>
+
+<div class="footer">
+  This guide was generated for ${esc(client)} on ${new Date().toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})} by your installer.
+</div>
+</body></html>`;
+
+  try {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const w = window.open(url, '_blank');
+    if (!w) {
+      const a = document.createElement('a');
+      a.href = url; a.download = fileBase + '.html';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      alert('Popup blocked — user guide downloaded instead.');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    alert('Could not open user guide: ' + err.message);
+  }
+}
+
 async function generateTripTotals() {
   if (!currentTripId) { alert('Pick a trip first.'); return; }
   await autoSave(); // freeze current draft first so its data is in the totals

@@ -6417,7 +6417,7 @@ async function _sendGcReportToContact(contactIdx) {
     `— Lyle Krug\n` +
     `MistAmerica`
   );
-  const mailto = `mailto:${encodeURIComponent(contact.email)}?bcc=${encodeURIComponent('service@mistamerica.com,lylekrug@gmail.com')}&subject=${subject}&body=${body}`;
+  const mailto = `mailto:${encodeURIComponent(contact.email)}?bcc=${encodeURIComponent('service@mistamerica.com,robertl@mistamerica.com')}&subject=${subject}&body=${body}`;
   setTimeout(() => {
     const a = document.createElement('a');
     a.href = mailto;
@@ -6429,7 +6429,7 @@ async function _sendGcReportToContact(contactIdx) {
   _logGcReportSent(contact);
 
   setTimeout(() => alert(`Email opened to ${contact.name || contact.email}.\n\n` +
-    `BCC'd: service@mistamerica.com + your inbox\n\n` +
+    `BCC'd: service@mistamerica.com + robertl@mistamerica.com\n\n` +
     `When the email composer opens:\n1. Tap Share/Attach on the GC Report tab.\n2. Pick Mail → attach to this draft.\n3. Send.`), 900);
 }
 
@@ -6443,7 +6443,7 @@ function _logGcReportSent(contact) {
     kind: 'email',
     to: toLabel,
     subject: `Installation Completion Report — ${client}`,
-    summary: 'Sent installation completion report to GC (BCC: MistAmerica office + Lyle)',
+    summary: 'Sent installation completion report to GC (BCC: service@ + robertl@)',
     sentAt: todayISO,
     responseReceived: false,
     responseAt: '',
@@ -6746,17 +6746,17 @@ async function _buildAndOpenGcReport() {
 <div class="contact-card">
   <div class="lhs">
     <div class="lbl">For follow-up or questions:</div>
-    <div class="name">Lyle Krug</div>
-    <div class="note">MistAmerica · lylekrug@gmail.com</div>
+    <div class="name">MistAmerica</div>
+    <div class="note">service@mistamerica.com · (call) [PHONE]</div>
   </div>
   <div class="rhs">
-    <div class="lbl">MistAmerica office</div>
-    <div class="info">service@mistamerica.com</div>
-    <div class="info" style="font-size:12px;opacity:0.85">(call) [PHONE]</div>
+    <div class="lbl">Reference</div>
+    <div class="info">${esc(client)}</div>
+    <div class="info" style="font-size:12px;opacity:0.85">Installed ${esc(installDate)}</div>
   </div>
 </div>
 
-<div class="doc-footer">Generated ${new Date().toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})} for ${esc(client)} by Lyle Krug · MistAmerica</div>
+<div class="doc-footer">Generated ${new Date().toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})} for ${esc(client)} · MistAmerica</div>
 
 </div></div></body></html>`;
 
@@ -6971,8 +6971,8 @@ async function _sendUserGuideViaEmail(contactIdx) {
     `For any service questions, contact MistAmerica directly (info on the last page of the guide).\n\n` +
     `— Lyle Krug, MistAmerica`
   );
-  const lyleEmail = 'lylekrug@gmail.com';
-  const mailto = `mailto:${encodeURIComponent(contact.email)}?bcc=${encodeURIComponent(lyleEmail)}&subject=${subject}&body=${body}`;
+  const bccList = 'service@mistamerica.com,robertl@mistamerica.com';
+  const mailto = `mailto:${encodeURIComponent(contact.email)}?bcc=${encodeURIComponent(bccList)}&subject=${subject}&body=${body}`;
   // Use a temporary <a> click so the mail handler fires without unloading the Job Tracker tab
   setTimeout(() => {
     const a = document.createElement('a');
@@ -6984,7 +6984,7 @@ async function _sendUserGuideViaEmail(contactIdx) {
   // Log to this job's Comm Log
   _logUserGuideSent(contact, 'email');
 
-  setTimeout(() => alert(`Email opened to ${contact.name || contact.email}.\n\nWhen the email composer opens:\n1. Tap the Share / Attach button on the User Guide tab.\n2. Pick "Mail" to attach the file to this draft.\n3. Send.\n\nYou are BCC'd so you get the receipt.`), 900);
+  setTimeout(() => alert(`Email opened to ${contact.name || contact.email}.\n\nBCC'd: service@mistamerica.com + robertl@mistamerica.com\n\nWhen the email composer opens:\n1. Tap the Share / Attach button on the User Guide tab.\n2. Pick "Mail" to attach the file to this draft.\n3. Send.`), 900);
 }
 
 async function _sendUserGuideViaText(contactIdx) {
@@ -7026,12 +7026,12 @@ async function _sendUserGuideViaText(contactIdx) {
       `Job: ${client}\n` +
       `Sent: ${new Date().toLocaleString()}\n`
     );
-    const receiptMailto = `mailto:lylekrug@gmail.com?subject=${receiptSubject}&body=${receiptBody}`;
-    // Open a tab for the receipt instead of replacing the SMS flow
+    const receiptMailto = `mailto:service@mistamerica.com?cc=robertl@mistamerica.com&subject=${receiptSubject}&body=${receiptBody}`;
+    // Open a tab for the office record instead of replacing the SMS flow
     try { window.open(receiptMailto, '_blank'); } catch(e) {}
   }, 1500);
 
-  setTimeout(() => alert(`SMS opened to ${contact.name || contact.phone}.\n\nTo attach the actual guide:\n1. Send the SMS first (it has the description).\n2. Then on the User Guide tab, tap Share and pick Messages to send the file as a follow-up MMS.\n\nA receipt email to you was also opened in a separate tab.`), 1100);
+  setTimeout(() => alert(`SMS opened to ${contact.name || contact.phone}.\n\nTo attach the actual guide:\n1. Send the SMS first (it has the description).\n2. Then on the User Guide tab, tap Share and pick Messages to send the file as a follow-up MMS.\n\nAn office record email (to service@ + robertl@) was also opened in a separate tab.`), 1100);
 }
 
 function _logUserGuideSent(contact, method) {

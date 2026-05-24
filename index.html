@@ -888,6 +888,7 @@
     <option value="Pump Room">
     <option value="RO Drain">
     <option value="OMD Mist Switch">
+    <option value="As-Built Drawing">
     <option value="Drive-thru">
     <option value="Roof">
     <option value="Dining area">
@@ -1027,6 +1028,7 @@
     </div>
     <div class="field"><label style="font-size:12px">📐 As-built notes (deviations from spec, field modifications)</label>
       <textarea id="gcAsBuilt" placeholder="e.g. OP canopy column 3 had CMU wrap not shown on drawings — used longer mounting brackets. RO drain re-routed 4 ft west of spec to avoid existing condensate line. All other items as drawn." oninput="gcDetails.asBuilt=this.value;scheduleAutoSave()" style="min-height:70px"></textarea>
+      <div style="font-size:11px;color:var(--dim);margin-top:4px;font-style:italic">💡 Also upload the office's drawings as photos, tag Component = "📐 Drawing / As-Built", then tap ✏ Markup → freehand pen to sketch your actual install lines. They'll auto-embed in this section of the GC report.</div>
     </div>
     <div class="field"><label style="font-size:12px">🚫 Not included in this scope (outside MistAmerica)</label>
       <textarea id="gcNotIncluded" placeholder="e.g. Electrical breaker installation at panel — by EC. Building water supply rough-in — by plumber. Patio canopy electrical — not in MistAmerica scope." oninput="gcDetails.notIncluded=this.value;scheduleAutoSave()" style="min-height:60px"></textarea>
@@ -1358,6 +1360,7 @@ const COMPONENT_TO_SYSTEM = {
   switch: 'switching',
   electrical: 'switching',
   overall: 'site',
+  drawing: 'site',
   other: ''
 };
 const SYSTEM_LABELS = {
@@ -2928,6 +2931,7 @@ function renderPhotos() {
           <option value="electrical"${p.component==='electrical'?' selected':''}>🔌 Electrical</option>
           <option value="mounting"${p.component==='mounting'?' selected':''}>🧱 Mounting / bracket</option>
           <option value="overall"${p.component==='overall'?' selected':''}>📐 Overall view</option>
+          <option value="drawing"${p.component==='drawing'?' selected':''}>📐 Drawing / As-Built (markup on this)</option>
           <option value="other"${p.component==='other'?' selected':''}>❔ Other</option>
         </select>
       </div>
@@ -6342,13 +6346,17 @@ async function _buildAndOpenGcReport() {
   const installDate = dateEnd ? fmtDate(dateEnd) : 'Recently';
   const gc = gcDetails || {};
 
-  // Auto-pull after photos by system
-  const afterPhotos = photos.filter(p => p.dataURL && p.phase === 'after');
+  // Auto-pull after photos by system (excluding drawings — drawings get their own section)
+  const afterPhotos = photos.filter(p => p.dataURL && p.phase === 'after' && p.component !== 'drawing');
   const bySystem = { equipment: [], fans: [], switching: [], site: [] };
   afterPhotos.forEach(p => {
     const sys = (p.system || '').trim();
     if (bySystem[sys]) bySystem[sys].push(p);
   });
+  // Pull marked-up as-built drawings (annotated version preferred)
+  const asBuiltDrawings = photos.filter(p => p.dataURL && (
+    p.component === 'drawing' || /as-?built/i.test(p.area || '')
+  ));
   // Pull checked checklist items (non-headers)
   const checkedItems = (checklist.items || []).filter(it => it.checked && !isChecklistHeader(it));
 
@@ -6493,17 +6501,35 @@ async function _buildAndOpenGcReport() {
   </div>
 </div>
 
-<!-- 02 AS-BUILT NOTES -->
+<!-- 02 AS-BUILT NOTES + MARKED-UP DRAWINGS -->
 <div class="card asbuilt">
   <div class="card-head">
     <div class="num-badge">02</div>
     <div class="head-text">
-      <div class="label">Field Notes</div>
-      <div class="title">As-Built Notes (deviations from spec)</div>
+      <div class="label">Field Notes & Marked Drawings</div>
+      <div class="title">As-Built Documentation</div>
     </div>
   </div>
   <div class="card-body">
-    <p>${gc.asBuilt ? esc(gc.asBuilt) : '<em style="color:var(--muted)">No as-built deviations noted. Fill "As-built notes" if any field changes were made.</em>'}</p>
+    ${gc.asBuilt ? `<p style="margin-bottom:14px">${esc(gc.asBuilt)}</p>` : ''}
+
+    ${asBuiltDrawings.length ? `
+      <h4 style="font-size:13px;color:var(--blue-deep);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin:${gc.asBuilt ? '14' : '0'}px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--blue-light)">Marked-Up Drawings (${asBuiltDrawings.length})</h4>
+      <div style="display:flex;flex-direction:column;gap:16px">
+        ${asBuiltDrawings.map((p, i) => `
+          <div style="border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;background:#fff;page-break-inside:avoid">
+            <img src="${p.annotatedURL || p.dataURL}" style="width:100%;height:auto;display:block;background:#f8fafc" alt="As-built drawing ${i + 1}">
+            ${p.notes || p.area ? `<div style="padding:10px 14px;background:#f8fafc;border-top:1px solid #e2e8f0;font-size:12px;color:var(--ink-soft);line-height:1.5">
+              ${p.area ? `<div style="font-weight:600;color:var(--ink);margin-bottom:2px">${esc(p.area)}</div>` : ''}
+              ${p.notes ? esc(p.notes) : ''}
+            </div>` : ''}
+            ${p.annotatedURL ? '<div style="padding:6px 14px;background:#fef2f2;color:#991b1b;font-size:11px;font-weight:600;letter-spacing:0.5px;border-top:1px solid #fee2e2">✏ FIELD MARKUP APPLIED</div>' : '<div style="padding:6px 14px;background:#fef3c7;color:#92400e;font-size:11px;font-style:italic;border-top:1px solid #fde68a">Original drawing — no field markup added yet</div>'}
+          </div>
+        `).join('')}
+      </div>
+    ` : ''}
+
+    ${!gc.asBuilt && !asBuiltDrawings.length ? '<em style="color:var(--muted)">No as-built notes or marked drawings yet. Fill the "As-built notes" field above and/or upload the office\\'s drawings as photos, tag Component = "Drawing / As-Built", and use the Markup tool to draw your actual install lines.</em>' : ''}
   </div>
 </div>
 

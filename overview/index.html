@@ -187,7 +187,7 @@ body {
 .bk.b3 { border-left-color: var(--orange); }
 .bk.b4 { border-left-color: var(--purple); }
 
-/* ── UNFUCKUPABLE / TRUST ─────────────────────── */
+/* ── THIS IS WHAT WORKS / STERN AUTHORITY ─────── */
 .proof {
   background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
   color: #fff; border-radius: 14px; padding: 28px 30px; margin-top: 18px;
@@ -202,6 +202,117 @@ body {
 }
 .proof .pillar .h { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 4px; }
 .proof .pillar .d { font-size: 12px; opacity: 0.85; line-height: 1.5; }
+
+/* ── PHONE CALLOUT PAGE (the schematic walkthrough) ── */
+.phone-page { page-break-before: always; }
+.callout-layout {
+  display: grid; grid-template-columns: 320px 1fr; gap: 32px;
+  align-items: start; margin-top: 24px;
+}
+.phone-frame {
+  background: linear-gradient(135deg, #1a202c 0%, #0f172a 100%);
+  border-radius: 38px; padding: 10px;
+  box-shadow: 0 30px 60px -10px rgba(15,23,42,0.35), 0 8px 20px rgba(0,0,0,0.15);
+  position: relative;
+}
+.phone-screen {
+  background: #111318; border-radius: 28px;
+  color: #e8eaf0; font-size: 9px; line-height: 1.4;
+  overflow: hidden; position: relative;
+  padding: 22px 12px 14px;
+  min-height: 760px;
+}
+.phone-screen .ps-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; background: #1a1d26; border-radius: 8px; margin-bottom: 8px;
+  font-weight: 700; font-size: 9px;
+}
+.phone-screen .ps-header .accent { color: #4f8cff; }
+.phone-screen .ps-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 10px; background: #1a1d26; border-radius: 6px; margin-bottom: 6px;
+  font-size: 8.5px; color: #cbd5e1;
+}
+.phone-screen .ps-row .lbl { color: #8b90a0; font-size: 7.5px; text-transform: uppercase; letter-spacing: 1px; font-weight: 700; margin-right: 6px; }
+.phone-screen .ps-section {
+  background: #1a1d26; border-radius: 6px; padding: 7px 10px; margin-bottom: 6px;
+}
+.phone-screen .ps-section .h2 {
+  font-size: 8px; color: #8b90a0; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;
+}
+.phone-screen .ps-pin {
+  background: #242836; border: 1px solid #333849; border-radius: 4px;
+  padding: 5px 7px; margin: 4px 0; font-size: 8px; color: #cbd5e1;
+}
+.phone-screen .ps-pin.accent { background: rgba(79,140,255,0.15); border-color: #4f8cff; color: #fff; }
+.phone-screen .ps-dash {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-top: 4px;
+}
+.phone-screen .ps-stat { background: #242836; padding: 5px 4px; border-radius: 4px; text-align: center; }
+.phone-screen .ps-stat .v { font-size: 10px; font-weight: 800; color: #4f8cff; }
+.phone-screen .ps-stat .l { font-size: 6.5px; color: #8b90a0; text-transform: uppercase; letter-spacing: 0.5px; }
+.phone-screen .ps-btn-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 4px 0;
+}
+.phone-screen .ps-btn {
+  padding: 6px 4px; border-radius: 4px; text-align: center;
+  font-size: 8px; font-weight: 700; color: #fff;
+}
+.phone-screen .ps-btn.drive { background: linear-gradient(135deg, #1e3a8a, #3b82f6); }
+.phone-screen .ps-btn.work { background: linear-gradient(135deg, #14532d, #16a34a); }
+.phone-screen .ps-btn.gas { background: #ea580c; }
+.phone-screen .ps-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px; margin-top: 4px;
+}
+.phone-screen .ps-action {
+  background: #242836; border: 1px dashed #333849; border-radius: 4px;
+  padding: 6px 4px; text-align: center; font-size: 8px; color: #cbd5e1;
+}
+.phone-screen .ps-bottom-btn {
+  padding: 7px 6px; border-radius: 4px; text-align: center;
+  font-size: 8.5px; font-weight: 800; color: #fff; margin: 3px 0;
+  letter-spacing: 0.3px;
+}
+.phone-screen .ps-bottom-btn.report { background: #22c55e; }
+.phone-screen .ps-bottom-btn.summary { background: #fbbf24; color: #111; }
+.phone-screen .ps-bottom-btn.daily { background: #a78bfa; }
+.phone-screen .ps-bottom-btn.weekly { background: #ec4899; }
+.phone-screen .ps-bottom-btn.master { background: #0ea5e9; }
+.phone-screen .ps-bottom-btn.search { background: #8b5cf6; }
+.phone-screen .ps-bottom-btn.gc { background: #ea580c; }
+.phone-screen .ps-bottom-btn.user { background: #16a34a; }
+.phone-screen .ps-bottom-btn.qr { background: #0f172a; border: 1px solid #475569; }
+.phone-screen .ps-send { background: #4f8cff; }
+
+/* Callout dots overlaid on the phone */
+.ps-dot {
+  position: absolute;
+  width: 22px; height: 22px;
+  background: #ef4444; color: white;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 11px;
+  border: 2px solid #fff;
+  box-shadow: 0 2px 8px rgba(239,68,68,0.5);
+  z-index: 10;
+}
+
+/* Right-side callout list */
+.callout-list { display: flex; flex-direction: column; gap: 10px; }
+.cc {
+  display: flex; gap: 12px; align-items: flex-start;
+  background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid #ef4444;
+  border-radius: 8px; padding: 10px 12px;
+}
+.cc .n {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+  background: #ef4444; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 13px;
+}
+.cc .ct { flex: 1; min-width: 0; }
+.cc .ct h4 { font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 2px; }
+.cc .ct p { font-size: 11.5px; color: var(--ink-soft); line-height: 1.5; margin: 0; }
 
 /* ── FEATURE INVENTORY (the kitchen sink) ──────── */
 .inv {
@@ -263,6 +374,8 @@ body {
   .proof .pillars { grid-template-columns: 1fr; }
   .inv { grid-template-columns: 1fr; }
   .stack { grid-template-columns: repeat(2, 1fr); }
+  .callout-layout { grid-template-columns: 1fr; gap: 20px; }
+  .phone-frame { max-width: 320px; margin: 0 auto; }
 }
 </style>
 </head>
@@ -463,27 +576,27 @@ body {
   </div>
 </div>
 
-<!-- ─── UNFUCKUPABLE PROOF ──────────────────── -->
+<!-- ─── THIS IS WHAT WORKS ─────────────────────── -->
 <div class="section alt">
-  <h2><span class="num" style="background:#0f172a">04</span>Why This Doesn't Get Fucked Up</h2>
-  <p class="lede">Triple redundancy on every event. Every deliverable BCC'd. Every action logged. No single point of failure.</p>
+  <h2><span class="num" style="background:#0f172a">04</span>This Is What Works.</h2>
+  <p class="lede">Every event captured three independent ways. Every deliverable triple-copied to the office. Every send timestamped to the second. This is operational standard now — not aspirational, not optional.</p>
 
   <div class="proof">
-    <h3>Every job = three independent records.</h3>
-    <p>If the office "doesn't have" something, the cloud does. If the cloud is questioned, the Comm Log shows when it was sent and to whom. If the recipient claims they never got it, the BCC to Lyle proves otherwise. There's no version of "we don't know" that survives this.</p>
+    <h3>Every job leaves three independent records behind.</h3>
+    <p>Local device. Cloud database. Office inbox. Each captures the same event from a different angle, in different storage, at the same instant. There is no scenario where activity goes missing. There is no scenario where the office can claim they didn't know. There is no scenario where the customer can say it wasn't documented. The audit trail is the floor — not the ceiling.</p>
 
     <div class="pillars">
       <div class="pillar">
         <div class="h">Local</div>
-        <div class="d">IndexedDB on the phone — works offline, GPS-stamped the moment of capture.</div>
+        <div class="d">IndexedDB on the phone — works offline, GPS-stamped the moment of capture. Survives no signal, dead Wi-Fi, dropped calls.</div>
       </div>
       <div class="pillar">
         <div class="h">Cloud</div>
-        <div class="d">Firebase Firestore — replicated to Surface Pro within seconds of capture.</div>
+        <div class="d">Firebase Firestore — replicated to laptop within seconds. Queryable, exportable, time-indexed forever.</div>
       </div>
       <div class="pillar">
-        <div class="h">Email</div>
-        <div class="d">Every send BCCs service@mistamerica.com + robertl@mistamerica.com. Office and direct supervisor both copied automatically.</div>
+        <div class="h">Office</div>
+        <div class="d">Every deliverable BCC's service@mistamerica.com and robertl@mistamerica.com. The office and the direct supervisor receive a copy automatically. No exceptions.</div>
       </div>
     </div>
   </div>
@@ -532,6 +645,210 @@ body {
     <div class="stack-card"><div class="h">PDF Render</div><div class="v">PDF.js</div></div>
     <div class="stack-card"><div class="h">QR Generation</div><div class="v">qrcode.js</div></div>
     <div class="stack-card"><div class="h">Stylus Support</div><div class="v">PointerEvents + palm rejection</div></div>
+  </div>
+</div>
+
+<!-- ─── PAGE 3: PHONE WALKTHROUGH ────────────── -->
+<div class="section phone-page">
+  <h2><span class="num" style="background:#ef4444">07</span>What I See On My Phone</h2>
+  <p class="lede">This is the actual interface. Every screen element here is live and shipping. Every callout is a feature already working in production — no mockups, no roadmap, no "coming soon."</p>
+
+  <div class="callout-layout">
+
+    <!-- Phone mockup -->
+    <div class="phone-frame">
+      <div class="phone-screen" style="position:relative">
+
+        <!-- 1. Header with sync indicator -->
+        <div class="ps-header">
+          <span><span class="accent">Mist</span>America</span>
+          <span style="color:#22c55e">☁️ Synced</span>
+          <span>⚙️ Jobs (12)</span>
+        </div>
+        <div class="ps-dot" style="top:14px;right:-10px">1</div>
+
+        <!-- 2. Trip + Draft selector -->
+        <div class="ps-row" style="background:#0b1828;border:1px solid #4f8cff">
+          <span class="lbl">Trip:</span>
+          <span>May CA Swing ▾</span>
+          <span style="background:#fbbf24;color:#111;padding:1px 6px;border-radius:3px;font-size:7.5px;font-weight:700">📋 Totals</span>
+        </div>
+        <div class="ps-row">
+          <span class="lbl">Editing:</span>
+          <span>CFA #4527 ▾</span>
+          <span style="background:#4f8cff;padding:1px 6px;border-radius:3px;font-size:7.5px">📧 EOD</span>
+        </div>
+        <div class="ps-dot" style="top:60px;left:-10px">2</div>
+        <div class="ps-dot" style="top:88px;right:-10px">3</div>
+
+        <!-- 3. Job Info -->
+        <div class="ps-section">
+          <div class="h2">Job Info</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px;margin-top:3px">
+            <div class="ps-pin">CFA #4527</div>
+            <div class="ps-pin">Phoenix, AZ</div>
+          </div>
+          <div class="ps-pin accent" style="margin-top:5px">📍 Pin Spot: 36.17, -115.13 · ±15m</div>
+        </div>
+        <div class="ps-dot" style="top:175px;right:-10px">4</div>
+
+        <!-- 4. Live Dashboard -->
+        <div class="ps-section" style="background:linear-gradient(135deg,#1a1d26,#0f1419)">
+          <div class="h2" style="color:#4f8cff">🟢 LIVE · Workday running</div>
+          <div class="ps-dash">
+            <div class="ps-stat"><div class="v">2.5h</div><div class="l">🚗 Drive</div></div>
+            <div class="ps-stat"><div class="v">3.1h</div><div class="l">🏗️ Site</div></div>
+            <div class="ps-stat"><div class="v">187</div><div class="l">🛣️ Miles</div></div>
+            <div class="ps-stat"><div class="v">$74</div><div class="l">💰 Spent</div></div>
+          </div>
+        </div>
+        <div class="ps-dot" style="top:248px;left:-10px">5</div>
+
+        <!-- 5. Start buttons -->
+        <div class="ps-btn-row">
+          <div class="ps-btn drive">🚗 START DRIVE</div>
+          <div class="ps-btn work">🏗️ START WORKDAY</div>
+        </div>
+        <div class="ps-btn-row" style="grid-template-columns:1fr">
+          <div class="ps-btn gas">⛽ QUICK GAS</div>
+        </div>
+        <div class="ps-dot" style="top:332px;right:-10px">6</div>
+
+        <!-- 6. Time Log -->
+        <div class="ps-section">
+          <div class="h2">⏱ Time Log · 4 segments</div>
+          <div class="ps-pin">🚗 Vegas → Phoenix · 4hr 12min · 287mi</div>
+          <div class="ps-pin">🏗️ CFA #4527 onsite · 3hr 10min</div>
+        </div>
+
+        <!-- 7. Action grid -->
+        <div class="ps-section">
+          <div class="h2">Capture</div>
+          <div class="ps-grid">
+            <div class="ps-action">📷 Photos</div>
+            <div class="ps-action">📹 Videos</div>
+            <div class="ps-action">🧾 Receipts</div>
+            <div class="ps-action">📁 Files</div>
+            <div class="ps-action">📝 Notes</div>
+            <div class="ps-action">👥 Contacts</div>
+            <div class="ps-action">✅ Checklist</div>
+            <div class="ps-action">📨 Comm Log</div>
+            <div class="ps-action">⚠ Discrepancies</div>
+            <div class="ps-action">🕐 Manual Hours</div>
+          </div>
+        </div>
+        <div class="ps-dot" style="top:495px;left:-10px">7</div>
+
+        <!-- 8. Fillable closeout sections -->
+        <div class="ps-section">
+          <div class="h2">📘 User Guide Site Details ▾</div>
+          <div class="ps-pin" style="font-size:7.5px;color:#8b90a0">OP / OMD switch locations · pump room · OMD cutoff · RO drain</div>
+        </div>
+        <div class="ps-section">
+          <div class="h2">🏗️ GC Closeout Details ▾</div>
+          <div class="ps-pin" style="font-size:7.5px;color:#8b90a0">Scope · as-built · not included · GC sign-off</div>
+        </div>
+        <div class="ps-dot" style="top:618px;right:-10px">8</div>
+
+        <!-- 9. Bottom buttons -->
+        <div class="ps-bottom-btn report">GENERATE FULL REPORT</div>
+        <div class="ps-bottom-btn gc">🏗️ GC COMPLETION REPORT → GC</div>
+        <div class="ps-bottom-btn user">📘 USER GUIDE → OPERATOR</div>
+        <div class="ps-bottom-btn qr">📱 QR HELP STICKER → EQUIPMENT</div>
+        <div class="ps-bottom-btn master">📋 MASTER LOG (every drive, hour, receipt)</div>
+        <div class="ps-bottom-btn search">🔍 SEARCH PHOTOS (cross-job)</div>
+        <div class="ps-bottom-btn ps-send">✉ SEND REPORT</div>
+        <div class="ps-dot" style="top:760px;left:-10px">9</div>
+        <div class="ps-dot" style="top:830px;right:-10px">10</div>
+
+      </div>
+    </div>
+
+    <!-- Right side: callout descriptions -->
+    <div class="callout-list">
+
+      <div class="cc">
+        <div class="n">1</div>
+        <div class="ct">
+          <h4>☁️ Cloud Sync Status</h4>
+          <p>Live indicator. Pulses on every write. Tap to force-sync. Phone + laptop see the same data within seconds — anywhere, any time.</p>
+        </div>
+      </div>
+
+      <div class="cc">
+        <div class="n">2</div>
+        <div class="ct">
+          <h4>🛣 Trip Selector + Totals</h4>
+          <p>Multi-job road trips group automatically. One tap produces a trip-wide totals report covering every job done that week — hours, miles, receipts, day-by-day breakdown.</p>
+        </div>
+      </div>
+
+      <div class="cc">
+        <div class="n">3</div>
+        <div class="ct">
+          <h4>📧 EOD Email Button + 4 PM Banner</h4>
+          <p>Auto-summary of the day's activity (hours, miles, photos, expenses, notes) emailed to office. After 4 PM, a banner reminds if today has unsent activity.</p>
+        </div>
+      </div>
+
+      <div class="cc">
+        <div class="n">4</div>
+        <div class="ct">
+          <h4>📍 Pin Site Location</h4>
+          <p>Tap "Pin Spot" on arrival to drop a GPS anchor. From then on, the app auto-tags any time within 1/2 mile as "on-site." Drift alert if you wander > 1/2 mile while clocked in.</p>
+        </div>
+      </div>
+
+      <div class="cc">
+        <div class="n">5</div>
+        <div class="ct">
+          <h4>📊 Live Dashboard</h4>
+          <p>Drive hours, on-site hours, miles, and expenses update in real time as the day unfolds. No spreadsheet tally at the end — the numbers are always current.</p>
+        </div>
+      </div>
+
+      <div class="cc">
+        <div class="n">6</div>
+        <div class="ct">
+          <h4>🚗 Start Drive / 🏗️ Start Workday / ⛽ Quick Gas</h4>
+          <p>GPS-stamped time segments. Odometer photos auto-read by AI. Gas receipts AI-extracted to amount / vendor / category. One-tap captures.</p>
+        </div>
+      </div>
+
+      <div class="cc">
+        <div class="n">7</div>
+        <div class="ct">
+          <h4>📷 Capture Grid (10 one-tap inputs)</h4>
+          <p>Photos (AI-described), Videos (auto-thumbnailed), Receipts (AI-extracted), Files (PDFs markable with S-Pen), Notes, Contacts, Checklist, Comm Log, Discrepancies, Manual Hours. Everything tagged with GPS + timestamp at the moment of capture.</p>
+        </div>
+      </div>
+
+      <div class="cc">
+        <div class="n">8</div>
+        <div class="ct">
+          <h4>📘 Fillable Closeout Sections</h4>
+          <p>User Guide details: OP / OMD switches, pump location, OMD cutoff, RO drain. GC Closeout: scope, as-built notes (deviations from spec), what's NOT in scope, GC sign-off. Fill once, generates two complete reports.</p>
+        </div>
+      </div>
+
+      <div class="cc">
+        <div class="n">9</div>
+        <div class="ct">
+          <h4>🏗️ + 📘 + 📱 Three Closeout Deliverables</h4>
+          <p>Three taps at job's end produce three distinct documents for three different audiences: GC Completion Report → general contractor (BCC office + supervisor), User Guide → operator/customer, QR Help Sticker → printable, sticks on equipment, scans alert office in real time.</p>
+        </div>
+      </div>
+
+      <div class="cc">
+        <div class="n">10</div>
+        <div class="ct">
+          <h4>📋 Master Log + 🔍 Photo Search</h4>
+          <p>Master Log: spreadsheet of every drive, workday, and receipt across every job ever, with heat map, route links, GPS verification, CSV + PDF export — legal-grade documentation. Photo Search: find any photo across every job by tag, area, or notes.</p>
+        </div>
+      </div>
+
+    </div>
+
   </div>
 </div>
 

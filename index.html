@@ -1190,6 +1190,20 @@
   </div>
 </div>
 
+<!-- Send User Guide dialog -->
+<div class="dialog-overlay" id="sendUserGuideDialog">
+  <div class="dialog" style="max-width:480px;text-align:left">
+    <h3 style="text-align:center;margin-bottom:6px">📘 Send User Guide</h3>
+    <p style="text-align:center;color:var(--dim);font-size:13px;margin-bottom:14px">Who do you want to send this to?</p>
+    <div id="sendUserGuideBody" style="max-height:55vh;overflow-y:auto;margin-bottom:14px"></div>
+    <div class="dialog-btns" style="flex-direction:column;gap:8px">
+      <button class="btn-dim" style="width:100%" onclick="previewUserGuide()">👁️ Just preview the guide (don't send)</button>
+      <button class="btn-dim" style="width:100%" onclick="closeSendUserGuideDialog()">Cancel</button>
+    </div>
+    <p style="font-size:11px;color:var(--dim);margin-top:10px;text-align:center;font-style:italic">A copy of every send action is logged to this job's Comm Log + emailed to you as a receipt.</p>
+  </div>
+</div>
+
 <!-- Settings dialog -->
 <div class="dialog-overlay" id="settingsDialog">
   <div class="dialog" style="max-width:520px;text-align:left">
@@ -6140,7 +6154,159 @@ async function refreshTripSelector() {
 // ═══════════════════════════════
 // USER GUIDE — infographic one-pager delivered to the customer at job closeout
 // ═══════════════════════════════
-async function generateUserGuide() {
+
+// MAIN BUTTON ENTRY POINT — shows contact picker if any contacts have email/phone,
+// otherwise falls through to direct preview
+function generateUserGuide() {
+  const siteContacts = (contacts || []).filter(c => (c.email || c.phone) && (c.name || c.role));
+  if (!siteContacts.length) {
+    // No contacts logged → just open the preview so they can use Share manually
+    return _openUserGuidePreview();
+  }
+  _showSendUserGuideDialog(siteContacts);
+}
+
+function _showSendUserGuideDialog(siteContacts) {
+  window.__userGuideContactsCache = siteContacts;
+  const body = document.getElementById('sendUserGuideBody');
+  body.innerHTML = siteContacts.map((c, i) => {
+    const name = c.name || '<em style="color:var(--dim)">Unnamed contact</em>';
+    const role = c.role || '';
+    return `
+      <div style="background:var(--input);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin-bottom:10px">
+        <div style="font-weight:700;font-size:15px;color:var(--text);margin-bottom:2px">${esc(name)}</div>
+        ${role ? `<div style="font-size:12px;color:var(--dim);margin-bottom:8px">${esc(role)}</div>` : '<div style="margin-bottom:8px"></div>'}
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          ${c.email ? `<button onclick="_sendUserGuideViaEmail(${i})" style="flex:1;min-width:120px;padding:10px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📧 Email<br><span style="font-size:11px;font-weight:400;opacity:0.85">${esc(c.email)}</span></button>` : ''}
+          ${c.phone ? `<button onclick="_sendUserGuideViaText(${i})" style="flex:1;min-width:120px;padding:10px 14px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📱 Text<br><span style="font-size:11px;font-weight:400;opacity:0.85">${esc(c.phone)}</span></button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+  document.getElementById('sendUserGuideDialog').classList.add('open');
+}
+
+function closeSendUserGuideDialog() {
+  document.getElementById('sendUserGuideDialog').classList.remove('open');
+}
+
+async function previewUserGuide() {
+  closeSendUserGuideDialog();
+  await _openUserGuidePreview();
+}
+
+async function _sendUserGuideViaEmail(contactIdx) {
+  const contact = (window.__userGuideContactsCache || [])[contactIdx];
+  if (!contact || !contact.email) return;
+  closeSendUserGuideDialog();
+  const client = document.getElementById('client').value.trim() || 'Your Site';
+  const installDate = document.getElementById('dateEnd').value || document.getElementById('dateStart').value;
+  const dateLabel = installDate ? fmtDate(installDate) : 'recently';
+
+  // Open the guide page so the user can use Share to attach the file
+  await _openUserGuidePreview();
+
+  // Open mailto pre-filled with contact + BCC to Lyle
+  const subject = encodeURIComponent('Misting System User Guide — ' + client);
+  const body = encodeURIComponent(
+    `Hi ${contact.name || 'there'},\n\n` +
+    `Attached is the user guide for your misting system installed at ${client} on ${dateLabel}.\n\n` +
+    `Please save it for ongoing reference — it covers daily operation, the switch layout, and basic troubleshooting.\n\n` +
+    `For any service questions, contact MistAmerica directly (info on the last page of the guide).\n\n` +
+    `— Lyle Krug, MistAmerica`
+  );
+  const lyleEmail = 'lylekrug@gmail.com';
+  const mailto = `mailto:${encodeURIComponent(contact.email)}?bcc=${encodeURIComponent(lyleEmail)}&subject=${subject}&body=${body}`;
+  // Use a temporary <a> click so the mail handler fires without unloading the Job Tracker tab
+  setTimeout(() => {
+    const a = document.createElement('a');
+    a.href = mailto;
+    a.target = '_self';
+    a.click();
+  }, 300);
+
+  // Log to this job's Comm Log
+  _logUserGuideSent(contact, 'email');
+
+  setTimeout(() => alert(`Email opened to ${contact.name || contact.email}.\n\nWhen the email composer opens:\n1. Tap the Share / Attach button on the User Guide tab.\n2. Pick "Mail" to attach the file to this draft.\n3. Send.\n\nYou are BCC'd so you get the receipt.`), 900);
+}
+
+async function _sendUserGuideViaText(contactIdx) {
+  const contact = (window.__userGuideContactsCache || [])[contactIdx];
+  if (!contact || !contact.phone) return;
+  closeSendUserGuideDialog();
+  const client = document.getElementById('client').value.trim() || 'Your Site';
+
+  // Open the guide page so the user can use Share to attach
+  await _openUserGuidePreview();
+
+  // Build SMS body — short; the user can attach the HTML via Share separately
+  const smsBody = encodeURIComponent(
+    `MistAmerica misting system user guide for ${client}. ` +
+    `Covers daily operation + switch layout + troubleshooting. ` +
+    `Save for ongoing reference. — Lyle`
+  );
+  // Clean phone (sms: doesn't like formatting characters in some clients)
+  const cleanPhone = contact.phone.replace(/[^0-9+]/g, '');
+  const smsUrl = `sms:${cleanPhone}?body=${smsBody}`;
+  setTimeout(() => {
+    const a = document.createElement('a');
+    a.href = smsUrl;
+    a.click();
+  }, 300);
+
+  // Log to comm log
+  _logUserGuideSent(contact, 'text');
+
+  // Fire a separate self-email as the receipt for SMS sends (we can't BCC an SMS)
+  setTimeout(() => {
+    const receiptSubject = encodeURIComponent('SENT: User Guide via SMS — ' + client);
+    const receiptBody = encodeURIComponent(
+      `For your records:\n\n` +
+      `User guide sent via SMS to:\n` +
+      `  Name: ${contact.name || '(unnamed)'}\n` +
+      `  Role: ${contact.role || '(no role)'}\n` +
+      `  Phone: ${contact.phone}\n\n` +
+      `Job: ${client}\n` +
+      `Sent: ${new Date().toLocaleString()}\n`
+    );
+    const receiptMailto = `mailto:lylekrug@gmail.com?subject=${receiptSubject}&body=${receiptBody}`;
+    // Open a tab for the receipt instead of replacing the SMS flow
+    try { window.open(receiptMailto, '_blank'); } catch(e) {}
+  }, 1500);
+
+  setTimeout(() => alert(`SMS opened to ${contact.name || contact.phone}.\n\nTo attach the actual guide:\n1. Send the SMS first (it has the description).\n2. Then on the User Guide tab, tap Share and pick Messages to send the file as a follow-up MMS.\n\nA receipt email to you was also opened in a separate tab.`), 1100);
+}
+
+function _logUserGuideSent(contact, method) {
+  if (!Array.isArray(communications)) communications = [];
+  const client = document.getElementById('client').value.trim() || 'Untitled';
+  const toLabel = (contact.name || 'Contact') +
+    (method === 'email' && contact.email ? ` <${contact.email}>` : '') +
+    (method === 'text' && contact.phone ? ` (${contact.phone})` : '');
+  const todayISO = new Date().toISOString().slice(0, 10);
+  communications.push({
+    id: 'comm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+    kind: method === 'text' ? 'text' : 'email',
+    to: toLabel,
+    subject: method === 'email' ? `Misting System User Guide — ${client}` : '',
+    summary: 'Sent installation User Guide to site contact',
+    sentAt: todayISO,
+    responseReceived: false,
+    responseAt: '',
+    responseSummary: ''
+  });
+  if (typeof renderCommunications === 'function') renderCommunications();
+  scheduleAutoSave();
+  showToast(`📝 Comm log updated — User Guide ${method === 'text' ? 'SMS' : 'email'} to ${contact.name || 'contact'}`, 'good', 3000);
+}
+
+// Internal: just open the guide preview tab
+async function _openUserGuidePreview() {
+  return _buildAndOpenUserGuide();
+}
+
+async function _buildAndOpenUserGuide() {
   const client = document.getElementById('client').value.trim() || 'Your Site';
   const city = document.getElementById('city').value.trim();
   const state = document.getElementById('state').value.trim().toUpperCase();

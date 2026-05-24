@@ -6355,29 +6355,34 @@ async function generateUserGuide() {
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0">
       <div style="background:#dbeafe;border-left:4px solid #1e40af;padding:12px;border-radius:4px">
         <div style="font-weight:700;color:#1e40af;font-size:14px;margin-bottom:6px">🌀 THE FANS</div>
-        <div style="font-size:12px;color:#1e3a8a">Move air to spread cool fog. Each canopy's fans have their own switch on the same column as the lights and heaters. No mist comes from the fan unless the mist is also on.</div>
+        <div style="font-size:12px;color:#1e3a8a">Move air to spread cool fog. Each canopy's fans have their own switch on the same column as the lights and heaters. Fans alone do not produce mist — they just move air.</div>
       </div>
       <div style="background:#dcfce7;border-left:4px solid #15803d;padding:12px;border-radius:4px">
         <div style="font-weight:700;color:#15803d;font-size:14px;margin-bottom:6px">💧 THE MIST</div>
-        <div style="font-size:12px;color:#14532d">Pressurized water sprayed through nozzles on the fans. The mist pump (separate room or closet) has its own switch. Fans don't know mist exists; mist doesn't know fans exist.</div>
+        <div style="font-size:12px;color:#14532d">Pressurized water from the pump, sprayed through nozzles on each canopy. The pump has its own switch. The fans don't know mist exists; the mist doesn't know fans exist.</div>
       </div>
     </div>
+
     <div class="danger" style="margin-top:10px;font-size:13px;background:#fef3c7;color:#78350f;border-left-color:#d97706">
-      <strong>BOTH must be ON for cool mist:</strong> The FAN switch turns the fan on (cooling air moves). The MIST switch at the pump turns the water spray on. Turn one off, you lose the effect.
+      <strong>BOTH must be ON for cool mist:</strong> The FAN at that canopy must be on. The MIST PUMP must be on. Turn off either one and you lose the cooling effect.
+    </div>
+
+    <div class="info-line" style="color:#1e3a8a;background:#eff6ff;border-left-color:#1e40af;margin-top:8px;font-size:13px">
+      <strong>One important rule about the mist plumbing:</strong> The OP canopy mist is <strong>always on</strong> whenever the main mist pump is on. There is no separate OP-only mist switch. The OMD canopy mist <strong>can be optionally turned off</strong> via a separate cutoff at the pump — but only while the main pump is running. If the main pump is off, nothing mists anywhere.
     </div>
   </div>
 </div>
 
 ${canopySection('01', '#1e40af', 'OP Canopy (Order Point)',
-  'This is where customers <strong>order</strong>. The fans are mounted on the same columns as the lights and heaters, outside the building. They cool the area where customers and your team interact at the order point.',
+  'Where customers <strong>order</strong>. Fans mounted on the same columns as the lights and heaters, outside the building.<br><br><strong>Mist behavior:</strong> OP mist is <strong>always on whenever the main mist pump is on</strong>. There is no separate OP mist switch.',
   ug.opSwitch, opFanPhoto, opSwitchPhoto)}
 
 ${canopySection('02', '#1e40af', 'OMD Canopy (Order Meal Delivery)',
-  'This is where customers <strong>pick up</strong> their food. Same setup as OP — fans on the same columns as your lights and heaters, outside the building. Cools the pickup zone for customers and team.',
+  'Where customers <strong>pick up</strong> their food. Same setup as OP — fans on the columns with the lights and heaters, outside the building.<br><br><strong>Mist behavior:</strong> OMD mist can be turned off independently via the <strong>OMD cutoff switch</strong> at the pump. BUT — if the main mist pump is off, OMD mist won\\'t turn on either, no matter where the cutoff is set.',
   ug.omdSwitch, omdFanPhoto, omdSwitchPhoto)}
 
 ${hasPatio ? canopySection('03', '#1e40af', 'Patio',
-  'Outdoor seating area cooling.',
+  'Outdoor seating area cooling. Same rules as OP — fans on their own switch, mist comes from the main pump.',
   ug.patioSwitch, patioFanPhoto, patioSwitchPhoto) : ''}
 
 <!-- MIST PUMP SECTION -->
@@ -6388,36 +6393,66 @@ ${hasPatio ? canopySection('03', '#1e40af', 'Patio',
     <span>The Mist Pump & Mist Switches</span>
   </div>
   <div class="section-body">
-    <div class="info-line" style="color:#15803d"><strong>What it does:</strong> Pressurizes filtered water and pushes it through the misting nozzles on every canopy. <strong>This is what creates the mist.</strong> Nothing else does.</div>
+    <div class="info-line" style="color:#15803d"><strong>What it does:</strong> Pressurizes filtered water and pushes it to the canopies as mist. This pump is what creates the mist — nothing else does.</div>
     <div class="info-line" style="color:#15803d"><strong>Pump unit location:</strong> ${ug.pumpLocation ? `<strong>${esc(ug.pumpLocation)}</strong>` : '<em>(not documented — see photo)</em>'}</div>
 
     <div class="photo-grid" style="grid-template-columns:1fr">
       ${photoCard(pumpPhoto, 'The Mist Pump')}
     </div>
 
-    <h4 style="font-size:14px;color:#15803d;margin:14px 0 6px;font-weight:700">Your mist switches:</h4>
+    <h4 style="font-size:14px;color:#15803d;margin:16px 0 6px;font-weight:700">⚙ Your mist switches — the hierarchy:</h4>
 
-    <div style="display:grid;grid-template-columns:1fr ${hasOmdMistSwitch ? '1fr' : ''};gap:12px;margin:8px 0">
-      <div style="background:#fff;border:2px solid #15803d;border-radius:6px;padding:12px">
-        <div style="font-weight:700;color:#15803d;font-size:13px;margin-bottom:4px">▶ MAIN PUMP SWITCH</div>
-        <div style="font-size:12px;color:#14532d;margin-bottom:6px">Turns the entire mist system on or off.</div>
-        <div style="font-size:12px"><strong>Location:</strong> ${ug.pumpSwitch ? esc(ug.pumpSwitch) : '<em>(not documented)</em>'}</div>
-        ${pumpSwitchPhoto ? `<div style="margin-top:6px">${photoCard(pumpSwitchPhoto, 'Main pump switch').replace('photo-card', 'photo-card inline-photo')}</div>` : ''}
-      </div>
-      ${hasOmdMistSwitch ? `
-      <div style="background:#fff;border:2px solid #ea580c;border-radius:6px;padding:12px">
-        <div style="font-weight:700;color:#ea580c;font-size:13px;margin-bottom:4px">⚙ OMD MIST CUTOFF</div>
-        <div style="font-size:12px;color:#7c2d12;margin-bottom:6px">Cuts mist to the <strong>OMD canopy only</strong>. Does NOT affect the OMD fans or any other mist.</div>
-        <div style="font-size:12px"><strong>Location:</strong> ${esc(ug.omdMistSwitch)}</div>
-        ${omdMistSwitchPhoto ? `<div style="margin-top:6px">${photoCard(omdMistSwitchPhoto, 'OMD mist cutoff').replace('photo-card', 'photo-card inline-photo')}</div>` : ''}
-      </div>
-      ` : ''}
+    <div style="background:#fff;border:2px solid #15803d;border-radius:6px;padding:14px;margin:8px 0">
+      <div style="font-weight:700;color:#15803d;font-size:14px;margin-bottom:6px">1️⃣ MAIN PUMP SWITCH (the master)</div>
+      <div style="font-size:12px;color:#14532d;margin-bottom:6px">Turns the whole mist system on/off. When this is <strong>ON</strong>, the OP canopy mist starts immediately and automatically.</div>
+      <div style="font-size:12px"><strong>Location:</strong> ${ug.pumpSwitch ? esc(ug.pumpSwitch) : '<em>(not documented)</em>'}</div>
+      ${pumpSwitchPhoto ? `<div style="margin-top:8px;max-width:280px">${photoCard(pumpSwitchPhoto, 'Main pump switch')}</div>` : ''}
     </div>
 
-    <div class="warning"><strong>For cool mist at any canopy, all of these must be ON:</strong><br>
-      1. The MAIN PUMP SWITCH<br>
-      2. The FAN switch for that canopy (Sections 01-${hasPatio ? '03' : '02'})${hasOmdMistSwitch ? '<br>3. For OMD specifically: the OMD MIST CUTOFF must also be ON' : ''}
+    ${hasOmdMistSwitch ? `
+    <div style="background:#fff;border:2px solid #ea580c;border-radius:6px;padding:14px;margin:8px 0">
+      <div style="font-weight:700;color:#ea580c;font-size:14px;margin-bottom:6px">2️⃣ OMD MIST CUTOFF (optional layer)</div>
+      <div style="font-size:12px;color:#7c2d12;margin-bottom:6px">Turns off mist to the <strong>OMD canopy only</strong> without affecting OP mist or any fans. Only useful when the main pump is ON.</div>
+      <div style="font-size:12px"><strong>Location:</strong> ${esc(ug.omdMistSwitch)}</div>
+      ${omdMistSwitchPhoto ? `<div style="margin-top:8px;max-width:280px">${photoCard(omdMistSwitchPhoto, 'OMD mist cutoff')}</div>` : ''}
     </div>
+    ` : ''}
+
+    <h4 style="font-size:14px;color:#15803d;margin:16px 0 6px;font-weight:700">📋 What turns on what — the rules:</h4>
+    <table style="width:100%;border-collapse:collapse;margin:8px 0;font-size:12px;background:#fff;border:1px solid #15803d;border-radius:4px;overflow:hidden">
+      <thead style="background:#15803d;color:#fff">
+        <tr>
+          <th style="padding:8px 10px;text-align:left;font-weight:600">Main Pump</th>
+          ${hasOmdMistSwitch ? '<th style="padding:8px 10px;text-align:left;font-weight:600">OMD Cutoff</th>' : ''}
+          <th style="padding:8px 10px;text-align:center;font-weight:600">OP Mist</th>
+          <th style="padding:8px 10px;text-align:center;font-weight:600">OMD Mist</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="border-bottom:1px solid #d1fae5">
+          <td style="padding:8px 10px;color:#991b1b;font-weight:700">OFF</td>
+          ${hasOmdMistSwitch ? '<td style="padding:8px 10px;color:#6b7280">(doesn\\'t matter)</td>' : ''}
+          <td style="padding:8px 10px;text-align:center;color:#991b1b;font-weight:600">OFF</td>
+          <td style="padding:8px 10px;text-align:center;color:#991b1b;font-weight:600">OFF</td>
+        </tr>
+        <tr ${hasOmdMistSwitch ? 'style="border-bottom:1px solid #d1fae5"' : ''}>
+          <td style="padding:8px 10px;color:#15803d;font-weight:700">ON</td>
+          ${hasOmdMistSwitch ? '<td style="padding:8px 10px;color:#15803d;font-weight:700">ON</td>' : ''}
+          <td style="padding:8px 10px;text-align:center;color:#15803d;font-weight:700">ON ✓</td>
+          <td style="padding:8px 10px;text-align:center;color:#15803d;font-weight:700">ON ✓</td>
+        </tr>
+        ${hasOmdMistSwitch ? `
+        <tr>
+          <td style="padding:8px 10px;color:#15803d;font-weight:700">ON</td>
+          <td style="padding:8px 10px;color:#991b1b;font-weight:700">OFF</td>
+          <td style="padding:8px 10px;text-align:center;color:#15803d;font-weight:700">ON ✓</td>
+          <td style="padding:8px 10px;text-align:center;color:#991b1b;font-weight:700">OFF</td>
+        </tr>
+        ` : ''}
+      </tbody>
+    </table>
+
+    <div class="warning"><strong>For cool mist at any canopy, you also need that canopy's fan ON</strong> (Sections 01-${hasPatio ? '03' : '02'}). The mist column above only addresses water — the fan is what spreads it.</div>
   </div>
 </div>
 
@@ -6426,25 +6461,28 @@ ${hasPatio ? canopySection('03', '#1e40af', 'Patio',
   <div class="section-header">
     <span class="num">${hasPatio ? '05' : '04'}</span>
     <span class="icon">🧪</span>
-    <span>Reverse Osmosis Filter</span>
+    <span>Reverse Osmosis Filter & All Other Equipment</span>
   </div>
   <div class="section-body">
-    <div class="info-line" style="color:#ea580c"><strong>What it does:</strong> Cleans your building water before it reaches the pump. Removes minerals so the mist evaporates cleanly without leaving white spots on cars, tables, windows, or the building.</div>
+    <div class="danger-big">⚠ DO NOT TOUCH. DO NOT ADJUST. DO NOT TURN OFF THE WATER.</div>
+
+    <div class="info-line" style="color:#ea580c"><strong>What it is:</strong> The RO filter cleans your building water before it reaches the pump (removes minerals so mist doesn't leave spots). Everything is preset at install. Nothing needs adjustment from you, your staff, or any vendor.</div>
 
     <div class="photo-grid" style="grid-template-columns:1fr 1fr">
       ${photoCard(roPhoto, 'RO Filter Unit')}
-      ${photoCard(drainPhoto, 'RO Drain Line')}
-    </div>
-
-    <div class="danger-big">⚠ Do not touch this unit. No daily action required from your staff.</div>
-
-    <div class="info-line" style="color:#ea580c">
-      <strong>The drain:</strong> Reverse osmosis produces about 3 gallons of waste water for every 1 gallon it filters. That waste must go down a drain.<br>
-      ${ug.roDrain ? `<strong>How it's routed at this site:</strong> ${esc(ug.roDrain)}` : '<em>(drain routing not documented)</em>'}
+      ${photoCard(drainPhoto, 'RO Drain')}
     </div>
 
     <div class="info-line" style="color:#ea580c">
-      <strong>Filter replacement:</strong> Cartridges last ~6-12 months depending on water quality. If you notice hard-water spots coming back on tables/cars, a flashing light, or pressure drop — call MistAmerica.
+      <strong>The drain:</strong> ${ug.roDrain ? esc(ug.roDrain) : '<em>(routing not documented)</em>'} — leave the drain line and its routing alone.
+    </div>
+
+    <div class="info-line" style="color:#ea580c">
+      <strong>If something happens (tripped breaker, hard-water spots returning, alarm light, leak):</strong> Call MistAmerica. Do not attempt to reset or adjust anything yourself.
+    </div>
+
+    <div style="background:#fef3c7;border-left:4px solid #d97706;padding:10px 14px;border-radius:4px;font-size:12px;margin-top:8px;color:#78350f">
+      <em>(Breaker location info will be added to this guide once confirmed at this site.)</em>
     </div>
   </div>
 </div>
@@ -6473,9 +6511,10 @@ ${hasAdditional ? `
     <span>Quick Troubleshooting</span>
   </div>
   <div class="section-body">
-    <div class="info-line" style="color:#374151"><strong>Fan running but no mist coming through:</strong> The main pump switch is probably off. Check the pump location.${hasOmdMistSwitch ? ' For OMD specifically, also confirm the OMD mist cutoff is ON.' : ''}</div>
-    <div class="info-line" style="color:#374151"><strong>Mist from some fans but not others:</strong> The fan whose switch is OFF won't produce mist (even with the pump running). Confirm that canopy's fan switch is ON. If on, nozzles may be clogged — call MistAmerica.</div>
-    <div class="info-line" style="color:#374151"><strong>OMD mist won't shut off even though OMD cutoff is off:</strong> The cutoff switch may have failed. Switch the MAIN pump off to stop all mist, then call MistAmerica.</div>
+    <div class="info-line" style="color:#374151"><strong>No mist anywhere:</strong> Main pump switch is probably off. Turn it ON. (If it's already on and still no mist, call MistAmerica — do not touch the RO or anything else.)</div>
+    <div class="info-line" style="color:#374151"><strong>OP mist works but OMD doesn't:</strong>${hasOmdMistSwitch ? ' Check the OMD MIST CUTOFF — make sure it\\'s ON.' : ' Likely clogged nozzles on the OMD line — call MistAmerica.'}</div>
+    <div class="info-line" style="color:#374151"><strong>Fan running but no mist at that canopy:</strong> Confirm the main pump switch is ON.${hasOmdMistSwitch ? ' For OMD: also confirm the OMD cutoff is ON.' : ''} If both are on and still no mist, nozzles may be clogged — call MistAmerica.</div>
+    <div class="info-line" style="color:#374151"><strong>Mist but no fan moving the air at that canopy:</strong> That canopy's fan switch is OFF. Turn the fan switch on (on the column near the lights and heaters).</div>
     <div class="info-line" style="color:#374151"><strong>Loud or knocking pump:</strong> Don't keep running it. Switch the main pump OFF and call MistAmerica same day.</div>
     <div class="info-line" style="color:#374151"><strong>Visible drip or leak:</strong> Photograph the spot and call MistAmerica.</div>
     <div class="warning">⚠ <strong>End of season:</strong> If your location gets below 35°F, the pump and water lines must be drained to prevent freeze damage. Call MistAmerica well before the first cold snap.</div>

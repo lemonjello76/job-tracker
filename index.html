@@ -880,16 +880,16 @@
   <div id="photoFilterBar" style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0"></div>
   <div class="photo-grid" id="photoGrid"></div>
   <datalist id="photoAreaList">
-    <option value="Order Canopy">
-    <option value="Pickup Side">
+    <option value="OP Canopy">
+    <option value="OMD Canopy">
     <option value="Patio">
-    <option value="Outdoor patio">
+    <option value="Pump Room">
+    <option value="RO Drain">
+    <option value="OMD Mist Switch">
     <option value="Drive-thru">
     <option value="Roof">
     <option value="Dining area">
     <option value="Kitchen">
-    <option value="Pump room">
-    <option value="RO Drain">
     <option value="Storage / equipment room">
     <option value="Restroom">
     <option value="Lobby / entrance">
@@ -986,11 +986,11 @@
     <span class="ug-caret" style="color:var(--dim);font-size:14px">▸</span>
   </h2>
   <div id="userGuideFields" class="hidden" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-    <div class="field"><label style="font-size:12px">Order Canopy fan switch location</label>
-      <input type="text" id="ugOrderCanopySwitch" placeholder="e.g. Behind the register, left wall" oninput="userGuideDetails.orderCanopySwitch=this.value;scheduleAutoSave()">
+    <div class="field"><label style="font-size:12px">OP Canopy fan switch location</label>
+      <input type="text" id="ugOpSwitch" placeholder="e.g. Column under OP canopy, near light switch" oninput="userGuideDetails.opSwitch=this.value;scheduleAutoSave()">
     </div>
-    <div class="field"><label style="font-size:12px">Pickup Side fan switch location</label>
-      <input type="text" id="ugPickupSwitch" placeholder="e.g. Drive-thru window, right of headset rack" oninput="userGuideDetails.pickupSwitch=this.value;scheduleAutoSave()">
+    <div class="field"><label style="font-size:12px">OMD Canopy fan switch location</label>
+      <input type="text" id="ugOmdSwitch" placeholder="e.g. Column under OMD canopy, near light switch" oninput="userGuideDetails.omdSwitch=this.value;scheduleAutoSave()">
     </div>
     <div class="field"><label style="font-size:12px">Patio fan switch (if applicable)</label>
       <input type="text" id="ugPatioSwitch" placeholder="Leave blank if no patio install" oninput="userGuideDetails.patioSwitch=this.value;scheduleAutoSave()">
@@ -998,8 +998,14 @@
     <div class="field"><label style="font-size:12px">Additional fan name + switch</label>
       <input type="text" id="ugAdditionalFan" placeholder="e.g. Play area fan — switch by play door" oninput="userGuideDetails.additionalFan=this.value;scheduleAutoSave()">
     </div>
-    <div class="field"><label style="font-size:12px">Mist Pump location + on/off control</label>
-      <input type="text" id="ugPumpLocation" placeholder="e.g. Pump room, wall switch above pump unit" oninput="userGuideDetails.pumpLocation=this.value;scheduleAutoSave()">
+    <div class="field"><label style="font-size:12px">Mist Pump location</label>
+      <input type="text" id="ugPumpLocation" placeholder="e.g. Equipment closet, north wall" oninput="userGuideDetails.pumpLocation=this.value;scheduleAutoSave()">
+    </div>
+    <div class="field"><label style="font-size:12px">Main pump switch location</label>
+      <input type="text" id="ugPumpSwitch" placeholder="e.g. Wall switch right above pump (or remote location)" oninput="userGuideDetails.pumpSwitch=this.value;scheduleAutoSave()">
+    </div>
+    <div class="field"><label style="font-size:12px">OMD mist cutoff switch location</label>
+      <input type="text" id="ugOmdMistSwitch" placeholder="e.g. Next to main pump switch — controls OMD mist only" oninput="userGuideDetails.omdMistSwitch=this.value;scheduleAutoSave()">
     </div>
     <div class="field"><label style="font-size:12px">RO Drain location</label>
       <input type="text" id="ugRoDrain" placeholder="e.g. Routed to mop sink, marked with RO tag" oninput="userGuideDetails.roDrain=this.value;scheduleAutoSave()">
@@ -5478,7 +5484,7 @@ function clearForm() {
   communications = []; discrepancies = [];
   dailyNotes = { workCompleted: '', blockers: '', selfNotes: '' };
   userGuideDetails = {};
-  ['ugOrderCanopySwitch','ugPickupSwitch','ugPatioSwitch','ugAdditionalFan','ugPumpLocation','ugRoDrain'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  ['ugOpSwitch','ugOmdSwitch','ugPatioSwitch','ugAdditionalFan','ugPumpLocation','ugPumpSwitch','ugOmdMistSwitch','ugRoDrain'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   document.getElementById('crewSize').value = '1';
   document.getElementById('stdCrewSize').value = '';
   document.getElementById('dnWorkCompleted').value = '';
@@ -6146,25 +6152,40 @@ async function generateUserGuide() {
   const ug = userGuideDetails || {};
   const hasPatio = !!(ug.patioSwitch && ug.patioSwitch.trim());
   const hasAdditional = !!(ug.additionalFan && ug.additionalFan.trim());
+  const hasOmdMistSwitch = !!(ug.omdMistSwitch && ug.omdMistSwitch.trim());
 
-  // Auto-pull photos by tag — best photo per zone
+  // Photo finder helpers
   const pickPhoto = (pred) => photos.find(p => p.dataURL && pred(p));
-  const fanPhotos = {
-    orderCanopy: pickPhoto(p => p.system === 'fans' && /order|canopy|menu/i.test(p.area || '')),
-    pickup: pickPhoto(p => p.system === 'fans' && /pickup|drive/i.test(p.area || '')),
-    patio: hasPatio ? pickPhoto(p => p.system === 'fans' && /patio/i.test(p.area || '')) : null,
-    additional: hasAdditional ? pickPhoto(p => p.system === 'fans' && !/order|canopy|menu|pickup|drive|patio/i.test(p.area || '')) : null
-  };
-  // Fallback: if no area-matched fan photo, any fan-tagged photo
-  if (!fanPhotos.orderCanopy && !fanPhotos.pickup && !fanPhotos.patio) {
-    const anyFans = photos.filter(p => p.dataURL && p.system === 'fans');
-    if (anyFans[0]) fanPhotos.orderCanopy = anyFans[0];
-    if (anyFans[1]) fanPhotos.pickup = anyFans[1];
-  }
-  const pumpPhoto = pickPhoto(p => p.system === 'equipment' && (p.component === 'pump' || /pump|mist/i.test(p.notes || ''))) ||
-                    pickPhoto(p => p.system === 'equipment' && p.phase === 'after');
-  const roPhoto = pickPhoto(p => p.system === 'equipment' && (p.component === 'ro' || /ro|reverse|osmosis/i.test(p.notes || ''))) ||
-                  pickPhoto(p => p.system === 'equipment' && /drain/i.test(p.area || ''));
+  const matchArea = (p, ...patterns) => patterns.some(pat => pat.test(p.area || ''));
+
+  // OP Canopy: fans + switch
+  const opFanPhoto = pickPhoto(p => p.system === 'fans' && matchArea(p, /^OP\b|order\s*point|order\s*canopy/i));
+  const opSwitchPhoto = pickPhoto(p => p.system === 'switching' && matchArea(p, /^OP\b|order\s*point|order\s*canopy/i));
+
+  // OMD Canopy: fans + switch
+  const omdFanPhoto = pickPhoto(p => p.system === 'fans' && matchArea(p, /^OMD\b|order\s*meal|pickup/i));
+  const omdSwitchPhoto = pickPhoto(p => p.system === 'switching' && matchArea(p, /^OMD\b|order\s*meal|pickup/i)
+    && !/omd\s*mist/i.test(p.notes || '') && !/omd\s*mist/i.test(p.area || ''));
+
+  // Patio fan + switch
+  const patioFanPhoto = hasPatio ? pickPhoto(p => p.system === 'fans' && matchArea(p, /patio/i)) : null;
+  const patioSwitchPhoto = hasPatio ? pickPhoto(p => p.system === 'switching' && matchArea(p, /patio/i)) : null;
+
+  // Additional fan photos — anything tagged fans that's not OP/OMD/patio
+  const additionalFanPhoto = hasAdditional ? pickPhoto(p => p.system === 'fans' && !matchArea(p, /^OP\b|order\s*point|order\s*canopy|^OMD\b|order\s*meal|pickup|patio/i)) : null;
+
+  // Mist pump + main switch
+  const pumpPhoto = pickPhoto(p => p.system === 'equipment' && (p.component === 'pump' || /pump/i.test(p.notes || '')));
+  const pumpSwitchPhoto = pickPhoto(p => p.system === 'switching' && matchArea(p, /pump\s*room|pump|equipment/i)
+    && !/omd\s*mist/i.test(p.notes || '') && !/omd\s*mist/i.test(p.area || ''));
+
+  // OMD mist cutoff switch — match by "OMD Mist Switch" area or notes containing "OMD mist"
+  const omdMistSwitchPhoto = hasOmdMistSwitch ? pickPhoto(p => p.system === 'switching'
+    && (/omd\s*mist/i.test(p.area || '') || /omd\s*mist/i.test(p.notes || ''))) : null;
+
+  // RO + drain
+  const roPhoto = pickPhoto(p => p.system === 'equipment' && (p.component === 'ro' || /reverse|osmosis|^RO\b/i.test(p.notes || '') || /^RO\b/i.test(p.area || '')));
+  const drainPhoto = pickPhoto(p => p.system === 'equipment' && (p.component === 'drain' || /drain/i.test(p.area || '') || /drain/i.test(p.notes || '')));
 
   // Site contact emails for smart Email button
   const siteContacts = (contacts || []).filter(c => c.email || c.phone);
@@ -6181,6 +6202,25 @@ async function generateUserGuide() {
   const photoCard = (p, caption) => p
     ? `<div class="photo-card"><img src="${p.annotatedURL || p.dataURL}" alt=""><div class="photo-cap">${esc(caption)}</div></div>`
     : `<div class="photo-card empty"><div class="empty-text">📷<br>Photo not available</div><div class="photo-cap">${esc(caption)}</div></div>`;
+
+  // Helper for a canopy section (fan + switch photos side-by-side)
+  const canopySection = (num, color, label, description, switchLoc, fanPhoto, switchPhoto) => `
+    <div class="section fans">
+      <div class="section-header" style="background:${color}">
+        <span class="num">${num}</span>
+        <span class="icon">🌀</span>
+        <span>${esc(label)}</span>
+      </div>
+      <div class="section-body" style="background:${color}10">
+        <div class="info-line" style="color:${color}">${description}</div>
+        <div class="info-line" style="color:${color}"><strong>Fan switch location:</strong> ${switchLoc ? `<strong>${esc(switchLoc)}</strong>` : '<em>(location not documented)</em>'}</div>
+        <div class="photo-grid" style="grid-template-columns:1fr 1fr">
+          ${photoCard(fanPhoto, 'The fan')}
+          ${photoCard(switchPhoto, 'The switch')}
+        </div>
+        <div class="warning">⚠ This switch controls THE FAN ONLY. The mist is on a separate switch at the pump (see the Mist Pump section below).</div>
+      </div>
+    </div>`;
 
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -6293,7 +6333,7 @@ async function generateUserGuide() {
 <div class="doc-header">
   <div class="brand">MistAmerica · Installation Handoff</div>
   <h1>Misting System User Guide</h1>
-  <div class="subtitle">Your three-part system: cooling fans, mist pump, water filter</div>
+  <div class="subtitle">Your system in plain English: fans, mist, and the filter behind the scenes</div>
   <div class="meta">
     <span>🏪 <strong>${esc(client)}</strong></span>
     ${location ? `<span>📍 <strong>${esc(location)}</strong></span>` : ''}
@@ -6302,119 +6342,143 @@ async function generateUserGuide() {
   </div>
 </div>
 
-<!-- SECTION 1: FANS -->
-<div class="section fans">
-  <div class="section-header">
-    <span class="num">01</span>
-    <span class="icon">🌀</span>
-    <span>The Fans</span>
+<!-- PREFACE: the universal mental model -->
+<div class="section" style="border:2px solid #1e3a8a">
+  <div class="section-header" style="background:#1e3a8a">
+    <span class="icon">📖</span>
+    <span>Read This First — How to Think About Your System</span>
   </div>
-  <div class="section-body">
-    <div class="info-line" style="color:#1e40af"><strong>What they do:</strong> The fans move air across the misting nozzles to spread cool fog through the seating area. Without the fans running, no air movement → no cooling.</div>
-    <div class="info-line" style="color:#1e40af"><strong>Each fan has its own switch.</strong> Locations below.</div>
-
-    <div class="fan-list">
-      ${fanLine('Order Canopy Fan', ug.orderCanopySwitch)}
-      ${fanLine('Pickup Side Fan', ug.pickupSwitch)}
-      ${hasPatio ? fanLine('Patio Fan', ug.patioSwitch) : ''}
+  <div class="section-body" style="background:#f8fafc">
+    <div class="info-line" style="color:#1e3a8a;font-size:13px;line-height:1.6">
+      <strong>Your misting system is really TWO systems on the same canopies that don't talk to each other:</strong>
     </div>
-
-    <div class="photo-grid">
-      ${photoCard(fanPhotos.orderCanopy, 'Order Canopy Fan')}
-      ${photoCard(fanPhotos.pickup, 'Pickup Side Fan')}
-      ${hasPatio ? photoCard(fanPhotos.patio, 'Patio Fan') : ''}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0">
+      <div style="background:#dbeafe;border-left:4px solid #1e40af;padding:12px;border-radius:4px">
+        <div style="font-weight:700;color:#1e40af;font-size:14px;margin-bottom:6px">🌀 THE FANS</div>
+        <div style="font-size:12px;color:#1e3a8a">Move air to spread cool fog. Each canopy's fans have their own switch on the same column as the lights and heaters. No mist comes from the fan unless the mist is also on.</div>
+      </div>
+      <div style="background:#dcfce7;border-left:4px solid #15803d;padding:12px;border-radius:4px">
+        <div style="font-weight:700;color:#15803d;font-size:14px;margin-bottom:6px">💧 THE MIST</div>
+        <div style="font-size:12px;color:#14532d">Pressurized water sprayed through nozzles on the fans. The mist pump (separate room or closet) has its own switch. Fans don't know mist exists; mist doesn't know fans exist.</div>
+      </div>
     </div>
-
-    <div class="warning">⚠ These switches control THE FANS ONLY — they do not turn the mist on or off. The mist pump has its own separate control (see Section 02).</div>
+    <div class="danger" style="margin-top:10px;font-size:13px;background:#fef3c7;color:#78350f;border-left-color:#d97706">
+      <strong>BOTH must be ON for cool mist:</strong> The FAN switch turns the fan on (cooling air moves). The MIST switch at the pump turns the water spray on. Turn one off, you lose the effect.
+    </div>
   </div>
 </div>
 
-<!-- SECTION 2: MIST PUMP -->
+${canopySection('01', '#1e40af', 'OP Canopy (Order Point)',
+  'This is where customers <strong>order</strong>. The fans are mounted on the same columns as the lights and heaters, outside the building. They cool the area where customers and your team interact at the order point.',
+  ug.opSwitch, opFanPhoto, opSwitchPhoto)}
+
+${canopySection('02', '#1e40af', 'OMD Canopy (Order Meal Delivery)',
+  'This is where customers <strong>pick up</strong> their food. Same setup as OP — fans on the same columns as your lights and heaters, outside the building. Cools the pickup zone for customers and team.',
+  ug.omdSwitch, omdFanPhoto, omdSwitchPhoto)}
+
+${hasPatio ? canopySection('03', '#1e40af', 'Patio',
+  'Outdoor seating area cooling.',
+  ug.patioSwitch, patioFanPhoto, patioSwitchPhoto) : ''}
+
+<!-- MIST PUMP SECTION -->
 <div class="section pump">
   <div class="section-header">
-    <span class="num">02</span>
+    <span class="num">${hasPatio ? '04' : '03'}</span>
     <span class="icon">💧</span>
-    <span>The Mist Pump</span>
+    <span>The Mist Pump & Mist Switches</span>
   </div>
   <div class="section-body">
-    <div class="info-line" style="color:#15803d"><strong>What it does:</strong> The pump pressurizes filtered water and pushes it through the misting nozzles on every fan. This is the unit that actually creates the mist.</div>
-    <div class="info-line" style="color:#15803d"><strong>Location:</strong> ${ug.pumpLocation ? `<strong>${esc(ug.pumpLocation)}</strong>` : '<em>(not documented — see photo below)</em>'}</div>
+    <div class="info-line" style="color:#15803d"><strong>What it does:</strong> Pressurizes filtered water and pushes it through the misting nozzles on every canopy. <strong>This is what creates the mist.</strong> Nothing else does.</div>
+    <div class="info-line" style="color:#15803d"><strong>Pump unit location:</strong> ${ug.pumpLocation ? `<strong>${esc(ug.pumpLocation)}</strong>` : '<em>(not documented — see photo)</em>'}</div>
 
     <div class="photo-grid" style="grid-template-columns:1fr">
-      ${photoCard(pumpPhoto, 'Mist Pump unit')}
+      ${photoCard(pumpPhoto, 'The Mist Pump')}
     </div>
 
-    <div class="info-line" style="color:#15803d">
-      <strong>▶ To turn mist ON:</strong> Flip the pump's power switch to ON. Within 10-30 seconds, water flows through every fan that is also running.
+    <h4 style="font-size:14px;color:#15803d;margin:14px 0 6px;font-weight:700">Your mist switches:</h4>
+
+    <div style="display:grid;grid-template-columns:1fr ${hasOmdMistSwitch ? '1fr' : ''};gap:12px;margin:8px 0">
+      <div style="background:#fff;border:2px solid #15803d;border-radius:6px;padding:12px">
+        <div style="font-weight:700;color:#15803d;font-size:13px;margin-bottom:4px">▶ MAIN PUMP SWITCH</div>
+        <div style="font-size:12px;color:#14532d;margin-bottom:6px">Turns the entire mist system on or off.</div>
+        <div style="font-size:12px"><strong>Location:</strong> ${ug.pumpSwitch ? esc(ug.pumpSwitch) : '<em>(not documented)</em>'}</div>
+        ${pumpSwitchPhoto ? `<div style="margin-top:6px">${photoCard(pumpSwitchPhoto, 'Main pump switch').replace('photo-card', 'photo-card inline-photo')}</div>` : ''}
+      </div>
+      ${hasOmdMistSwitch ? `
+      <div style="background:#fff;border:2px solid #ea580c;border-radius:6px;padding:12px">
+        <div style="font-weight:700;color:#ea580c;font-size:13px;margin-bottom:4px">⚙ OMD MIST CUTOFF</div>
+        <div style="font-size:12px;color:#7c2d12;margin-bottom:6px">Cuts mist to the <strong>OMD canopy only</strong>. Does NOT affect the OMD fans or any other mist.</div>
+        <div style="font-size:12px"><strong>Location:</strong> ${esc(ug.omdMistSwitch)}</div>
+        ${omdMistSwitchPhoto ? `<div style="margin-top:6px">${photoCard(omdMistSwitchPhoto, 'OMD mist cutoff').replace('photo-card', 'photo-card inline-photo')}</div>` : ''}
+      </div>
+      ` : ''}
     </div>
-    <div class="info-line" style="color:#15803d">
-      <strong>■ To turn mist OFF:</strong> Flip the pump's power switch to OFF. Residual pressure drains in seconds.
+
+    <div class="warning"><strong>For cool mist at any canopy, all of these must be ON:</strong><br>
+      1. The MAIN PUMP SWITCH<br>
+      2. The FAN switch for that canopy (Sections 01-${hasPatio ? '03' : '02'})${hasOmdMistSwitch ? '<br>3. For OMD specifically: the OMD MIST CUTOFF must also be ON' : ''}
     </div>
-    <div class="warning">⚠ Mist won't appear from a fan that is OFF. Make sure both the pump (Section 02) and the fan you want mist from (Section 01) are switched ON.</div>
   </div>
 </div>
 
-<!-- SECTION 3: REVERSE OSMOSIS -->
+<!-- REVERSE OSMOSIS -->
 <div class="section ro">
   <div class="section-header">
-    <span class="num">03</span>
+    <span class="num">${hasPatio ? '05' : '04'}</span>
     <span class="icon">🧪</span>
     <span>Reverse Osmosis Filter</span>
   </div>
   <div class="section-body">
-    <div class="info-line" style="color:#ea580c"><strong>What it does:</strong> Cleans your building water before it reaches the pump. Removes minerals so the mist evaporates cleanly without leaving spots on cars, tables, or building surfaces.</div>
+    <div class="info-line" style="color:#ea580c"><strong>What it does:</strong> Cleans your building water before it reaches the pump. Removes minerals so the mist evaporates cleanly without leaving white spots on cars, tables, windows, or the building.</div>
 
     <div class="photo-grid" style="grid-template-columns:1fr 1fr">
       ${photoCard(roPhoto, 'RO Filter Unit')}
-      ${photoCard(pickPhoto(p => p.system === 'equipment' && /drain/i.test(p.area || '')) || null, 'RO Drain Line')}
+      ${photoCard(drainPhoto, 'RO Drain Line')}
     </div>
 
     <div class="danger-big">⚠ Do not touch this unit. No daily action required from your staff.</div>
 
     <div class="info-line" style="color:#ea580c">
-      <strong>The drain:</strong> Reverse osmosis produces ~3 gallons of waste water for every 1 gallon it filters. That waste must go down a drain.
-      <br>${ug.roDrain ? `<strong>Routing on this site:</strong> ${esc(ug.roDrain)}` : '<em>(drain routing not documented)</em>'}
+      <strong>The drain:</strong> Reverse osmosis produces about 3 gallons of waste water for every 1 gallon it filters. That waste must go down a drain.<br>
+      ${ug.roDrain ? `<strong>How it's routed at this site:</strong> ${esc(ug.roDrain)}` : '<em>(drain routing not documented)</em>'}
     </div>
 
     <div class="info-line" style="color:#ea580c">
-      <strong>Filter replacement:</strong> Cartridges last ~6-12 months depending on water quality. If you notice a flashing alarm light, hard water spots returning, or pressure drop — call MistAmerica.
+      <strong>Filter replacement:</strong> Cartridges last ~6-12 months depending on water quality. If you notice hard-water spots coming back on tables/cars, a flashing light, or pressure drop — call MistAmerica.
     </div>
   </div>
 </div>
 
 ${hasAdditional ? `
-<!-- SECTION 4: ADDITIONAL FAN -->
+<!-- ADDITIONAL FAN -->
 <div class="section additional">
   <div class="section-header">
-    <span class="num">04</span>
+    <span class="num">${hasPatio ? '06' : '05'}</span>
     <span class="icon">🌀</span>
     <span>Additional Fan</span>
   </div>
   <div class="section-body">
-    <div class="info-line" style="color:#7c3aed"><strong>This site has an additional fan beyond the standard layout.</strong></div>
-    <div class="fan-list">
-      <div class="fan-line" style="border-left-color:#7c3aed">
-        <div class="fan-label" style="color:#7c3aed">${esc(ug.additionalFan)}</div>
-      </div>
-    </div>
-    ${fanPhotos.additional ? `<div class="photo-grid">${photoCard(fanPhotos.additional, 'Additional Fan')}</div>` : ''}
-    <div class="info-line" style="color:#7c3aed">This fan operates the same way as the standard fans — its switch controls fan only, mist requires the pump (Section 02).</div>
+    <div class="info-line" style="color:#7c3aed"><strong>This site has an extra fan beyond the standard layout:</strong></div>
+    <div class="info-line" style="color:#7c3aed"><strong>${esc(ug.additionalFan)}</strong></div>
+    ${additionalFanPhoto ? `<div class="photo-grid">${photoCard(additionalFanPhoto, 'Additional fan')}</div>` : ''}
+    <div class="info-line" style="color:#7c3aed">Same rules: its switch controls THE FAN ONLY. For mist at this fan, the main pump switch must also be on.</div>
   </div>
 </div>
 ` : ''}
 
-<!-- TROUBLESHOOTING QUICK CARD -->
+<!-- TROUBLESHOOTING -->
 <div class="section" style="border:1px solid #d1d5db">
   <div class="section-header" style="background:#374151">
     <span class="icon">🛠️</span>
     <span>Quick Troubleshooting</span>
   </div>
   <div class="section-body">
-    <div class="info-line" style="color:#374151"><strong>Fan running but no mist:</strong> Pump (Section 02) is probably off. Turn pump ON.</div>
-    <div class="info-line" style="color:#374151"><strong>Mist coming from some fans but not others:</strong> Switched-off fan or clogged nozzles. Try switching the fan, then call MistAmerica if no change.</div>
-    <div class="info-line" style="color:#374151"><strong>Loud or knocking pump:</strong> Don't keep running it. Switch pump OFF and call MistAmerica same day.</div>
-    <div class="info-line" style="color:#374151"><strong>Visible drip / leak:</strong> Photograph the spot and call MistAmerica.</div>
-    <div class="warning">⚠ End of season — if your location gets below 35°F, the pump and water lines must be drained to prevent freeze damage. Call MistAmerica well before the first cold snap.</div>
+    <div class="info-line" style="color:#374151"><strong>Fan running but no mist coming through:</strong> The main pump switch is probably off. Check the pump location.${hasOmdMistSwitch ? ' For OMD specifically, also confirm the OMD mist cutoff is ON.' : ''}</div>
+    <div class="info-line" style="color:#374151"><strong>Mist from some fans but not others:</strong> The fan whose switch is OFF won't produce mist (even with the pump running). Confirm that canopy's fan switch is ON. If on, nozzles may be clogged — call MistAmerica.</div>
+    <div class="info-line" style="color:#374151"><strong>OMD mist won't shut off even though OMD cutoff is off:</strong> The cutoff switch may have failed. Switch the MAIN pump off to stop all mist, then call MistAmerica.</div>
+    <div class="info-line" style="color:#374151"><strong>Loud or knocking pump:</strong> Don't keep running it. Switch the main pump OFF and call MistAmerica same day.</div>
+    <div class="info-line" style="color:#374151"><strong>Visible drip or leak:</strong> Photograph the spot and call MistAmerica.</div>
+    <div class="warning">⚠ <strong>End of season:</strong> If your location gets below 35°F, the pump and water lines must be drained to prevent freeze damage. Call MistAmerica well before the first cold snap.</div>
   </div>
 </div>
 
@@ -6739,13 +6803,18 @@ function applyDraftState(s) {
   discrepancies = s.discrepancies || [];
   dailyNotes = s.dailyNotes || { workCompleted: '', blockers: '', selfNotes: '' };
   userGuideDetails = s.userGuideDetails || {};
+  // One-time migration from old field names
+  if (userGuideDetails.orderCanopySwitch && !userGuideDetails.opSwitch) userGuideDetails.opSwitch = userGuideDetails.orderCanopySwitch;
+  if (userGuideDetails.pickupSwitch && !userGuideDetails.omdSwitch) userGuideDetails.omdSwitch = userGuideDetails.pickupSwitch;
   // Reflect user guide fields in the form
-  if (document.getElementById('ugOrderCanopySwitch')) {
-    document.getElementById('ugOrderCanopySwitch').value = userGuideDetails.orderCanopySwitch || '';
-    document.getElementById('ugPickupSwitch').value = userGuideDetails.pickupSwitch || '';
+  if (document.getElementById('ugOpSwitch')) {
+    document.getElementById('ugOpSwitch').value = userGuideDetails.opSwitch || '';
+    document.getElementById('ugOmdSwitch').value = userGuideDetails.omdSwitch || '';
     document.getElementById('ugPatioSwitch').value = userGuideDetails.patioSwitch || '';
     document.getElementById('ugAdditionalFan').value = userGuideDetails.additionalFan || '';
     document.getElementById('ugPumpLocation').value = userGuideDetails.pumpLocation || '';
+    document.getElementById('ugPumpSwitch').value = userGuideDetails.pumpSwitch || '';
+    document.getElementById('ugOmdMistSwitch').value = userGuideDetails.omdMistSwitch || '';
     document.getElementById('ugRoDrain').value = userGuideDetails.roDrain || '';
   }
   document.getElementById('crewSize').value = s.crewSize || '1';

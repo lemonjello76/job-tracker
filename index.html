@@ -17,6 +17,14 @@
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
 <!-- QR code generation library (cached by service worker once loaded) -->
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<!-- PDF.js — lets us render uploaded PDF drawings as images for markup -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  if (window['pdfjsLib']) {
+    window['pdfjsLib'].GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+</script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -3277,14 +3285,100 @@ function renderJobFiles() {
     const isPdf = f.fileName.toLowerCase().endsWith('.pdf');
     const icon = f.isImage ? '' : (isPdf ? '📕' : '📄');
     const aiBtn = isPdf ? `<button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px" onclick="extractContactsFromFile(${i})" title="Extract contacts using AI">🤖 Extract</button>` : '';
-    return `<div class="file-row">
+    const drawBtn = (isPdf || f.isImage) ? `<button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="markUpJobFile(${i})" title="Convert to drawable image + open Markup tool">📐 Mark Up Drawing</button>` : '';
+    return `<div class="file-row" style="flex-wrap:wrap;gap:6px">
       ${f.isImage ? `<img src="${f.dataURL}" onclick="window.open(this.src,'_blank')">` : `<span class="file-icon">${icon}</span>`}
       <span class="file-name">${esc(f.fileName)}</span>
       <span class="file-size">${sz}</span>
+      ${drawBtn}
       ${aiBtn}
       <button class="remove-btn" style="position:static" onclick="jobFiles.splice(${i},1);renderJobFiles()">×</button>
     </div>`;
   }).join('');
+}
+
+// ─── PDF / image → markable photo bridge ─────────────────────────────
+async function markUpJobFile(fileIndex) {
+  const f = jobFiles[fileIndex];
+  if (!f) return;
+  const isPdf = f.fileName.toLowerCase().endsWith('.pdf');
+
+  if (isPdf) {
+    if (typeof pdfjsLib === 'undefined') {
+      alert('PDF library still loading — try again in a few seconds.');
+      return;
+    }
+    try {
+      const pdf = await pdfjsLib.getDocument(f.dataURL).promise;
+      const total = pdf.numPages;
+      let pageNum = 1;
+      if (total > 1) {
+        const input = prompt(`This PDF has ${total} pages.\n\nWhich page do you want to mark up? (1-${total})`, '1');
+        if (input === null) return; // user cancelled
+        const parsed = parseInt(input, 10);
+        if (isNaN(parsed) || parsed < 1 || parsed > total) {
+          alert('Invalid page number.');
+          return;
+        }
+        pageNum = parsed;
+      }
+      showToast(`📐 Rendering page ${pageNum} of ${total}...`, 'info', 3000);
+      const dataURL = await _pdfPageToImage(pdf, pageNum, 1.8);
+      _pushAsBuiltPhotoAndMarkup(dataURL, f.fileName, pageNum, total);
+    } catch (err) {
+      console.warn('PDF render failed:', err);
+      alert('Could not render PDF: ' + (err.message || err));
+    }
+  } else if (f.isImage) {
+    // Image — just push directly as a markable photo
+    _pushAsBuiltPhotoAndMarkup(f.dataURL, f.fileName, null, null);
+  } else {
+    alert('Only PDFs and images can be marked up.');
+  }
+}
+
+async function _pdfPageToImage(pdf, pageNum, scale) {
+  const page = await pdf.getPage(pageNum);
+  const viewport = page.getViewport({ scale });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  // White background so transparent areas render white not black
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+function _pushAsBuiltPhotoAndMarkup(dataURL, sourceFileName, pageNum, totalPages) {
+  const cleanName = sourceFileName.replace(/\.[^/.]+$/, ''); // strip extension
+  const areaLabel = pageNum
+    ? `${cleanName} — pg ${pageNum}/${totalPages}`
+    : cleanName;
+  const newPhoto = {
+    dataURL,
+    notes: `As-built drawing from ${sourceFileName}${pageNum ? ` (page ${pageNum} of ${totalPages})` : ''}`,
+    gps: null,
+    stamp: nowStamp(),
+    area: areaLabel,
+    phase: 'after',
+    system: 'site',
+    component: 'drawing'
+  };
+  const newIdx = photos.length;
+  photos.push(newPhoto);
+  renderPhotos();
+  scheduleAutoSave();
+  showToast('📐 Drawing ready — opening Markup tool', 'good', 2500);
+  // Open the existing markup tool on this new photo
+  setTimeout(() => {
+    if (typeof openMarkup === 'function') {
+      openMarkup(newIdx);
+    } else {
+      alert('Drawing added to Photos. Scroll to the Photos section and tap "✏ Markup" on it.');
+    }
+  }, 400);
 }
 
 // ═══════════════════════════════

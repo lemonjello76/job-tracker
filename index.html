@@ -3109,13 +3109,14 @@ function drawArrowShape(ctx, x1, y1, x2, y2, color, width) {
 function getMarkupCoords(e) {
   const canvas = document.getElementById('markupCanvas');
   const rect = canvas.getBoundingClientRect();
+  // Pointer Event (preferred — covers mouse/pen/touch)
   let cx, cy;
-  if (e.touches && e.touches.length) {
+  if (typeof e.clientX === 'number' && typeof e.clientY === 'number') {
+    cx = e.clientX; cy = e.clientY;
+  } else if (e.touches && e.touches.length) {
     cx = e.touches[0].clientX; cy = e.touches[0].clientY;
   } else if (e.changedTouches && e.changedTouches.length) {
     cx = e.changedTouches[0].clientX; cy = e.changedTouches[0].clientY;
-  } else {
-    cx = e.clientX; cy = e.clientY;
   }
   return { x: (cx - rect.left) / rect.width, y: (cy - rect.top) / rect.height };
 }
@@ -3238,18 +3239,44 @@ function saveMarkup() {
   img.src = photo.dataURL;
 }
 
-// Wire up canvas event handlers (touch + mouse)
+// Wire up canvas event handlers — uses Pointer Events (covers mouse, finger, AND stylus uniformly)
+// with palm rejection: once a stylus starts drawing, finger touches are ignored until the stylus lifts.
+let __penDrawingActive = false;   // true while an S-Pen / Apple Pencil stroke is in progress
+let __ignoreTouchUntil = 0;       // suppress finger input briefly after pen lift, in case of accidental contact
 (function wireMarkupCanvas() {
   const canvas = document.getElementById('markupCanvas');
   if (!canvas) return;
-  canvas.addEventListener('mousedown', startDrawingMarkup);
-  canvas.addEventListener('mousemove', continueDrawingMarkup);
-  canvas.addEventListener('mouseup', endDrawingMarkup);
-  canvas.addEventListener('mouseleave', endDrawingMarkup);
-  canvas.addEventListener('touchstart', startDrawingMarkup, { passive: false });
-  canvas.addEventListener('touchmove', continueDrawingMarkup, { passive: false });
-  canvas.addEventListener('touchend', endDrawingMarkup, { passive: false });
-  canvas.addEventListener('touchcancel', endDrawingMarkup, { passive: false });
+
+  // Disable browser's default touch gestures (scroll/zoom) on the canvas so the pen can draw freely
+  canvas.style.touchAction = 'none';
+
+  canvas.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'pen') {
+      __penDrawingActive = true;
+      try { canvas.setPointerCapture(e.pointerId); } catch(_) {}
+    } else if (e.pointerType === 'touch') {
+      // Palm rejection — if a pen is currently drawing OR was just drawing, ignore finger touches
+      if (__penDrawingActive || Date.now() < __ignoreTouchUntil) { e.preventDefault(); return; }
+    }
+    startDrawingMarkup(e);
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (e.pointerType === 'touch' && (__penDrawingActive || Date.now() < __ignoreTouchUntil)) {
+      e.preventDefault(); return;
+    }
+    continueDrawingMarkup(e);
+  });
+  const endPointer = e => {
+    if (e.pointerType === 'pen') {
+      __penDrawingActive = false;
+      __ignoreTouchUntil = Date.now() + 350; // 350ms grace period — palm often lands as pen lifts
+      try { canvas.releasePointerCapture(e.pointerId); } catch(_) {}
+    }
+    endDrawingMarkup(e);
+  };
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  canvas.addEventListener('pointerleave', endPointer);
 })();
 
 // Helper: get the URL to display for a photo (annotated if available)

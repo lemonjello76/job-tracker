@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Misting System Help</title>
+<link rel="icon" type="image/svg+xml" href="../icon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<!-- Firebase — for silent scan logging -->
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{
+    --ink:#0f172a; --ink-soft:#334155; --muted:#64748b;
+    --blue:#1d4ed8; --blue-deep:#1e3a8a; --blue-light:#dbeafe; --blue-bg:#eff6ff;
+    --green:#15803d; --green-light:#dcfce7; --green-bg:#f0fdf4;
+    --amber:#c2410c; --amber-deep:#7c2d12; --amber-light:#ffedd5; --amber-bg:#fff7ed;
+    --danger:#dc2626; --danger-bg:#fef2f2;
+    --warn:#d97706; --warn-bg:#fef3c7;
+  }
+  body{font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:var(--ink);background:linear-gradient(180deg,#e2e8f0 0%,#cbd5e1 100%);font-size:14px;line-height:1.55;-webkit-font-smoothing:antialiased;min-height:100vh}
+  .doc{max-width:560px;margin:0 auto;padding:16px;background:#fff;min-height:100vh;box-shadow:0 25px 50px -12px rgba(0,0,0,0.25)}
+
+  /* Hero */
+  .hero{background:linear-gradient(135deg,#1e3a8a 0%,#3b82f6 100%);color:#fff;padding:28px 24px;margin:-16px -16px 0;border-radius:0 0 16px 16px}
+  .hero .brand-line{font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;opacity:0.9;margin-bottom:10px}
+  .hero h1{font-size:26px;font-weight:800;line-height:1.15;letter-spacing:-0.5px;margin-bottom:8px}
+  .hero .sub{font-size:14px;opacity:0.9}
+  .hero .store-chip{display:inline-block;margin-top:14px;padding:6px 14px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.25);border-radius:20px;font-size:13px;font-weight:600;backdrop-filter:blur(8px)}
+
+  /* Big notify button */
+  .notify-block{margin:18px 0;padding:18px;background:linear-gradient(135deg,#7f1d1d 0%,#dc2626 100%);color:#fff;border-radius:14px;text-align:center;box-shadow:0 8px 20px -4px rgba(220,38,38,0.4)}
+  .notify-block .title{font-size:16px;font-weight:700;margin-bottom:6px;letter-spacing:0.5px}
+  .notify-block .desc{font-size:13px;opacity:0.95;margin-bottom:12px}
+  .notify-block .btn{display:inline-block;padding:14px 28px;background:#fff;color:#dc2626;border:none;border-radius:10px;font-size:15px;font-weight:800;cursor:pointer;font-family:inherit;text-decoration:none;box-shadow:0 4px 8px rgba(0,0,0,0.15);transition:transform .1s}
+  .notify-block .btn:active{transform:scale(0.96)}
+  .notify-block .small{font-size:11px;margin-top:10px;opacity:0.85}
+
+  /* Section cards */
+  .card{margin:16px 0;border-radius:12px;overflow:hidden;box-shadow:0 4px 8px -2px rgba(0,0,0,0.08)}
+  .card-head{padding:12px 16px;color:#fff;display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;letter-spacing:0.5px;text-transform:uppercase}
+  .card-head .icon{font-size:18px}
+  .card-body{padding:14px 16px;background:#fff}
+  .card.troubleshoot .card-head{background:linear-gradient(135deg,#1f2937 0%,#475569 100%)}
+  .card.basic .card-head{background:linear-gradient(135deg,#1e40af 0%,#3b82f6 100%)}
+  .card.basic .card-body{background:var(--blue-bg)}
+  .card.warn-card .card-head{background:linear-gradient(135deg,#7c2d12 0%,#ea580c 100%)}
+  .card.warn-card .card-body{background:var(--amber-bg)}
+
+  /* FAQ items */
+  .faq{background:#fff;border:1px solid #e2e8f0;border-left:4px solid #64748b;border-radius:8px;padding:12px 14px;margin:8px 0}
+  .faq .q{font-weight:700;color:var(--ink);font-size:13px;margin-bottom:4px}
+  .faq .a{font-size:13px;color:var(--ink-soft);line-height:1.55}
+
+  /* Mist hierarchy reminder */
+  .hier{background:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin:8px 0;font-size:13px;line-height:1.6;color:var(--ink-soft)}
+  .hier strong{color:var(--ink)}
+  .hier .rule{margin:6px 0;padding-left:14px;border-left:3px solid #3b82f6}
+
+  /* Footer */
+  .footer-contact{margin:20px 0;background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#3b82f6 100%);color:#fff;padding:18px;border-radius:12px;text-align:center}
+  .footer-contact .lbl{font-size:11px;text-transform:uppercase;letter-spacing:2px;opacity:0.85;font-weight:600}
+  .footer-contact .name{font-size:20px;font-weight:800;margin:2px 0}
+  .footer-contact .meta{font-size:12px;opacity:0.85}
+
+  .doc-footer{margin-top:20px;padding:14px 0;border-top:1px solid #e2e8f0;font-size:11px;color:var(--muted);text-align:center}
+
+  /* Scan-acknowledged toast */
+  #scanAck{position:fixed;top:8px;left:50%;transform:translateX(-50%);background:#15803d;color:#fff;padding:8px 16px;border-radius:20px;font-size:12px;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,0.2);opacity:0;transition:opacity .4s;z-index:1000;pointer-events:none}
+  #scanAck.show{opacity:1}
+</style>
+</head>
+<body>
+
+<div id="scanAck">📡 MistAmerica has been notified you opened this page</div>
+
+<div class="doc">
+
+<div class="hero">
+  <div class="brand-line">MistAmerica · Quick Help</div>
+  <h1>Misting System Help</h1>
+  <div class="sub">Quick troubleshooting and a direct line to service.</div>
+  <div class="store-chip" id="storeChip">📍 Loading store info...</div>
+</div>
+
+<!-- BIG RED NOTIFY BUTTON — primary CTA -->
+<div class="notify-block">
+  <div class="title">Need a tech? Tap here.</div>
+  <div class="desc">Sends an email to MistAmerica service with your store info attached — no typing needed.</div>
+  <button class="btn" onclick="notifyMistAmerica()">📧 Notify MistAmerica Service</button>
+  <div class="small">You'll get a callback. The team is already aware you opened this page.</div>
+</div>
+
+<!-- BASIC OPERATION REMINDER -->
+<div class="card basic">
+  <div class="card-head">
+    <span class="icon">📖</span>
+    <span>Quick Operation Reminder</span>
+  </div>
+  <div class="card-body">
+    <div class="hier">
+      <div><strong>Two things to remember:</strong></div>
+      <div class="rule"><strong>🌀 Each canopy has its own FAN switch.</strong> The fan moves cool air. No fan running = no cooling, even if mist is on.</div>
+      <div class="rule"><strong>💧 The MIST is separate, controlled at the pump.</strong> Main pump switch turns mist on/off for everything. OMD has an extra cutoff that only affects OMD mist.</div>
+    </div>
+    <div class="faq" style="border-left-color:#1e40af;background:#eff6ff">
+      <div class="q" style="color:#1e3a8a">For cool mist at any canopy, ALL of these must be ON:</div>
+      <div class="a">1. The main pump switch (controls all mist)<br>2. The fan switch for that canopy (on the same column as the lights and heaters)<br>3. For OMD specifically: the OMD cutoff at the pump too</div>
+    </div>
+  </div>
+</div>
+
+<!-- TROUBLESHOOTING -->
+<div class="card troubleshoot">
+  <div class="card-head">
+    <span class="icon">🛠️</span>
+    <span>Common Issues</span>
+  </div>
+  <div class="card-body">
+    <div class="faq">
+      <div class="q">No mist anywhere</div>
+      <div class="a">Main pump switch is likely off. Turn it ON. If it's already on and still no mist — tap the red button above to notify service. Do not touch the RO / filter equipment.</div>
+    </div>
+    <div class="faq">
+      <div class="q">OP canopy mists fine but OMD doesn't</div>
+      <div class="a">Check the OMD MIST CUTOFF (separate switch at the pump). Make sure it's ON. If on and still no OMD mist — notify service.</div>
+    </div>
+    <div class="faq">
+      <div class="q">Fan running but no mist at that canopy</div>
+      <div class="a">Confirm the main pump switch is ON. (For OMD, also the OMD cutoff.) If both are on and still no mist, nozzles may be clogged — notify service.</div>
+    </div>
+    <div class="faq">
+      <div class="q">Mist visible but no air movement at that canopy</div>
+      <div class="a">That canopy's fan switch is OFF. Turn the fan switch on (on the column near the lights and heaters).</div>
+    </div>
+    <div class="faq">
+      <div class="q">Loud knocking or screeching from the pump room</div>
+      <div class="a"><strong>Switch the main pump OFF immediately</strong> and tap the red button above. Do not keep running it.</div>
+    </div>
+    <div class="faq">
+      <div class="q">Visible drip, leak, or wet spot</div>
+      <div class="a">Note where it is and tap the red button above. A photo helps if you can take one and email it later to service@mistamerica.com.</div>
+    </div>
+    <div class="faq">
+      <div class="q">Hard-water spots returning on cars or surfaces</div>
+      <div class="a">The RO filter cartridge may need replacement. Notify service via the red button above — do not adjust the RO yourself.</div>
+    </div>
+  </div>
+</div>
+
+<!-- DO NOT TOUCH WARNING -->
+<div class="card warn-card">
+  <div class="card-head">
+    <span class="icon">⛔</span>
+    <span>Do Not Touch Equipment</span>
+  </div>
+  <div class="card-body">
+    <p style="font-size:13px;color:var(--amber-deep);font-weight:600;line-height:1.55">
+      Do not adjust the pump, RO filter, valves, or any of the equipment in the pump room. Everything is preset at install. Touching it makes the problem worse, not better.
+    </p>
+    <p style="font-size:13px;color:var(--amber-deep);margin-top:8px;line-height:1.55">
+      If a breaker has tripped, <strong>tap the red button above and wait</strong>. Service will guide you on the correct breaker reset for your specific setup.
+    </p>
+  </div>
+</div>
+
+<!-- CONTACT -->
+<div class="footer-contact">
+  <div class="lbl">Service contact</div>
+  <div class="name">MistAmerica</div>
+  <div class="meta">service@mistamerica.com · (call) [PHONE]</div>
+  <div class="meta" style="margin-top:6px">Original installer: Lyle Krug</div>
+</div>
+
+<div class="doc-footer">
+  Scanned <span id="scanTime"></span> · MistAmerica Quick Help
+</div>
+
+</div><!-- /doc -->
+
+<script>
+// ─── Read URL params ─────────────────────────────────────────────
+const params = new URLSearchParams(location.search);
+const storeName = params.get('store') || 'Your CFA location';
+const storeId = params.get('id') || '';
+const storeLocation = params.get('loc') || '';
+const installDate = params.get('installed') || '';
+
+// Populate store info
+document.getElementById('storeChip').textContent =
+  '📍 ' + storeName + (storeLocation ? ' · ' + storeLocation : '');
+document.getElementById('scanTime').textContent =
+  new Date().toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+// ─── Firebase silent scan logging ────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyDsx-VoWLfIqpKuYUaDsp0MFlc-24xwH8s",
+  authDomain: "mistamerica-job-tracker.firebaseapp.com",
+  projectId: "mistamerica-job-tracker",
+  storageBucket: "mistamerica-job-tracker.firebasestorage.app",
+  messagingSenderId: "491853979701",
+  appId: "1:491853979701:web:64da6ffeb49e9c6e4d517c"
+};
+let fdb = null;
+let scanDocRef = null;
+try {
+  if (typeof firebase !== 'undefined') {
+    firebase.initializeApp(firebaseConfig);
+    fdb = firebase.firestore();
+    const scanId = 'scan_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    scanDocRef = fdb.collection('users').doc('lyle-mistamerica').collection('scans').doc(scanId);
+    scanDocRef.set({
+      storeName,
+      storeId,
+      storeLocation,
+      installDate,
+      scannedAt: new Date().toISOString(),
+      userAgent: navigator.userAgent.slice(0, 220),
+      action: 'scan',
+      notifyClicked: false
+    }).then(() => {
+      // Show subtle acknowledgement
+      const ack = document.getElementById('scanAck');
+      ack.classList.add('show');
+      setTimeout(() => ack.classList.remove('show'), 4000);
+    }).catch(e => console.warn('Scan log failed:', e));
+  }
+} catch (e) { console.warn('Firebase init failed:', e); }
+
+// ─── Notify MistAmerica button ───────────────────────────────────
+function notifyMistAmerica() {
+  const subject = `[Help Scan] ${storeName} ${storeLocation ? '— ' + storeLocation : ''} — possible issue`;
+  const body = [
+    `A site contact just opened the help page for the misting system at:`,
+    ``,
+    `Store: ${storeName}`,
+    storeId ? `Store ID: ${storeId}` : null,
+    storeLocation ? `Location: ${storeLocation}` : null,
+    installDate ? `Install date: ${installDate}` : null,
+    `Scanned at: ${new Date().toLocaleString()}`,
+    ``,
+    `They tapped the "Notify MistAmerica" button on the help page, which usually means they need help and could not resolve the issue themselves.`,
+    ``,
+    `Please follow up directly.`,
+    ``,
+    `— Sent automatically by the MistAmerica QR Help System`
+  ].filter(Boolean).join('\n');
+
+  // Update the Firestore record to mark notify clicked
+  if (scanDocRef) {
+    scanDocRef.update({
+      action: 'notify-clicked',
+      notifyClicked: true,
+      notifyAt: new Date().toISOString()
+    }).catch(e => console.warn('Notify update failed:', e));
+  }
+
+  const mailto = 'mailto:service@mistamerica.com?cc=lylekrug@gmail.com'
+    + '&subject=' + encodeURIComponent(subject)
+    + '&body=' + encodeURIComponent(body);
+
+  // Use a temporary <a> click to trigger mail handler
+  const a = document.createElement('a');
+  a.href = mailto;
+  a.click();
+
+  setTimeout(() => {
+    alert("Email opened. Tap Send in your mail app.\\n\\nMistAmerica has also been silently notified you opened this page.");
+  }, 600);
+}
+</script>
+</body>
+</html>

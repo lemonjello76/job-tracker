@@ -6650,7 +6650,7 @@ async function _buildAndOpenGcReport() {
       </div>
     ` : ''}
 
-    ${!gc.asBuilt && !asBuiltDrawings.length ? '<em style="color:var(--muted)">No as-built notes or marked drawings yet. Fill the "As-built notes" field above and/or upload the office\\'s drawings as photos, tag Component = "Drawing / As-Built", and use the Markup tool to draw your actual install lines.</em>' : ''}
+    ${!gc.asBuilt && !asBuiltDrawings.length ? '<em style="color:var(--muted)">No as-built notes or marked drawings yet. Fill the "As-built notes" field above and/or upload the office\'s drawings as photos, tag Component = "Drawing / As-Built", and use the Markup tool to draw your actual install lines.</em>' : ''}
   </div>
 </div>
 
@@ -6702,7 +6702,7 @@ async function _buildAndOpenGcReport() {
         <h4>${label} (${bucket.length})</h4>
         <div class="photo-grid">${bucket.map(p => photoCard(p, p.area || p.notes || '')).join('')}</div>
       </div>`;
-    }).filter(Boolean).join('')) || '<div class="empty-state">No "after" photos tagged by system. Use the System field on each photo (Equipment / Fans / Switching / Site) and mark phase as "after" — they\\'ll show up here.</div>'}
+    }).filter(Boolean).join('')) || '<div class="empty-state">No "after" photos tagged by system. Use the System field on each photo (Equipment / Fans / Switching / Site) and mark phase as "after" — they\'ll show up here.</div>'}
   </div>
 </div>
 
@@ -7460,7 +7460,7 @@ ${canopySection('01',
 
 ${canopySection('02',
   'OMD Canopy (Order Meal Delivery)',
-  'Where customers <strong>pick up</strong> their food. Same setup as OP — fans on the columns with the lights and heaters, outside the building.<br><br><strong>Mist behavior:</strong> OMD mist can be turned off independently via the <strong>OMD cutoff switch</strong> at the pump. BUT — if the main mist pump is off, OMD mist won\\'t turn on either, no matter where the cutoff is set.',
+  'Where customers <strong>pick up</strong> their food. Same setup as OP — fans on the columns with the lights and heaters, outside the building.<br><br><strong>Mist behavior:</strong> OMD mist can be turned off independently via the <strong>OMD cutoff switch</strong> at the pump. BUT — if the main mist pump is off, OMD mist won\'t turn on either, no matter where the cutoff is set.',
   ug.omdSwitch, omdFanPhoto, omdSwitchPhoto)}
 
 ${hasPatio ? canopySection('03',
@@ -7646,7 +7646,7 @@ ${hasAdditional ? `
       </div>
       <div class="ts-item">
         <div class="q">OP mist works but OMD doesn't</div>
-        <div class="a">${hasOmdMistSwitch ? 'Check the OMD MIST CUTOFF — make sure it\\'s ON.' : 'Likely clogged nozzles on the OMD line — call MistAmerica.'}</div>
+        <div class="a">${hasOmdMistSwitch ? 'Check the OMD MIST CUTOFF — make sure it\'s ON.' : 'Likely clogged nozzles on the OMD line — call MistAmerica.'}</div>
       </div>
       <div class="ts-item">
         <div class="q">Fan running but no mist at that canopy</div>
@@ -8407,9 +8407,16 @@ async function maybeShowEodBanner() {
 // ═══════════════════════════════
 (async function init() {
   try {
-    // Register service worker so the app installs as a PWA + works offline
+    // Service worker disabled: the cached worker was serving a stale build,
+    // leaving the app unresponsive. Unregister any existing worker and wipe
+    // its caches so devices stop serving the cached version.
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW registration failed:', e));
+      navigator.serviceWorker.getRegistrations()
+        .then(regs => regs.forEach(r => r.unregister()))
+        .catch(() => {});
+      if (self.caches && caches.keys) {
+        caches.keys().then(keys => keys.forEach(k => caches.delete(k))).catch(() => {});
+      }
     }
     db = await openDB();
     // Initial cloud sync: pull down whatever's in Firestore so this device matches

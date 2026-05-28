@@ -15,8 +15,6 @@
 <!-- Firebase (cloud sync between phone and laptop) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
-<!-- QR code generation library (cached by service worker once loaded) -->
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <!-- PDF.js — lets us render uploaded PDF drawings as images for markup -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>
@@ -1087,7 +1085,6 @@
   <button class="generate-btn" style="background:#8b5cf6;color:#fff;grid-column:1 / -1" onclick="openPhotoSearch()">🔍 SEARCH PHOTOS — ACROSS EVERY JOB</button>
   <button class="generate-btn" style="background:#ea580c;color:#fff;grid-column:1 / -1" onclick="generateGcReport()">🏗️ GC COMPLETION REPORT — SEND TO GENERAL CONTRACTOR</button>
   <button class="generate-btn" style="background:#16a34a;color:#fff;grid-column:1 / -1" onclick="generateUserGuide()">📘 USER GUIDE — ONE-PAGER FOR THE SITE CONTACT</button>
-  <button class="generate-btn" style="background:#0f172a;color:#fff;grid-column:1 / -1" onclick="generateQrSticker()">📱 GENERATE QR HELP STICKER — FOR ON-EQUIPMENT</button>
   <button class="send-btn" onclick="sendReport()" style="grid-column:1 / -1">SEND REPORT ✉</button>
 </div>
 
@@ -1242,24 +1239,6 @@
       <button class="btn-dim" style="width:100%" onclick="closeSendGcReportDialog()">Cancel</button>
     </div>
     <p style="font-size:11px;color:var(--dim);margin-top:10px;text-align:center;font-style:italic">Auto BCCs service@mistamerica.com (the office) and you. Comm log entry added automatically.</p>
-  </div>
-</div>
-
-<!-- QR sticker dialog -->
-<div class="dialog-overlay" id="qrStickerDialog">
-  <div class="dialog" style="max-width:520px;text-align:center">
-    <h3 style="margin-bottom:6px">📱 QR Help Sticker</h3>
-    <p style="color:var(--dim);font-size:13px;margin-bottom:14px">Print this and stick it on the equipment. When anyone scans it, they get troubleshooting AND you get notified.</p>
-    <div id="qrCodeContainer" style="background:#fff;padding:20px;border-radius:8px;display:inline-block;margin-bottom:14px"></div>
-    <div id="qrStoreInfo" style="font-size:13px;color:var(--text);font-weight:600;margin-bottom:14px"></div>
-    <div id="qrUrl" style="font-size:10px;color:var(--dim);word-break:break-all;background:var(--input);padding:8px;border-radius:4px;margin-bottom:14px;font-family:monospace"></div>
-    <div class="dialog-btns" style="flex-direction:column;gap:8px">
-      <button class="btn-green" style="width:100%" onclick="printQrSticker()">🖨️ Print sticker</button>
-      <button class="btn-green" style="width:100%;background:#3b82f6" onclick="downloadQrPng()">💾 Download PNG</button>
-      <button class="btn-dim" style="width:100%" onclick="copyQrUrl()">📋 Copy URL</button>
-      <button class="btn-dim" style="width:100%" onclick="closeQrStickerDialog()">Close</button>
-    </div>
-    <p style="font-size:11px;color:var(--dim);margin-top:10px;font-style:italic">Every scan is silently logged to your Firebase scan log. Tap "Notify" on the help page also emails service@mistamerica.com + you.</p>
   </div>
 </div>
 
@@ -6773,137 +6752,6 @@ async function _buildAndOpenGcReport() {
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } catch (err) {
     alert('Could not open GC report: ' + err.message);
-  }
-}
-
-// ═══════════════════════════════
-// QR HELP STICKER — print-on-equipment QR that links to /help/?store=...
-// ═══════════════════════════════
-let __qrLastDataURL = '';
-let __qrLastURL = '';
-
-async function generateQrSticker() {
-  const client = document.getElementById('client').value.trim();
-  if (!client) {
-    alert('Set the client name first (e.g. "Chick-fil-A #3897") so the QR knows what site to identify.');
-    return;
-  }
-  const city = document.getElementById('city').value.trim();
-  const state = document.getElementById('state').value.trim().toUpperCase();
-  const installDate = document.getElementById('dateEnd').value || document.getElementById('dateStart').value || '';
-  // Try to extract store ID from "Chick-fil-A #3897" → "3897"
-  const idMatch = client.match(/#?\s*(\d{3,5})\b/);
-  const storeId = idMatch ? idMatch[1] : '';
-  const location = [city, state].filter(Boolean).join(', ');
-
-  // Build the help URL with params
-  const baseUrl = 'https://lemonjello76.github.io/job-tracker/help/';
-  const url = baseUrl + '?' + new URLSearchParams({
-    store: client,
-    ...(storeId ? { id: storeId } : {}),
-    ...(location ? { loc: location } : {}),
-    ...(installDate ? { installed: installDate } : {})
-  }).toString();
-  __qrLastURL = url;
-
-  // Generate the QR via the QRCode library
-  if (typeof QRCode === 'undefined') {
-    alert('QR code library not loaded. Check your internet connection and try again.');
-    return;
-  }
-  try {
-    __qrLastDataURL = await QRCode.toDataURL(url, {
-      width: 480,
-      margin: 2,
-      errorCorrectionLevel: 'M',
-      color: { dark: '#0f172a', light: '#ffffff' }
-    });
-  } catch (err) {
-    alert('Could not generate QR code: ' + err.message);
-    return;
-  }
-
-  // Populate the dialog
-  const container = document.getElementById('qrCodeContainer');
-  container.innerHTML = `<img src="${__qrLastDataURL}" style="width:240px;height:240px;display:block" alt="QR code">`;
-  document.getElementById('qrStoreInfo').textContent = client + (location ? ' · ' + location : '');
-  document.getElementById('qrUrl').textContent = url;
-  document.getElementById('qrStickerDialog').classList.add('open');
-}
-
-function closeQrStickerDialog() {
-  document.getElementById('qrStickerDialog').classList.remove('open');
-}
-
-function downloadQrPng() {
-  if (!__qrLastDataURL) return;
-  const client = document.getElementById('client').value.trim() || 'qr';
-  const fileBase = ('qr_help_' + client).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-  const a = document.createElement('a');
-  a.href = __qrLastDataURL;
-  a.download = fileBase + '.png';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
-
-function copyQrUrl() {
-  if (!__qrLastURL) return;
-  navigator.clipboard.writeText(__qrLastURL).then(() => {
-    showToast('📋 URL copied to clipboard', 'good', 2500);
-  }).catch(() => {
-    alert('Copy failed — URL: ' + __qrLastURL);
-  });
-}
-
-function printQrSticker() {
-  if (!__qrLastDataURL) return;
-  const client = document.getElementById('client').value.trim() || '';
-  const city = document.getElementById('city').value.trim();
-  const state = document.getElementById('state').value.trim().toUpperCase();
-  const location = [city, state].filter(Boolean).join(', ');
-
-  // Build a clean print page with the QR + branding
-  const printHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-<title>QR Help Sticker — ${esc(client)}</title>
-<style>
-  *{margin:0;padding:0;box-sizing:border-box}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;padding:40px;display:flex;align-items:center;justify-content:center;min-height:100vh;background:#fff}
-  .sticker{border:3px solid #0f172a;border-radius:18px;padding:24px;text-align:center;max-width:380px;background:#fff}
-  .brand{font-size:11px;color:#1e3a8a;font-weight:700;letter-spacing:3px;text-transform:uppercase;margin-bottom:10px}
-  .title{font-size:24px;font-weight:800;color:#0f172a;line-height:1.1;margin-bottom:6px}
-  .instr{font-size:13px;color:#475569;margin-bottom:18px;line-height:1.4}
-  .qr{display:block;margin:0 auto;width:240px;height:240px}
-  .store{margin-top:18px;padding-top:14px;border-top:1px solid #cbd5e1;font-size:12px;color:#475569}
-  .store strong{color:#0f172a;font-size:14px;display:block;margin-bottom:2px}
-  .footer{margin-top:14px;font-size:10px;color:#94a3b8;text-transform:uppercase;letter-spacing:2px;font-weight:600}
-  @media print {body{padding:0}.sticker{box-shadow:none;page-break-inside:avoid}@page{margin:0.5in}}
-</style></head><body>
-<div class="sticker">
-  <div class="brand">MistAmerica · Quick Help</div>
-  <div class="title">Scan for Help</div>
-  <div class="instr">Point your phone camera at this code.<br>Troubleshooting + direct line to service.</div>
-  <img src="${__qrLastDataURL}" class="qr" alt="">
-  <div class="store">
-    <strong>${esc(client)}</strong>
-    ${location ? esc(location) : ''}
-  </div>
-  <div class="footer">Installed by MistAmerica</div>
-</div>
-<script>setTimeout(()=>window.print(),300);<\/script>
-</body></html>`;
-  const w = window.open('', '_blank');
-  if (w) {
-    w.document.write(printHTML);
-    w.document.close();
-  } else {
-    // Popup blocked fallback
-    const blob = new Blob([printHTML], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = 'qr_sticker.html';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
-    alert('Popup blocked — sticker page downloaded. Open it and print.');
   }
 }
 

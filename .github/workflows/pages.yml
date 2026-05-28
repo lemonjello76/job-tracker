@@ -1,13 +1,34 @@
-name: Deploy to GitHub Pages
+name: CI + Deploy to GitHub Pages
+
 on:
   push:
-    branches: [main]
+  pull_request:
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install jsdom
+        run: npm install --no-save --no-package-lock jsdom@24
+      - name: Run verify (syntax + smoke test)
+        run: node ci/verify.js
+
   deploy:
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

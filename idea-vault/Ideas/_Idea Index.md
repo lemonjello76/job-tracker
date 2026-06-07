@@ -15,7 +15,7 @@ table without id
   status as "Status",
   score as "Score",
   created as "Added"
-from "idea-vault/Ideas"
+from "Ideas"
 where file.name != "_Idea Index"
 sort score desc, created desc
 ```
@@ -24,7 +24,7 @@ sort score desc, created desc
 
 ```dataview
 list
-from "idea-vault/Ideas"
+from "Ideas"
 where status = "formulated" or status = "delivered"
 sort score desc
 ```

@@ -19,6 +19,8 @@
 <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <!-- PDF.js — lets us render uploaded PDF drawings as images for markup -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<!-- EmailJS — auto-sends drive notification emails (keys live in localStorage, not here) -->
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script>
   if (window['pdfjsLib']) {
     window['pdfjsLib'].GlobalWorkerOptions.workerSrc =
@@ -1306,6 +1308,19 @@
         Powers AI contact extraction from uploaded job files. Stored in your browser only — never sent anywhere except to Anthropic.
         <br>Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color:var(--accent)">console.anthropic.com/settings/keys</a> (~2-3¢ per work order).
       </p>
+    </div>
+    <div style="margin:16px 0;border-top:1px solid var(--border);padding-top:16px">
+      <label style="display:block;font-size:13px;font-weight:600;color:var(--dim);margin-bottom:6px">📧 Drive Notification Emails (EmailJS)</label>
+      <p style="font-size:12px;color:var(--dim);margin:0 0 10px;line-height:1.5">
+        Auto-emails Robert + Sean (CC you) when you start driving before 6 AM and when you finish that drive — with the time and city. Paste your 3 EmailJS IDs below. They're stored on this device only, never in the app code.
+        <br>Set up free at <a href="https://www.emailjs.com" target="_blank" style="color:var(--accent)">emailjs.com</a> — see the steps I gave you.
+      </p>
+      <input type="text" id="ejsServiceId" placeholder="Service ID (e.g. service_ab12cd3)" style="width:100%;padding:9px 12px;margin-bottom:8px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:monospace;outline:none">
+      <input type="text" id="ejsTemplateId" placeholder="Notification Template ID (text emails)" style="width:100%;padding:9px 12px;margin-bottom:8px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:monospace;outline:none">
+      <input type="text" id="ejsPhotoTemplateId" placeholder="Photo Template ID (optional — for end-of-day photos)" style="width:100%;padding:9px 12px;margin-bottom:8px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:monospace;outline:none">
+      <input type="text" id="ejsPublicKey" placeholder="Public Key (e.g. aB1cD2eF3gH4iJ5)" style="width:100%;padding:9px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:monospace;outline:none">
+      <div style="font-size:11px;color:var(--dim);margin-top:8px;line-height:1.5">Photo emails need an EmailJS <strong>paid</strong> plan (attachments). The Photo Template is a 2nd template with one Variable Attachment named <code>photos_image</code>. Leave it blank to skip photo emails — the text emails work on the free plan.</div>
+      <button class="btn-dim" onclick="testDriveEmail()" style="width:100%;margin-top:10px">📧 Send Test Email Now</button>
     </div>
     <div class="dialog-btns" style="margin-top:20px">
       <button class="btn-green" onclick="saveSettings()">Save</button>
@@ -2747,6 +2762,7 @@ async function dayStartDriving() {
   dayFlowPromptShown = false;
   renderSegments(); updateDashboard(); startSegmentTicker(); startStopWatcher(); scheduleAutoSave();
   showToast('🚗 Driving — I\'ll ask when you stop', 'good', 3000);
+  onDriveStarted(seg); // pre-6am → email Robert + Sean
   setTimeout(() => promptOdometerPhoto(seg.id, 'start'), 250);
 }
 
@@ -2808,6 +2824,7 @@ async function dayYesJob() {
     running.endGps = gps;
     if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
     renderSegments(); scheduleAutoSave();
+    onDriveEnded(running); // arrival email if a morning drive armed it
     if (running.type === 'drive') setTimeout(() => promptOdometerPhoto(running.id, 'end'), 250);
   }
   // Back-end intelligence: inside a pinned job's fence → that's the job, no questions
@@ -2939,6 +2956,7 @@ async function dayBeginWorkSegment(gps) {
     });
   }
   renderSegments(); updateDashboard(); startSegmentTicker(); startDriftMonitor(); scheduleAutoSave();
+  onWorkStarted(segments[segments.length - 1]); // email Robert + Sean that work started
   renderDayFlow();
   refreshWeekStrip();
 }
@@ -4964,6 +4982,7 @@ async function startDriveSegment() {
   startSegmentTicker();
   startStopWatcher();
   scheduleAutoSave();
+  onDriveStarted(seg); // pre-6am → email Robert + Sean
   if (tripLevel) showToast('🌍 Trip-level drive started', 'info', 2500);
   // Auto-prompt for start odometer photo
   setTimeout(() => promptOdometerPhoto(seg.id, 'start'), 200);
@@ -5010,6 +5029,7 @@ async function startWorkdaySegment() {
   startSegmentTicker();
   startDriftMonitor();
   scheduleAutoSave();
+  onWorkStarted(segments[segments.length - 1]); // email Robert + Sean that work started
 }
 
 async function stopCurrentSegment() {
@@ -5022,6 +5042,8 @@ async function stopCurrentSegment() {
   if (driftCheckInterval) { clearInterval(driftCheckInterval); driftCheckInterval = null; }
   if (stopWatchInterval) { clearInterval(stopWatchInterval); stopWatchInterval = null; }
   dayFlowPromptShown = false;
+  if (running.type === 'drive') onDriveEnded(running); // arrival email if a morning drive armed it
+  if (running.type === 'workday') sendDayPhotosEmail(); // end-of-day photo contact sheet
   // Closing-out workday — check drift and warn if user has left the pin
   if (running.type === 'workday' && pinnedLocation && gps) {
     const dist = distanceMeters(gps, pinnedLocation);
@@ -6661,6 +6683,10 @@ document.getElementById('importInput').addEventListener('change', async function
 // ═══════════════════════════════
 function openSettings() {
   document.getElementById('apiKeyInput').value = localStorage.getItem('anthropicApiKey') || '';
+  document.getElementById('ejsServiceId').value = localStorage.getItem('emailjsServiceId') || '';
+  document.getElementById('ejsTemplateId').value = localStorage.getItem('emailjsTemplateId') || '';
+  document.getElementById('ejsPhotoTemplateId').value = localStorage.getItem('emailjsPhotoTemplateId') || '';
+  document.getElementById('ejsPublicKey').value = localStorage.getItem('emailjsPublicKey') || '';
   document.getElementById('settingsStatus').textContent = '';
   document.getElementById('settingsDialog').classList.add('open');
 }
@@ -6669,14 +6695,41 @@ function closeSettings() {
 }
 function saveSettings() {
   const key = document.getElementById('apiKeyInput').value.trim();
-  if (key) {
-    localStorage.setItem('anthropicApiKey', key);
-    document.getElementById('settingsStatus').textContent = '✓ Saved';
-    document.getElementById('settingsStatus').style.color = 'var(--green)';
+  if (key) localStorage.setItem('anthropicApiKey', key);
+  else localStorage.removeItem('anthropicApiKey');
+  // EmailJS drive-notification IDs
+  const setOrClear = (id, lsKey) => {
+    const v = document.getElementById(id).value.trim();
+    if (v) localStorage.setItem(lsKey, v); else localStorage.removeItem(lsKey);
+  };
+  setOrClear('ejsServiceId', 'emailjsServiceId');
+  setOrClear('ejsTemplateId', 'emailjsTemplateId');
+  setOrClear('ejsPhotoTemplateId', 'emailjsPhotoTemplateId');
+  setOrClear('ejsPublicKey', 'emailjsPublicKey');
+  document.getElementById('settingsStatus').textContent = '✓ Saved';
+  document.getElementById('settingsStatus').style.color = 'var(--green)';
+}
+
+// Fire a test drive email so Lyle can confirm EmailJS is wired up correctly
+async function testDriveEmail() {
+  const status = document.getElementById('settingsStatus');
+  // Save first so the test uses what's in the boxes
+  saveSettings();
+  if (!emailjsConfig()) {
+    status.textContent = 'Fill in all 3 EmailJS IDs first';
+    status.style.color = 'var(--yellow)';
+    return;
+  }
+  status.textContent = 'Sending test email...';
+  status.style.color = 'var(--dim)';
+  const gps = await getGps();
+  const ok = await sendDriveEmail('start', gps, Date.now(), true);
+  if (ok) {
+    status.textContent = '✓ Test sent to YOU only — check your inbox';
+    status.style.color = 'var(--green)';
   } else {
-    localStorage.removeItem('anthropicApiKey');
-    document.getElementById('settingsStatus').textContent = 'Key cleared';
-    document.getElementById('settingsStatus').style.color = 'var(--dim)';
+    status.textContent = '✗ Test failed — double-check the 3 IDs and your signal';
+    status.style.color = 'var(--red)';
   }
 }
 async function testApiKey() {
@@ -8880,6 +8933,216 @@ async function deleteCurrentDraft() {
   localStorage.removeItem('currentDraftId');
   clearForm();
   await refreshDraftSelector();
+}
+
+// ═══════════════════════════════
+// DRIVE NOTIFICATION EMAILS (EmailJS — auto-send, no tap)
+// Pre-6am drive start  → "Lyle left {city} at {time}"  to Robert+Sean, CC Lyle
+// End of that drive    → "Lyle arrived in {city} at {time}"
+// The 3 EmailJS IDs live in localStorage (Settings), never in the repo.
+// ═══════════════════════════════
+const DRIVE_EMAIL_TO = 'robertl@mistamerica.com,seann@mistamerica.com';
+const DRIVE_EMAIL_CC = 'lylekrug@gmail.com';
+const DRIVE_EMAIL_BEFORE_HOUR = 6; // start email only fires before this local hour
+
+function emailjsConfig() {
+  const serviceId = localStorage.getItem('emailjsServiceId');
+  const templateId = localStorage.getItem('emailjsTemplateId');
+  const publicKey = localStorage.getItem('emailjsPublicKey');
+  return (serviceId && templateId && publicKey) ? { serviceId, templateId, publicKey } : null;
+}
+
+// kind: 'start' | 'arrival'. testMode = send to Lyle only, don't log.
+async function sendDriveEmail(kind, gps, whenMs, testMode) {
+  const cfg = emailjsConfig();
+  if (!cfg || typeof emailjs === 'undefined') return false; // not set up — skip silently
+  const when = new Date(whenMs);
+  const geo = await reverseGeocode(gps);
+  const place = geo ? (geo.city + (geo.state ? ', ' + geo.state : '')) : 'an unknown location';
+  const timeOfDay = when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const dayStr = when.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  let message, subject;
+  if (kind === 'work') {
+    message = `Lyle started work at ${timeOfDay} in ${place} on ${dayStr}.\n\n(Auto-sent by Job Tracker the moment Lyle started the workday. Location from GPS.)`;
+    subject = `Lyle started work — ${place} — ${timeOfDay}`;
+  } else if (kind === 'start') {
+    message = `Lyle left ${place} at ${timeOfDay} on ${dayStr}.\n\n(Auto-sent by Job Tracker the moment Lyle started driving. Location from GPS.)`;
+    subject = `Lyle started driving — ${place} — ${timeOfDay}`;
+  } else { // arrival
+    message = `Lyle arrived in ${place} at ${timeOfDay} on ${dayStr}.\n\n(Auto-sent by Job Tracker the moment Lyle finished driving. Location from GPS.)`;
+    subject = `Lyle done driving — arrived ${place} — ${timeOfDay}`;
+  }
+  subject = (testMode ? '[TEST] ' : '') + subject;
+  try {
+    emailjs.init({ publicKey: cfg.publicKey });
+    await emailjs.send(cfg.serviceId, cfg.templateId, {
+      // Test goes to Lyle only — never bothers Robert/Sean
+      to_email: testMode ? DRIVE_EMAIL_CC : DRIVE_EMAIL_TO,
+      cc_email: testMode ? '' : DRIVE_EMAIL_CC,
+      subject,
+      message
+    });
+    if (!testMode) {
+      // Log it to the comm log so there's a record the notice went out
+      communications.push({
+        id: 'comm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        kind: 'email',
+        to: 'Robert + Sean (CC Lyle)',
+        subject,
+        summary: message,
+        sentAt: when.toISOString().slice(0, 10),
+        responseReceived: false, responseAt: '', responseSummary: ''
+      });
+      if (typeof renderCommunications === 'function') renderCommunications();
+      scheduleAutoSave();
+      const evtLabel = kind === 'work' ? 'Start-work' : (kind === 'start' ? 'Start-drive' : 'Arrival');
+      showToast(`📧 ${evtLabel} email sent — ${place}`, 'good', 3500);
+    }
+    return true;
+  } catch (e) {
+    console.warn('Drive email failed:', e);
+    if (!testMode) showToast('⚠️ Drive email didn\'t send — check Settings / signal', 'warn', 4500);
+    return false;
+  }
+}
+
+// Called when a drive STARTS — fires the start email only if it's before 6am,
+// and arms the matching arrival email (flag persists across app sleep/reload).
+function onDriveStarted(seg) {
+  if (!seg || seg.type !== 'drive') return;
+  if (new Date(seg.startedAt).getHours() < DRIVE_EMAIL_BEFORE_HOUR) {
+    localStorage.setItem('pendingArrivalEmail', '1');
+    sendDriveEmail('start', seg.startGps, seg.startedAt);
+  }
+}
+
+// Called when a drive ENDS — sends the arrival email if a morning drive armed it.
+async function onDriveEnded(seg) {
+  if (!seg || seg.type !== 'drive') return;
+  if (localStorage.getItem('pendingArrivalEmail') !== '1') return;
+  localStorage.removeItem('pendingArrivalEmail');
+  await sendDriveEmail('arrival', seg.endGps || seg.startGps, seg.endedAt || Date.now());
+}
+
+// Called when a WORKDAY starts — emails "Lyle started work at {time} in {city}".
+// No time gate: fires whenever the workday begins (4am, 6am, whenever).
+function onWorkStarted(seg) {
+  if (!seg || seg.type !== 'workday') return;
+  sendDriveEmail('work', seg.startGps, seg.startedAt);
+}
+
+// ── END-OF-DAY PHOTO EMAIL ──
+// At workday's end, tile the day's photos into ONE shrunk JPEG (a contact
+// sheet) sized to fit the EmailJS Personal-plan 500KB cap, and email it to
+// Robert + Sean (CC Lyle). Uses a SEPARATE EmailJS template (the one with the
+// attachment) so the plain text emails can never be broken by it.
+const PHOTO_EMAIL_MAX_BYTES = 470000; // leave margin under the 500KB plan cap
+const PHOTO_EMAIL_MAX_COUNT = 12;     // tile at most this many per email
+
+function loadImageEl(src) {
+  return new Promise((resolve, reject) => {
+    const i = new Image();
+    i.onload = () => resolve(i);
+    i.onerror = reject;
+    i.src = src;
+  });
+}
+
+// Tile photos into one JPEG, shrinking until it's under maxBytes. Returns
+// { b64, bytes } (base64 without the data: prefix) or null.
+async function buildPhotoMontage(photoObjs, maxBytes, headerText) {
+  const cells = [];
+  for (const p of photoObjs) {
+    try {
+      const img = await loadImageEl(p.dataURL);
+      cells.push({ img, cap: (p.area || p.component || p.notes || '').slice(0, 38) });
+    } catch (e) { /* skip unreadable photo */ }
+  }
+  if (!cells.length) return null;
+  const cols = cells.length === 1 ? 1 : 2;
+  const rows = Math.ceil(cells.length / cols);
+  const widths = [560, 470, 390, 320, 260, 220, 180];
+  const quals = [0.6, 0.5, 0.42, 0.35, 0.3];
+  let last = null;
+  for (const cellW of widths) {
+    for (const q of quals) {
+      const pad = 6, capH = 16, headH = 26;
+      const cellH = Math.round(cellW * 0.7);
+      const W = cols * cellW + (cols + 1) * pad;
+      const H = headH + rows * (cellH + capH) + (rows + 1) * pad;
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#111111'; ctx.font = 'bold 13px sans-serif';
+      ctx.fillText(headerText || '', pad, 18);
+      cells.forEach((o, i) => {
+        const r = Math.floor(i / cols), cc = i % cols;
+        const x = pad + cc * (cellW + pad);
+        const y = headH + pad + r * (cellH + capH + pad);
+        ctx.fillStyle = '#000000'; ctx.fillRect(x, y, cellW, cellH);
+        const ar = o.img.width / o.img.height;
+        let dw = cellW, dh = cellW / ar;
+        if (dh > cellH) { dh = cellH; dw = cellH * ar; }
+        ctx.drawImage(o.img, x + (cellW - dw) / 2, y + (cellH - dh) / 2, dw, dh);
+        if (o.cap) { ctx.fillStyle = '#333333'; ctx.font = '11px sans-serif'; ctx.fillText(o.cap, x + 2, y + cellH + 12); }
+      });
+      const b64 = c.toDataURL('image/jpeg', q).split(',')[1];
+      const bytes = Math.floor(b64.length * 0.75);
+      last = { b64, bytes };
+      if (bytes <= maxBytes) return last;
+    }
+  }
+  return last; // smallest we could make it, even if marginally over
+}
+
+async function sendDayPhotosEmail() {
+  const cfg = emailjsConfig();
+  const photoTemplateId = localStorage.getItem('emailjsPhotoTemplateId');
+  if (!cfg || !photoTemplateId || typeof emailjs === 'undefined') return false; // photos not set up — skip
+  const b = eodTodayBounds();
+  let todays = (photos || []).filter(p => eodIsToday(p.stamp, b) && !p._emailedEod);
+  if (!todays.length) return false;
+  let capped = false;
+  if (todays.length > PHOTO_EMAIL_MAX_COUNT) { todays = todays.slice(0, PHOTO_EMAIL_MAX_COUNT); capped = true; }
+  const client = document.getElementById('client').value.trim() || 'Job';
+  const gpsP = todays.find(p => p.gps);
+  const geo = await reverseGeocode(gpsP ? gpsP.gps : await getGps());
+  const place = geo ? (geo.city + (geo.state ? ', ' + geo.state : '')) : (document.getElementById('city').value.trim() || 'job site');
+  const header = `Lyle — ${client} — ${place} — ${b.dateStr} — ${todays.length} photo(s)`;
+  const montage = await buildPhotoMontage(todays, PHOTO_EMAIL_MAX_BYTES, header);
+  if (!montage) return false;
+  const subject = `Lyle's photos — ${place} — ${b.dateStr} (${todays.length})`;
+  const message = `${todays.length} job photo(s) from ${client} in ${place} on ${b.dateStr}, attached as a contact sheet.${capped ? ' (Showing the first ' + PHOTO_EMAIL_MAX_COUNT + ' — more in the full report.)' : ''}\n\n(Auto-sent by Job Tracker at end of workday.)`;
+  try {
+    emailjs.init({ publicKey: cfg.publicKey });
+    await emailjs.send(cfg.serviceId, photoTemplateId, {
+      to_email: DRIVE_EMAIL_TO,
+      cc_email: DRIVE_EMAIL_CC,
+      subject,
+      message,
+      photos_image: montage.b64,
+      photos_name: `photos-${b.dateStr.replace(/[^a-z0-9]+/gi, '-')}.jpg`
+    });
+    todays.forEach(p => p._emailedEod = true);
+    communications.push({
+      id: 'comm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      kind: 'email',
+      to: 'Robert + Sean (CC Lyle)',
+      subject,
+      summary: message,
+      sentAt: new Date(b.start).toISOString().slice(0, 10),
+      responseReceived: false, responseAt: '', responseSummary: ''
+    });
+    if (typeof renderCommunications === 'function') renderCommunications();
+    scheduleAutoSave();
+    showToast(`📧 ${todays.length} photo(s) emailed${capped ? ' (first ' + PHOTO_EMAIL_MAX_COUNT + ')' : ''} — ${place}`, 'good', 4500);
+    return true;
+  } catch (e) {
+    console.warn('Photo email failed:', e);
+    showToast('⚠️ Photo email failed — check EmailJS plan / 500KB limit', 'warn', 5000);
+    return false;
+  }
 }
 
 // ═══════════════════════════════

@@ -158,6 +158,26 @@
   }
   .action-btn-sm:hover { border-color: var(--accent); color: var(--text); }
 
+  /* Service Work Order form */
+  .wo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+  .wo-card { background: var(--input); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+  .wo-card h4 { font-size: 12px; margin: 0 0 8px; color: var(--text); text-transform: uppercase; letter-spacing: .6px; }
+  .wo-check { display: flex; align-items: center; gap: 9px; font-size: 14px; color: var(--text); padding: 5px 0; cursor: pointer; }
+  .wo-check input { width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0; margin: 0; }
+  .wo-sub { font-size: 12px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .6px; margin: 22px 0 10px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+  .wo-sig-wrap { display: flex; flex-direction: column; gap: 4px; }
+  .wo-sig-pad { background: #fff; border: 1px solid var(--border); border-radius: var(--radius); touch-action: none; width: 100%; height: 120px; display: block; cursor: crosshair; }
+  .wo-sig-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .wo-part { display: grid; grid-template-columns: 1fr 60px 2fr 90px 90px 32px; gap: 8px; align-items: end; margin-bottom: 8px; }
+  .wo-part .field label { font-size: 11px; }
+  .wo-part-del { background: rgba(239,68,68,0.15); color: var(--red); border: none; border-radius: var(--radius); cursor: pointer; height: 40px; font-size: 16px; }
+  @media (max-width: 600px) {
+    .wo-grid { grid-template-columns: 1fr; }
+    .wo-sig-row { grid-template-columns: 1fr; }
+    .wo-part { grid-template-columns: 1fr 1fr; }
+    .wo-part .wo-part-del { grid-column: 1 / -1; height: 36px; }
+  }
+
   /* Photo grid */
   .photo-grid {
     display: grid;
@@ -884,6 +904,9 @@
   <button class="action-btn" onclick="toggleSection('discrepanciesSection'); addDiscrepancyIfEmpty()">
     <span class="icon">⚠️</span> DISCREPANCIES
   </button>
+  <button class="action-btn" onclick="openWorkOrder()">
+    <span class="icon">🧾</span> WORK ORDER
+  </button>
   <button class="action-btn" onclick="toggleSection('hoursSection')" style="opacity:.6">
     <span class="icon">🕐</span> MANUAL HOURS<br><span style="font-size:11px;font-weight:400;color:var(--dim)">(legacy form)</span>
   </button>
@@ -1078,6 +1101,14 @@
   <div id="discStats" style="margin-top:10px;padding:10px;background:var(--input);border-radius:var(--radius);font-size:13px;display:none"></div>
 </div>
 
+<!-- SERVICE WORK ORDER (MistAmerica fillable form) -->
+<div id="workOrderSection" class="section hidden">
+  <h2 onclick="toggleWorkOrder()" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;gap:8px">🧾 Service Work Order
+    <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:12px;color:var(--dim);text-align:right"><span id="workOrderSummary"></span> <span id="workOrderCaret">▾</span></span>
+  </h2>
+  <div id="workOrderBody"></div>
+</div>
+
 <!-- DAILY NOTES — RETIRED from the UI (self-notes not needed; tracker core is
      time/location/hours/miles/days). Fields stay hidden for old-job compat. -->
 <div id="dailyNotesSection" class="section" style="display:none">
@@ -1101,6 +1132,7 @@
   <button class="generate-btn" onclick="generateReport()">FULL REPORT</button>
   <button class="generate-btn" style="background:var(--yellow);color:#111" onclick="generateSummary()">PROJECT SUMMARY</button>
   <button class="generate-btn" style="background:#a78bfa;color:#fff" onclick="generateDailyReport()">📅 DAILY REPORT</button>
+  <button class="generate-btn" style="background:#0d9488;color:#fff;grid-column:1 / -1" onclick="generateWorkOrder()">🧾 SERVICE WORK ORDER — PRINT / SHARE FILLED FORM</button>
   <button class="generate-btn" style="background:#ec4899;color:#fff" onclick="generateWeeklyDigest()">📊 WEEKLY DIGEST</button>
   <button class="generate-btn" style="background:#0ea5e9;color:#fff;grid-column:1 / -1" onclick="openMasterLog()">📋 MASTER LOG — EVERY JOB, EVERY HOUR, EVERY RECEIPT</button>
   <button class="generate-btn" style="background:#8b5cf6;color:#fff;grid-column:1 / -1" onclick="openPhotoSearch()">🔍 SEARCH PHOTOS — ACROSS EVERY JOB</button>
@@ -1436,6 +1468,69 @@ let editingSegmentId = null;   // id of segment currently in edit mode (null = n
 let videos = [];   // { id, blob, mimeType, fileName, size, stamp, gps, notes, phase, area, _url } — _url is the in-memory object URL (rebuilt on load)
 let userGuideDetails = {}; // { orderCanopySwitch, pickupSwitch, patioSwitch, additionalFan, pumpLocation, roDrain }
 let gcDetails = {}; // { scope, asBuilt, notIncluded, gcRepName, gcRepDate }
+
+// MistAmerica Service Work Order — checklist groups kept in one place so the
+// editor form and the printed form stay in sync. Declared here (above the
+// workOrder initializer) so newWorkOrder() can reference them at load.
+const WO_GROUPS = {
+  summerStart: { title: '☀️ Summer Start Service', items: [
+    ['changedOil', 'Changed Oil'],
+    ['changedFilters', 'Changed Filters'],
+    ['inspectNozzles', 'Inspect Nozzles'],
+    ['flushPressure', 'Flush Lines and Check Pressure'],
+    ['nppNozzles', 'NPP – Clean & Replace Nozzles'],
+    ['roService', 'RO Service']
+  ]},
+  winterShutdown: { title: '❄️ Winter Shut Down Service', items: [
+    ['isolationValve', 'Turn Off Isolation Valve'],
+    ['purgeWater', 'Purge Water From System'],
+    ['removeFilters', 'Remove Filters / Empty Cannisters'],
+    ['powerOff', 'Turn Power Off To The Pump'],
+    ['flushLines', 'Flush Lines'],
+    ['roService', 'RO Service']
+  ]},
+  misc: { title: '🔧 Miscellaneous Service', items: [
+    ['lpSolenoid', 'Check LP Solenoid'],
+    ['pressureRegulator', 'Check Pressure Regulator'],
+    ['oilLevel', 'Check Oil Level'],
+    ['remote', 'Check Remote'],
+    ['breaker', 'Check for 20 Amp Dedicated Breaker']
+  ]},
+  suggested: { title: '💡 Suggested Service', items: [
+    ['rubyNozzle', 'Ruby Nozzle Upgrade'],
+    ['addSwivels', 'Add Swivels'],
+    ['replaceFilterCannister', 'Replace Filter Cannister'],
+    ['replaceMotor', 'Replace Motor'],
+    ['addMist360', 'Add Mist360'],
+    ['addRoSystem', 'Add RO System']
+  ]}
+};
+const WO_JOB_TYPES = [['residential', 'Residential'], ['commercial', 'Commercial'], ['warranty', 'Warranty'], ['service', 'Service']];
+
+function newWorkOrder() {
+  const groups = {};
+  Object.keys(WO_GROUPS).forEach(g => {
+    groups[g] = {};
+    WO_GROUPS[g].items.forEach(([k]) => { groups[g][k] = false; });
+  });
+  return {
+    soNumber: '', woDate: '',
+    custName: '', custAddress: '', custCity: '', custState: '', custZip: '',
+    custPhone: '', custEmail: '',
+    billName: '', billAddress: '', billCity: '', billState: '', billZip: '',
+    jobType: { residential: false, commercial: false, warranty: false, service: false },
+    ...groups,
+    equipment: { pump: '', motor: '', nozzleCount: '', ro: '', fans: '' },
+    timeIn: '', timeOut: '', totalTime: '',
+    parts: [],
+    notes: '',
+    tripCharge: '', salesTax: '', subTotal: '', totalDue: '',
+    payment: { cash: false, check: false }, ccNum: '', cvc: '',
+    additionalRecs: '', returnReason: '',
+    techSig: '', custSig: '', sigDate: ''
+  };
+}
+let workOrder = newWorkOrder(); // MistAmerica fillable service work order
 let segmentTickInterval = null;
 let pendingOdoTarget = null; // { segId, which:'start'|'end' }
 let communications = []; // { id, kind:'email'|'text'|'call'|'in-person', to, subject, summary, sentAt, responseReceived, responseAt, responseSummary }
@@ -3091,6 +3186,278 @@ function toggleJobInfo() {
 }
 
 // ═══════════════════════════════
+// SERVICE WORK ORDER — MistAmerica fillable form
+// (WO_GROUPS / WO_JOB_TYPES / newWorkOrder live up in the STATE block so the
+//  top-level `let workOrder = newWorkOrder()` can reference them at load.)
+// ═══════════════════════════════
+// Open from the big button — reveal the section and expand the body
+function openWorkOrder() {
+  const sec = document.getElementById('workOrderSection');
+  sec.classList.remove('hidden');
+  const body = document.getElementById('workOrderBody');
+  if (!body.innerHTML) renderWorkOrder();
+  body.style.display = '';
+  document.getElementById('workOrderCaret').textContent = '▾';
+  refreshWoSignatures();
+  sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function toggleWorkOrder() {
+  const body = document.getElementById('workOrderBody');
+  const caret = document.getElementById('workOrderCaret');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : '';
+  if (caret) caret.textContent = open ? '▸' : '▾';
+  if (!open) refreshWoSignatures();
+}
+
+function woField(id, label, value, type, extra) {
+  return `<div class="field"><label>${label}</label><input type="${type || 'text'}" id="${id}" value="${esc(value || '')}" ${extra || ''}></div>`;
+}
+
+function renderWorkOrder() {
+  const w = workOrder;
+  const chk = (group, key, label) =>
+    `<label class="wo-check"><input type="checkbox" ${w[group][key] ? 'checked' : ''} onchange="workOrder.${group}.${key}=this.checked;updateWoSummary();scheduleAutoSave()"> ${esc(label)}</label>`;
+  const card = (group) => {
+    const g = WO_GROUPS[group];
+    return `<div class="wo-card"><h4>${g.title}</h4>${g.items.map(([k, lbl]) => chk(group, k, lbl)).join('')}</div>`;
+  };
+
+  let html = '';
+
+  // — Header: SO#, date, job type —
+  html += `<div class="form-row three">
+    ${woField('woSO', 'SO #', w.soNumber, 'text', 'oninput="workOrder.soNumber=this.value;scheduleAutoSave()"')}
+    ${woField('woDate', 'Date', w.woDate, 'date', 'oninput="workOrder.woDate=this.value;updateWoSummary();scheduleAutoSave()"')}
+    <div class="field"><label>Job Type</label>
+      <div style="display:flex;flex-wrap:wrap;gap:14px;padding-top:8px">
+        ${WO_JOB_TYPES.map(([k, lbl]) => `<label class="wo-check" style="padding:0"><input type="checkbox" ${w.jobType[k] ? 'checked' : ''} onchange="workOrder.jobType.${k}=this.checked;scheduleAutoSave()"> ${lbl}</label>`).join('')}
+      </div>
+    </div>
+  </div>`;
+
+  // — Customer —
+  html += `<div class="wo-sub">Customer</div>`;
+  html += `<div class="form-row">
+    ${woField('woCustName', 'Customer Name', w.custName, 'text', 'oninput="workOrder.custName=this.value;updateWoSummary();scheduleAutoSave()"')}
+    ${woField('woCustPhone', 'Phone', w.custPhone, 'tel', 'oninput="workOrder.custPhone=this.value;scheduleAutoSave()"')}
+  </div>`;
+  html += `<div class="form-row">
+    ${woField('woCustAddress', 'Address', w.custAddress, 'text', 'oninput="workOrder.custAddress=this.value;scheduleAutoSave()"')}
+    ${woField('woCustEmail', 'Email', w.custEmail, 'email', 'oninput="workOrder.custEmail=this.value;scheduleAutoSave()"')}
+  </div>`;
+  html += `<div class="form-row three">
+    ${woField('woCustCity', 'City', w.custCity, 'text', 'oninput="workOrder.custCity=this.value;scheduleAutoSave()"')}
+    ${woField('woCustState', 'State', w.custState, 'text', 'maxlength="2" style="text-transform:uppercase" oninput="workOrder.custState=this.value;scheduleAutoSave()"')}
+    ${woField('woCustZip', 'Zip', w.custZip, 'text', 'oninput="workOrder.custZip=this.value;scheduleAutoSave()"')}
+  </div>`;
+
+  // — Bill To —
+  html += `<div class="wo-sub">Bill To <span style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--dim)">— leave blank if same as customer</span></div>`;
+  html += `<div class="form-row">
+    ${woField('woBillName', 'Bill To Name', w.billName, 'text', 'oninput="workOrder.billName=this.value;scheduleAutoSave()"')}
+    ${woField('woBillAddress', 'Bill To Address', w.billAddress, 'text', 'oninput="workOrder.billAddress=this.value;scheduleAutoSave()"')}
+  </div>`;
+  html += `<div class="form-row three">
+    ${woField('woBillCity', 'City', w.billCity, 'text', 'oninput="workOrder.billCity=this.value;scheduleAutoSave()"')}
+    ${woField('woBillState', 'State', w.billState, 'text', 'maxlength="2" style="text-transform:uppercase" oninput="workOrder.billState=this.value;scheduleAutoSave()"')}
+    ${woField('woBillZip', 'Zip', w.billZip, 'text', 'oninput="workOrder.billZip=this.value;scheduleAutoSave()"')}
+  </div>`;
+
+  // — Service checklists —
+  html += `<div class="wo-sub">Services Performed / Recommended</div>`;
+  html += `<div class="wo-grid">${card('summerStart')}${card('winterShutdown')}${card('misc')}${card('suggested')}</div>`;
+
+  // — Equipment —
+  html += `<div class="wo-sub">Equipment</div>`;
+  html += `<div class="form-row three">
+    ${woField('woEqPump', 'Pump', w.equipment.pump, 'text', 'oninput="workOrder.equipment.pump=this.value;scheduleAutoSave()"')}
+    ${woField('woEqMotor', 'Motor', w.equipment.motor, 'text', 'oninput="workOrder.equipment.motor=this.value;scheduleAutoSave()"')}
+    ${woField('woEqNozzle', 'Nozzle Count', w.equipment.nozzleCount, 'text', 'oninput="workOrder.equipment.nozzleCount=this.value;scheduleAutoSave()"')}
+  </div>`;
+  html += `<div class="form-row">
+    ${woField('woEqRo', 'RO', w.equipment.ro, 'text', 'oninput="workOrder.equipment.ro=this.value;scheduleAutoSave()"')}
+    ${woField('woEqFans', 'Fans', w.equipment.fans, 'text', 'oninput="workOrder.equipment.fans=this.value;scheduleAutoSave()"')}
+  </div>`;
+
+  // — Labor —
+  html += `<div class="wo-sub">Labor Charges</div>`;
+  html += `<div class="form-row three">
+    ${woField('woTimeIn', 'Time In', w.timeIn, 'text', 'placeholder="8:00 AM" oninput="workOrder.timeIn=this.value;scheduleAutoSave()"')}
+    ${woField('woTimeOut', 'Time Out', w.timeOut, 'text', 'placeholder="10:30 AM" oninput="workOrder.timeOut=this.value;scheduleAutoSave()"')}
+    ${woField('woTotalTime', 'Total Time', w.totalTime, 'text', 'placeholder="2.5 hrs" oninput="workOrder.totalTime=this.value;scheduleAutoSave()"')}
+  </div>`;
+
+  // — Parts —
+  html += `<div class="wo-sub">Parts</div>`;
+  html += `<div id="woPartsList"></div>`;
+  html += `<button class="action-btn-sm" onclick="addWoPart()">+ Add Part</button>`;
+
+  // — Totals —
+  html += `<div class="wo-sub">Charges</div>`;
+  html += `<div class="form-row three">
+    ${woField('woTripCharge', 'Trip Charge ($)', w.tripCharge, 'number', 'step="0.01" oninput="workOrder.tripCharge=this.value;recalcWoTotals();scheduleAutoSave()"')}
+    ${woField('woSalesTax', 'Sales Tax ($)', w.salesTax, 'number', 'step="0.01" oninput="workOrder.salesTax=this.value;recalcWoTotals();scheduleAutoSave()"')}
+    <div class="field"><label>Sub-Total ($) <span style="font-weight:400;color:var(--dim)">auto</span></label><input type="text" id="woSubTotal" value="${esc(w.subTotal || '')}" readonly style="opacity:.85"></div>
+  </div>`;
+  html += `<div class="form-row">
+    <div class="field"><label>Total Due ($) <span style="font-weight:400;color:var(--dim)">auto</span></label><input type="text" id="woTotalDue" value="${esc(w.totalDue || '')}" readonly style="font-weight:700;font-size:17px;opacity:.95"></div>
+    <div class="field"><label>Payment</label>
+      <div style="display:flex;gap:18px;align-items:center;padding-top:8px;flex-wrap:wrap">
+        <label class="wo-check" style="padding:0"><input type="checkbox" ${w.payment.cash ? 'checked' : ''} onchange="workOrder.payment.cash=this.checked;scheduleAutoSave()"> Cash</label>
+        <label class="wo-check" style="padding:0"><input type="checkbox" ${w.payment.check ? 'checked' : ''} onchange="workOrder.payment.check=this.checked;scheduleAutoSave()"> Check</label>
+      </div>
+    </div>
+  </div>`;
+  html += `<div class="form-row">
+    ${woField('woCcNum', 'CC #', w.ccNum, 'text', 'autocomplete="off" oninput="workOrder.ccNum=this.value;scheduleAutoSave()"')}
+    ${woField('woCvc', 'CVC #', w.cvc, 'text', 'autocomplete="off" oninput="workOrder.cvc=this.value;scheduleAutoSave()"')}
+  </div>`;
+
+  // — Notes & recommendations —
+  html += `<div class="wo-sub">Notes & Recommendations</div>`;
+  html += `<div class="field" style="margin-bottom:12px"><label>Notes</label><textarea id="woNotes" oninput="workOrder.notes=this.value;scheduleAutoSave()" placeholder="e.g. Summer Start Up for Rental">${esc(w.notes || '')}</textarea></div>`;
+  html += `<div class="field" style="margin-bottom:12px"><label>Additional Recommendations</label><textarea id="woAddRecs" oninput="workOrder.additionalRecs=this.value;scheduleAutoSave()"></textarea></div>`;
+  html += `<div class="field" style="margin-bottom:12px"><label>Reason for Return Trip</label><textarea id="woReturn" oninput="workOrder.returnReason=this.value;scheduleAutoSave()"></textarea></div>`;
+  html += `<div style="font-size:11px;color:var(--dim);font-style:italic;background:var(--input);padding:10px 12px;border-radius:var(--radius);margin-bottom:14px">Parts Warranty: All parts as recorded are warrantied for one year, with the exception of nozzles and filters. We do not warranty parts purchased from others even if we install them. If repairs become necessary later due to other defective parts, they will be charged separately.</div>`;
+
+  // — Signatures —
+  html += `<div class="wo-sub">Sign-Off</div>`;
+  html += `<div class="wo-sig-row">
+    <div class="wo-sig-wrap">
+      <label style="font-size:13px;font-weight:600;color:var(--dim)">Tech Signature</label>
+      <canvas id="woTechSig" class="wo-sig-pad"></canvas>
+      <button class="action-btn-sm" style="margin:0" onclick="clearWoSig('woTechSig','techSig')">Clear</button>
+    </div>
+    <div class="wo-sig-wrap">
+      <label style="font-size:13px;font-weight:600;color:var(--dim)">Customer Signature</label>
+      <canvas id="woCustSig" class="wo-sig-pad"></canvas>
+      <button class="action-btn-sm" style="margin:0" onclick="clearWoSig('woCustSig','custSig')">Clear</button>
+    </div>
+  </div>`;
+  html += `<div class="form-row" style="margin-top:12px">${woField('woSigDate', 'Date', w.sigDate, 'date', 'oninput="workOrder.sigDate=this.value;scheduleAutoSave()"')}<div></div></div>`;
+
+  document.getElementById('workOrderBody').innerHTML = html;
+  renderWoParts();
+  recalcWoTotals();
+  updateWoSummary();
+}
+
+function renderWoParts() {
+  const list = document.getElementById('woPartsList');
+  if (!list) return;
+  if (!workOrder.parts.length) {
+    list.innerHTML = `<div style="font-size:13px;color:var(--dim);margin-bottom:8px">No parts added yet.</div>`;
+    return;
+  }
+  list.innerHTML = workOrder.parts.map((p, i) => `<div class="wo-part">
+    <div class="field"><label>Part #</label><input type="text" value="${esc(p.partNum || '')}" oninput="workOrder.parts[${i}].partNum=this.value;scheduleAutoSave()"></div>
+    <div class="field"><label>Qty</label><input type="number" step="1" value="${esc(p.qty || '')}" oninput="workOrder.parts[${i}].qty=this.value;recalcWoTotals();scheduleAutoSave()"></div>
+    <div class="field"><label>Description</label><input type="text" value="${esc(p.desc || '')}" oninput="workOrder.parts[${i}].desc=this.value;scheduleAutoSave()"></div>
+    <div class="field"><label>Unit Price</label><input type="number" step="0.01" value="${esc(p.unitPrice || '')}" oninput="workOrder.parts[${i}].unitPrice=this.value;recalcWoTotals();scheduleAutoSave()"></div>
+    <div class="field"><label>Disc. Price</label><input type="number" step="0.01" value="${esc(p.discountPrice || '')}" oninput="workOrder.parts[${i}].discountPrice=this.value;recalcWoTotals();scheduleAutoSave()"></div>
+    <button class="wo-part-del" onclick="removeWoPart(${i})" title="Remove part">✕</button>
+  </div>`).join('');
+}
+
+function addWoPart() {
+  workOrder.parts.push({ partNum: '', qty: '', desc: '', unitPrice: '', discountPrice: '' });
+  renderWoParts();
+  scheduleAutoSave();
+}
+
+function removeWoPart(i) {
+  workOrder.parts.splice(i, 1);
+  renderWoParts();
+  recalcWoTotals();
+  scheduleAutoSave();
+}
+
+// Sub-Total = parts (qty × discount-or-unit price) + trip charge.  Total Due = Sub-Total + sales tax.
+function recalcWoTotals() {
+  let parts = 0;
+  (workOrder.parts || []).forEach(p => {
+    const qty = parseFloat(p.qty) || 0;
+    const disc = parseFloat(p.discountPrice);
+    const unit = parseFloat(p.unitPrice);
+    const price = !isNaN(disc) ? disc : (!isNaN(unit) ? unit : 0);
+    parts += qty * price;
+  });
+  const trip = parseFloat(workOrder.tripCharge) || 0;
+  const tax = parseFloat(workOrder.salesTax) || 0;
+  const sub = parts + trip;
+  const total = sub + tax;
+  workOrder.subTotal = (parts || trip) ? sub.toFixed(2) : '';
+  workOrder.totalDue = (parts || trip || tax) ? total.toFixed(2) : '';
+  const subEl = document.getElementById('woSubTotal');
+  if (subEl) subEl.value = workOrder.subTotal;
+  const totEl = document.getElementById('woTotalDue');
+  if (totEl) totEl.value = workOrder.totalDue;
+}
+
+function updateWoSummary() {
+  const el = document.getElementById('workOrderSummary');
+  if (!el) return;
+  const bits = [];
+  if (workOrder.custName) bits.push(workOrder.custName);
+  if (workOrder.woDate) bits.push(fmtDate(workOrder.woDate));
+  el.textContent = bits.join(' · ');
+}
+
+// Lightweight signature pad — pointer events cover mouse, touch and stylus
+function setupWoSigPad(canvasId, key) {
+  const c = document.getElementById(canvasId);
+  if (!c) return;
+  const rect = c.getBoundingClientRect();
+  if (!rect.width) return; // not visible yet — caller retries when shown
+  const cssW = rect.width, cssH = 120;
+  const ratio = window.devicePixelRatio || 1;
+  c.width = cssW * ratio;
+  c.height = cssH * ratio;
+  const ctx = c.getContext('2d');
+  ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+  ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111';
+  if (workOrder[key]) {
+    const img = new Image();
+    img.onload = () => ctx.drawImage(img, 0, 0, cssW, cssH);
+    img.src = workOrder[key];
+  }
+  let drawing = false, lx = 0, ly = 0;
+  const pos = e => { const r = c.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+  c.onpointerdown = e => { drawing = true; const p = pos(e); lx = p.x; ly = p.y; try { c.setPointerCapture(e.pointerId); } catch (_) {} };
+  c.onpointermove = e => { if (!drawing) return; const p = pos(e); ctx.beginPath(); ctx.moveTo(lx, ly); ctx.lineTo(p.x, p.y); ctx.stroke(); lx = p.x; ly = p.y; };
+  const end = () => { if (!drawing) return; drawing = false; workOrder[key] = c.toDataURL('image/png'); scheduleAutoSave(); };
+  c.onpointerup = end; c.onpointercancel = end; c.onpointerleave = end;
+}
+
+function refreshWoSignatures() {
+  requestAnimationFrame(() => {
+    setupWoSigPad('woTechSig', 'techSig');
+    setupWoSigPad('woCustSig', 'custSig');
+  });
+}
+
+function clearWoSig(canvasId, key) {
+  const c = document.getElementById(canvasId);
+  if (c) { const ctx = c.getContext('2d'); ctx.clearRect(0, 0, c.width, c.height); }
+  workOrder[key] = '';
+  scheduleAutoSave();
+}
+
+function workOrderHasContent() {
+  const w = workOrder;
+  if (!w) return false;
+  if (w.soNumber || w.custName || w.custPhone || w.custEmail || w.notes || w.additionalRecs || w.returnReason) return true;
+  if (w.techSig || w.custSig) return true;
+  if ((w.parts || []).length) return true;
+  if (Object.values(w.jobType).some(Boolean)) return true;
+  if (Object.values(w.equipment).some(v => v)) return true;
+  for (const g of Object.keys(WO_GROUPS)) { if (Object.values(w[g]).some(Boolean)) return true; }
+  return false;
+}
+
+// ═══════════════════════════════
 // VISION EXTRACTION — pull numbers out of photos via Claude
 // ═══════════════════════════════
 function parseDataURL(dataURL) {
@@ -4381,10 +4748,12 @@ function resetClock() {
   }
   if (clockInterval) { clearInterval(clockInterval); clockInterval = null; }
   clockState = { running: false, startedAt: 0, accumulatedMs: 0 };
-  document.getElementById('clockDisplay').textContent = '0:00:00';
-  document.getElementById('clockStartBtn').style.display = '';
-  document.getElementById('clockStopBtn').style.display = 'none';
-  document.getElementById('clockMeta').textContent = '';
+  // Legacy clock UI was removed from the page — guard every reference so a
+  // missing element can't abort clearForm()/newDraft() (matches applyDraftState).
+  const cd = document.getElementById('clockDisplay'); if (cd) cd.textContent = '0:00:00';
+  const csb = document.getElementById('clockStartBtn'); if (csb) csb.style.display = '';
+  const cstb = document.getElementById('clockStopBtn'); if (cstb) cstb.style.display = 'none';
+  const cm = document.getElementById('clockMeta'); if (cm) cm.textContent = '';
   saveClockToLocal();
 }
 
@@ -5668,6 +6037,232 @@ async function generateReport() {
 }
 
 // ═══════════════════════════════
+// SERVICE WORK ORDER — printable / shareable filled form
+// ═══════════════════════════════
+function generateWorkOrder() {
+  const w = workOrder;
+  if (!workOrderHasContent()) {
+    showToast('Fill out the Work Order first — tap 🧾 WORK ORDER', 'info');
+    openWorkOrder();
+    return;
+  }
+  recalcWoTotals();
+
+  const v = s => esc(s || '');
+  const tick = on => on ? '<span class="bx on">✓</span>' : '<span class="bx"></span>';
+  const groupCard = (group) => {
+    const g = WO_GROUPS[group];
+    return `<div class="svc-card"><div class="svc-title">${g.title.replace(/^[^ ]+ /, '')}</div>${g.items.map(([k, lbl]) => `<div class="svc-item">${tick(w[group][k])} ${esc(lbl)}</div>`).join('')}</div>`;
+  };
+  const jobTypes = WO_JOB_TYPES.map(([k, lbl]) => `<span class="jt">${tick(w.jobType[k])} ${lbl}</span>`).join('');
+
+  const partsRows = (w.parts || []).filter(p => p.partNum || p.desc || p.qty || p.unitPrice || p.discountPrice);
+  const partsTable = partsRows.length ? `
+    <table class="parts">
+      <thead><tr><th>Part #</th><th class="num">Qty</th><th>Part Description</th><th class="num">Unit Price</th><th class="num">Discount Price</th></tr></thead>
+      <tbody>${partsRows.map(p => `<tr><td>${v(p.partNum)}</td><td class="num">${v(p.qty)}</td><td>${v(p.desc)}</td><td class="num">${p.unitPrice !== '' ? '$' + v(p.unitPrice) : ''}</td><td class="num">${p.discountPrice !== '' ? '$' + v(p.discountPrice) : ''}</td></tr>`).join('')}</tbody>
+    </table>` : '<p class="empty">No parts recorded.</p>';
+
+  const money = x => (x !== '' && x != null) ? '$' + x : '—';
+  const custLoc = [w.custCity, w.custState].filter(Boolean).join(', ') + (w.custZip ? ' ' + w.custZip : '');
+  const billLoc = [w.billCity, w.billState].filter(Boolean).join(', ') + (w.billZip ? ' ' + w.billZip : '');
+  const fileBase = ('WorkOrder_' + (w.custName || '') + '_' + (w.soNumber || w.woDate || '')).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'work_order';
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Work Order — ${v(w.custName) || 'MistAmerica'}</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111;background:#f4f4f6;padding:80px 16px 40px}
+  .sheet{max-width:850px;margin:0 auto;background:#fff;padding:34px 38px;box-shadow:0 2px 12px rgba(0,0,0,.12)}
+  .head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #111;padding-bottom:14px;margin-bottom:16px;gap:20px;flex-wrap:wrap}
+  .brand h1{font-size:26px;letter-spacing:.5px}
+  .brand .tag{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:2px}
+  .brand .addr{font-size:11px;color:#444;margin-top:8px;line-height:1.5}
+  .doc-meta{text-align:right;font-size:13px}
+  .doc-meta .row{margin-bottom:4px}
+  .doc-meta .lbl{color:#666;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .doc-meta .val{font-weight:700;font-size:15px}
+  .jobtype{display:flex;gap:18px;justify-content:flex-end;margin-top:8px;font-size:12px}
+  .jt{display:inline-flex;align-items:center;gap:5px}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#fff;background:#111;padding:5px 10px;margin:22px 0 10px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .kv{font-size:13px;line-height:1.9}
+  .kv .k{color:#666;display:inline-block;min-width:74px}
+  .kv .v{font-weight:600}
+  .svc-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .svc-card{border:1px solid #ddd;border-radius:6px;padding:10px 12px}
+  .svc-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#333;margin-bottom:7px;border-bottom:1px solid #eee;padding-bottom:5px}
+  .svc-item{font-size:13px;padding:2px 0;display:flex;align-items:center;gap:7px}
+  .bx{display:inline-block;width:15px;height:15px;border:1.5px solid #888;border-radius:3px;text-align:center;line-height:13px;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+  .bx.on{background:#111;border-color:#111}
+  table.parts{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+  table.parts th{background:#f0f0f0;border:1px solid #ddd;padding:6px 9px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  table.parts td{border:1px solid #ddd;padding:6px 9px}
+  table.parts .num{text-align:right}
+  .empty{font-size:13px;color:#888;font-style:italic;padding:6px 0}
+  .charges{display:grid;grid-template-columns:1fr 280px;gap:24px;align-items:start}
+  .totals{border:1px solid #ddd;border-radius:6px;overflow:hidden;font-size:14px}
+  .totals .tr{display:flex;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #eee}
+  .totals .tr:last-child{border-bottom:none}
+  .totals .grand{background:#111;color:#fff;font-weight:700;font-size:16px}
+  .pay{font-size:13px;margin-top:10px;display:flex;gap:18px}
+  .notes-box{border:1px solid #ddd;border-radius:6px;padding:10px 12px;font-size:13px;min-height:42px;white-space:pre-wrap;line-height:1.5}
+  .warranty{font-size:11px;color:#555;font-style:italic;line-height:1.5;margin-top:12px;border-top:1px dashed #ccc;padding-top:10px}
+  .sigs{display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:24px}
+  .sig{border-top:1.5px solid #111;padding-top:6px}
+  .sig img{max-height:90px;max-width:100%;display:block;margin-bottom:-2px}
+  .sig .sigline{height:74px;display:flex;align-items:flex-end}
+  .sig .cap{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#666}
+  .equip{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;font-size:13px}
+  .equip .e .k{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:#666;display:block}
+  .equip .e .v{font-weight:600;border-bottom:1px solid #ccc;min-height:20px;padding-bottom:2px}
+  .labor{display:flex;gap:30px;font-size:13px;margin-top:4px}
+  .labor .k{color:#666}
+  .action-bar{position:fixed;top:0;left:0;right:0;background:#1a1d26;padding:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;box-shadow:0 2px 8px rgba(0,0,0,.2);z-index:1000}
+  .action-bar button{padding:12px 18px;border:none;border-radius:6px;font-size:15px;font-weight:700;cursor:pointer;color:#fff;min-width:110px}
+  .btn-share{background:#22c55e}.btn-print{background:#4f8cff}.btn-dl{background:#8b90a0}
+  @media (max-width:600px){
+    body{padding-top:70px}
+    .sheet{padding:20px}
+    .two,.svc-grid,.charges,.sigs{grid-template-columns:1fr}
+    .equip{grid-template-columns:repeat(2,1fr)}
+    .doc-meta,.jobtype{text-align:left;justify-content:flex-start}
+    .action-bar button{padding:10px 12px;font-size:14px;min-width:0;flex:1}
+  }
+  @media print{
+    body{background:#fff;padding:0}
+    .sheet{box-shadow:none;max-width:none;padding:0}
+    .action-bar{display:none !important}
+    @page{margin:.5in}
+  }
+</style></head><body>
+<div class="action-bar">
+  <button class="btn-share" onclick="__shareWO()">📤 Share</button>
+  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
+  <button class="btn-dl" onclick="__dlWO()">💾 Download</button>
+</div>
+<script>
+  const __woName=${JSON.stringify(fileBase)};
+  async function __shareWO(){
+    const blob=new Blob([document.documentElement.outerHTML],{type:'text/html'});
+    const file=new File([blob],__woName+'.html',{type:'text/html'});
+    try{
+      if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file],title:'Work Order'});return;}
+      if(navigator.share){await navigator.share({title:'Work Order',text:'MistAmerica Work Order',url:location.href});return;}
+    }catch(e){if(e.name==='AbortError')return;}
+    __dlWO();
+  }
+  function __dlWO(){
+    const blob=new Blob([document.documentElement.outerHTML],{type:'text/html'});
+    const url=URL.createObjectURL(blob);const a=document.createElement('a');
+    a.href=url;a.download=__woName+'.html';document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }
+<\/script>
+<div class="sheet">
+  <div class="head">
+    <div class="brand">
+      <h1>MistAmerica</h1>
+      <div class="tag">The Outdoor Comfort Company</div>
+      <div class="addr">
+        15616 N. 83rd Way, Scottsdale, AZ 85260 · (602) 255-0500<br>
+        6625 S. Valley View Blvd., Suite 230, Las Vegas, NV 89118 · (702) 540-5741
+      </div>
+    </div>
+    <div class="doc-meta">
+      <div class="row"><div class="lbl">Service Work Order</div></div>
+      <div class="row"><span class="lbl">SO #</span> <span class="val">${v(w.soNumber) || '—'}</span></div>
+      <div class="row"><span class="lbl">Date</span> <span class="val">${fmtDate(w.woDate) || '—'}</span></div>
+      <div class="jobtype">${jobTypes}</div>
+    </div>
+  </div>
+
+  <h2>Customer / Bill To</h2>
+  <div class="two">
+    <div class="kv">
+      <div><span class="k">Name</span> <span class="v">${v(w.custName)}</span></div>
+      <div><span class="k">Address</span> <span class="v">${v(w.custAddress)}</span></div>
+      <div><span class="k">City/St/Zip</span> <span class="v">${v(custLoc)}</span></div>
+      <div><span class="k">Phone</span> <span class="v">${v(w.custPhone)}</span></div>
+      <div><span class="k">Email</span> <span class="v">${v(w.custEmail)}</span></div>
+    </div>
+    <div class="kv">
+      <div><span class="k">Bill To</span> <span class="v">${v(w.billName) || v(w.custName)}</span></div>
+      <div><span class="k">Address</span> <span class="v">${v(w.billAddress) || v(w.custAddress)}</span></div>
+      <div><span class="k">City/St/Zip</span> <span class="v">${v(billLoc.trim()) || v(custLoc)}</span></div>
+    </div>
+  </div>
+
+  <h2>Services</h2>
+  <div class="svc-grid">${groupCard('summerStart')}${groupCard('winterShutdown')}${groupCard('misc')}${groupCard('suggested')}</div>
+
+  <h2>Equipment</h2>
+  <div class="equip">
+    <div class="e"><span class="k">Pump</span><div class="v">${v(w.equipment.pump)}</div></div>
+    <div class="e"><span class="k">Motor</span><div class="v">${v(w.equipment.motor)}</div></div>
+    <div class="e"><span class="k">Nozzle Count</span><div class="v">${v(w.equipment.nozzleCount)}</div></div>
+    <div class="e"><span class="k">RO</span><div class="v">${v(w.equipment.ro)}</div></div>
+    <div class="e"><span class="k">Fans</span><div class="v">${v(w.equipment.fans)}</div></div>
+  </div>
+
+  <h2>Labor Charges</h2>
+  <div class="labor"><span><span class="k">Time In:</span> ${v(w.timeIn) || '—'}</span><span><span class="k">Time Out:</span> ${v(w.timeOut) || '—'}</span><span><span class="k">Total Time:</span> ${v(w.totalTime) || '—'}</span></div>
+
+  <h2>Parts</h2>
+  ${partsTable}
+
+  <h2>Charges</h2>
+  <div class="charges">
+    <div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-bottom:5px">Notes</div>
+      <div class="notes-box">${v(w.notes)}</div>
+      <div class="pay"><span>${tick(w.payment.cash)} Cash</span><span>${tick(w.payment.check)} Check</span>${w.ccNum ? `<span><span class="k" style="color:#666">CC #</span> ${v(w.ccNum)}</span>` : ''}${w.cvc ? `<span><span class="k" style="color:#666">CVC</span> ${v(w.cvc)}</span>` : ''}</div>
+    </div>
+    <div class="totals">
+      <div class="tr"><span>Trip Charge</span><span>${money(w.tripCharge)}</span></div>
+      <div class="tr"><span>Sub-Total</span><span>${money(w.subTotal)}</span></div>
+      <div class="tr"><span>Sales Tax</span><span>${money(w.salesTax)}</span></div>
+      <div class="tr grand"><span>Total Due</span><span>${money(w.totalDue)}</span></div>
+    </div>
+  </div>
+
+  ${(w.additionalRecs || w.returnReason) ? `<h2>Recommendations</h2>${w.additionalRecs ? `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-bottom:5px">Additional Recommendations</div><div class="notes-box" style="margin-bottom:12px">${v(w.additionalRecs)}</div>` : ''}${w.returnReason ? `<div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-bottom:5px">Reason for Return Trip</div><div class="notes-box">${v(w.returnReason)}</div>` : ''}` : ''}
+
+  <div class="warranty">All parts as recorded are warrantied for a period of one year, with the exception of nozzles and filters. We do not warranty parts purchased from others even if we install them. If repairs become necessary later due to other defective parts, they will be charged separately.</div>
+
+  <div class="sigs">
+    <div class="sig">
+      <div class="sigline">${w.techSig ? `<img src="${w.techSig}" alt="Tech signature">` : ''}</div>
+      <div class="cap">Tech Signature${w.sigDate ? ' · ' + fmtDate(w.sigDate) : ''}</div>
+    </div>
+    <div class="sig">
+      <div class="sigline">${w.custSig ? `<img src="${w.custSig}" alt="Customer signature">` : ''}</div>
+      <div class="cap">Customer Signature${w.sigDate ? ' · ' + fmtDate(w.sigDate) : ''}</div>
+    </div>
+  </div>
+
+  <div style="text-align:center;font-size:11px;color:#999;margin-top:24px">www.MistAmerica.com</div>
+</div>
+</body></html>`;
+
+  try {
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const ww = window.open(url, '_blank');
+    if (!ww) {
+      const a = document.createElement('a');
+      a.href = url; a.download = fileBase + '.html';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      alert('Your browser blocked the popup, so the work order was downloaded as an HTML file instead.');
+    }
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    alert('Work order could not open: ' + err.message);
+  }
+}
+
+// ═══════════════════════════════
 // PROJECT SUMMARY (One-pager)
 // ═══════════════════════════════
 function generateSummary() {
@@ -6387,6 +6982,8 @@ function clearForm() {
   ['ugOpSwitch','ugOmdSwitch','ugPatioSwitch','ugAdditionalFan','ugPumpLocation','ugPumpSwitch','ugOmdMistSwitch','ugRoDrain'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
   gcDetails = {};
   ['gcScope','gcAsBuilt','gcNotIncluded','gcRepName','gcRepDate'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  workOrder = newWorkOrder();
+  if (document.getElementById('workOrderBody')) renderWorkOrder();
   document.getElementById('crewSize').value = '1';
   document.getElementById('stdCrewSize').value = '';
   document.getElementById('dnWorkCompleted').value = '';
@@ -6418,6 +7015,7 @@ function clearForm() {
   document.getElementById('checklistSection').classList.add('hidden');
   document.getElementById('communicationsSection').classList.add('hidden');
   document.getElementById('discrepanciesSection').classList.add('hidden');
+  document.getElementById('workOrderSection').classList.add('hidden');
   window.scrollTo(0, 0);
 }
 
@@ -8686,7 +9284,7 @@ function serializeCurrentState() {
     stdCrewSize: document.getElementById('stdCrewSize').value,
     photos, receipts, jobFiles, notes, trips, contacts, videos,
     checklist, clockState, segments, pinnedLocation,
-    communications, discrepancies, dailyNotes, userGuideDetails, gcDetails
+    communications, discrepancies, dailyNotes, userGuideDetails, gcDetails, workOrder
   };
 }
 
@@ -8735,6 +9333,23 @@ function applyDraftState(s) {
     document.getElementById('ugPumpSwitch').value = userGuideDetails.pumpSwitch || '';
     document.getElementById('ugOmdMistSwitch').value = userGuideDetails.omdMistSwitch || '';
     document.getElementById('ugRoDrain').value = userGuideDetails.roDrain || '';
+  }
+  // Service Work Order — merge saved values onto a fresh default so older drafts
+  // (and any keys added later) always have every field present
+  workOrder = Object.assign(newWorkOrder(), s.workOrder || {});
+  if (s.workOrder) {
+    const def = newWorkOrder();
+    ['jobType', 'equipment', 'payment'].forEach(k => { workOrder[k] = Object.assign(def[k], s.workOrder[k] || {}); });
+    Object.keys(WO_GROUPS).forEach(g => { workOrder[g] = Object.assign(def[g], s.workOrder[g] || {}); });
+    workOrder.parts = Array.isArray(s.workOrder.parts) ? s.workOrder.parts : [];
+  }
+  // Rebuild the work-order form from restored state; reveal it if it has anything in it
+  if (document.getElementById('workOrderBody')) {
+    renderWorkOrder();
+    if (workOrderHasContent()) {
+      document.getElementById('workOrderSection').classList.remove('hidden');
+      refreshWoSignatures();
+    }
   }
   gcDetails = s.gcDetails || {};
   if (document.getElementById('gcScope')) {
@@ -8852,6 +9467,7 @@ function hasAnyContent() {
   if (communications.length || discrepancies.length) return true;
   if (dailyNotes.workCompleted || dailyNotes.blockers || dailyNotes.selfNotes) return true;
   if (clockState.accumulatedMs > 0 || clockState.running) return true;
+  if (workOrderHasContent()) return true;
   return false;
 }
 

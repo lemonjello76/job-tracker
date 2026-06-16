@@ -921,6 +921,7 @@
 <input type="file" id="photoReplaceInput" class="hidden" accept="image/*">
 <input type="file" id="videoInput" class="hidden" multiple accept="video/*">
 <input type="file" id="gasInput" class="hidden" accept="image/*" capture="environment">
+<input type="file" id="woImportInput" class="hidden" accept="image/*,.pdf">
 
 <!-- PHOTOS -->
 <div id="photosSection" class="section hidden">
@@ -3226,6 +3227,12 @@ function renderWorkOrder() {
 
   let html = '';
 
+  // — Auto-fill from an attached work order / sales order —
+  html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--input);border:1px dashed var(--accent);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px">
+    <button class="action-btn-sm" style="margin:0;background:var(--accent);color:#fff;border-style:solid;border-color:var(--accent)" onclick="importWorkOrderDoc()">📄 Auto-fill from a Work / Sales Order</button>
+    <span style="font-size:12px;color:var(--dim);flex:1;min-width:160px">Snap or upload the order you were sent (photo or PDF). It reads the customer info and parts and fills the blocks below — you just add the notes.</span>
+  </div>`;
+
   // — Header: SO#, date, job type —
   html += `<div class="form-row three">
     ${woField('woSO', 'SO #', w.soNumber, 'text', 'oninput="workOrder.soNumber=this.value;scheduleAutoSave()"')}
@@ -3455,6 +3462,173 @@ function workOrderHasContent() {
   if (Object.values(w.equipment).some(v => v)) return true;
   for (const g of Object.keys(WO_GROUPS)) { if (Object.values(w[g]).some(Boolean)) return true; }
   return false;
+}
+
+// ── Auto-fill the work order from a photo / PDF of an incoming work or sales order ──
+function importWorkOrderDoc() {
+  if (!localStorage.getItem('anthropicApiKey')) {
+    showToast('Add your Anthropic API key in Settings to enable auto-fill', 'warn', 5000);
+    if (typeof openSettings === 'function') openSettings();
+    return;
+  }
+  document.getElementById('woImportInput').click();
+}
+
+document.getElementById('woImportInput').addEventListener('change', async function (e) {
+  const file = e.target.files && e.target.files[0];
+  this.value = ''; // allow re-picking the same file
+  if (!file) return;
+  // Make sure the form is rendered and visible so filled values land somewhere
+  if (!document.getElementById('workOrderBody').innerHTML) renderWorkOrder();
+  document.getElementById('workOrderSection').classList.remove('hidden');
+  showToast('📄 Reading the order…', 'info', 60000);
+  try {
+    const images = await _woFileToImages(file);
+    if (!images.length) { showToast('Could not read that file', 'warn'); return; }
+    const data = await extractWorkOrderFromImages(images);
+    if (!data) { showToast('Could not pull details from that document — fill it in by hand', 'warn', 5000); return; }
+    const summary = applyWorkOrderExtraction(data);
+    showToast('✓ Filled ' + summary + ' — review, then add your notes', 'good', 5000);
+  } catch (err) {
+    console.warn('WO import failed:', err);
+    showToast('Auto-fill failed: ' + (err.message || 'unknown error'), 'warn', 5000);
+  }
+});
+
+// File → array of image dataURLs (PDFs render their first 2 pages; images pass through)
+async function _woFileToImages(file) {
+  const dataURL = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.onerror = () => reject(new Error('file read error'));
+    r.readAsDataURL(file);
+  });
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  if (!isPdf) return [dataURL];
+  const pdfjsLib = await loadPdfJs();
+  if (!pdfjsLib) throw new Error('PDF reader unavailable');
+  const pdf = await pdfjsLib.getDocument(dataURL).promise;
+  const pages = Math.min(pdf.numPages, 2);
+  const out = [];
+  for (let i = 1; i <= pages; i++) out.push(await _pdfPageToImage(pdf, i, 2));
+  return out;
+}
+
+// Send the page image(s) to Claude and get back structured work-order fields
+async function extractWorkOrderFromImages(dataURLs) {
+  const apiKey = localStorage.getItem('anthropicApiKey');
+  if (!apiKey) return null;
+  const content = [];
+  dataURLs.forEach(u => {
+    const p = parseDataURL(u);
+    if (p) content.push({ type: 'image', source: { type: 'base64', media_type: p.mediaType, data: p.base64 } });
+  });
+  if (!content.length) return null;
+  content.push({ type: 'text', text:
+    'This is a work order or sales order document. Extract the details into JSON with EXACTLY this shape and nothing else. Use "" for anything not present. Do not invent values.\n' +
+    '{\n' +
+    '  "custName": "", "custAddress": "", "custCity": "", "custState": "", "custZip": "",\n' +
+    '  "custPhone": "", "custEmail": "",\n' +
+    '  "billName": "", "billAddress": "", "billCity": "", "billState": "", "billZip": "",\n' +
+    '  "soNumber": "", "date": "",\n' +
+    '  "jobType": "",\n' +
+    '  "equipment": {"pump": "", "motor": "", "nozzleCount": "", "ro": "", "fans": ""},\n' +
+    '  "parts": [{"partNum": "", "qty": "", "desc": "", "unitPrice": ""}]\n' +
+    '}\n' +
+    'Rules: "date" must be YYYY-MM-DD if a date is shown, else "". "jobType" is one of residential, commercial, warranty, service, or "". "custState"/"billState" are 2-letter codes. "parts" lists line-item parts/materials only (skip labor, trip charges, tax, totals). Return ONLY the JSON object.'
+  });
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-opus-4-7',
+      max_tokens: 1500,
+      system: 'You extract structured data from service work orders and sales orders for a misting-systems installer. Read carefully and return strict JSON only.',
+      messages: [{ role: 'user', content }]
+    })
+  });
+  if (!resp.ok) {
+    const detail = await resp.text().catch(() => '');
+    if (resp.status === 401) throw new Error('API key rejected — check it in Settings');
+    throw new Error('vision API ' + resp.status + (detail ? ' — ' + detail.slice(0, 120) : ''));
+  }
+  const data = await resp.json();
+  const text = data.content?.[0]?.text || '';
+  const m = text.match(/\{[\s\S]*\}/);
+  if (!m) return null;
+  try { return JSON.parse(m[0]); } catch { return null; }
+}
+
+// Normalize a variety of date strings to YYYY-MM-DD for the date input
+function _woNormalizeDate(s) {
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const m = s.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if (m) {
+    let [, mo, da, yr] = m;
+    if (yr.length === 2) yr = '20' + yr;
+    return `${yr}-${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}`;
+  }
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  return '';
+}
+
+// Merge extracted fields into workOrder — fill blanks (don't clobber what's typed), append parts
+function applyWorkOrderExtraction(data) {
+  const w = workOrder;
+  const filled = [];
+  const setIfBlank = (key, val) => {
+    if (val && !w[key]) { w[key] = String(val).trim(); return true; }
+    return false;
+  };
+  let custFilled = 0;
+  [['custName', data.custName], ['custAddress', data.custAddress], ['custCity', data.custCity],
+   ['custState', data.custState], ['custZip', data.custZip], ['custPhone', data.custPhone],
+   ['custEmail', data.custEmail], ['billName', data.billName], ['billAddress', data.billAddress],
+   ['billCity', data.billCity], ['billState', data.billState], ['billZip', data.billZip],
+   ['soNumber', data.soNumber]].forEach(([k, v]) => { if (setIfBlank(k, v)) custFilled++; });
+  ['custState', 'billState'].forEach(k => { if (w[k]) w[k] = w[k].toUpperCase().slice(0, 2); });
+  if (custFilled) filled.push(custFilled + ' field' + (custFilled > 1 ? 's' : ''));
+
+  const nd = _woNormalizeDate(data.date);
+  if (nd && !w.woDate) w.woDate = nd;
+
+  const jt = (data.jobType || '').toLowerCase();
+  if (w.jobType.hasOwnProperty(jt)) w.jobType[jt] = true;
+
+  if (data.equipment && typeof data.equipment === 'object') {
+    ['pump', 'motor', 'nozzleCount', 'ro', 'fans'].forEach(k => {
+      if (data.equipment[k] && !w.equipment[k]) w.equipment[k] = String(data.equipment[k]).trim();
+    });
+  }
+
+  let partCount = 0;
+  if (Array.isArray(data.parts)) {
+    data.parts.forEach(p => {
+      if (!p) return;
+      const partNum = (p.partNum || '').toString().trim();
+      const desc = (p.desc || p.description || '').toString().trim();
+      const qty = (p.qty || '').toString().trim();
+      const unitPrice = (p.unitPrice || '').toString().replace(/[^0-9.]/g, '');
+      if (!partNum && !desc && !qty) return;
+      w.parts.push({ partNum, qty, desc, unitPrice, discountPrice: '' });
+      partCount++;
+    });
+  }
+  if (partCount) filled.push(partCount + ' part' + (partCount > 1 ? 's' : ''));
+
+  // Mirror the merged state back into the live form
+  renderWorkOrder();
+  if (document.getElementById('workOrderBody').style.display !== 'none') refreshWoSignatures();
+  scheduleAutoSave();
+
+  return filled.length ? filled.join(' + ') : 'the order';
 }
 
 // ═══════════════════════════════

@@ -2847,7 +2847,7 @@ function renderDayFlow(force) {
 
 async function dayStartDriving() {
   const running = getRunningSegment();
-  if (running) { running.endedAt = Date.now(); running.endGps = await getGps(); }
+  if (running) { running.endedAt = Date.now(); running.endGps = await getGps(); if (running.type === 'workday') onWorkEnded(running); }
   const gps = await getGps();
   const seg = {
     id: newSegId(), type: 'drive', startedAt: Date.now(), endedAt: null,
@@ -5484,6 +5484,7 @@ async function startDriveSegment() {
     if (!confirm(`Stop the current ${running.type === 'drive' ? 'drive' : 'workday'} segment first?`)) return;
     running.endedAt = Date.now();
     running.endGps = await getGps();
+    if (running.type === 'workday') onWorkEnded(running); // notify work ended before switching segment
   }
   const gps = await getGps();
   // Geofence + trip-level decision
@@ -5537,6 +5538,7 @@ async function startWorkdaySegment() {
     if (!confirm(`Stop the current ${running.type === 'drive' ? 'drive' : 'workday'} segment first?`)) return;
     running.endedAt = Date.now();
     running.endGps = await getGps();
+    if (running.type === 'workday') onWorkEnded(running); // notify work ended before switching segment
   }
   const gps = await getGps();
   // Geofence check — workday should be at the active job's pinned site
@@ -5586,6 +5588,7 @@ async function stopCurrentSegment() {
   if (stopWatchInterval) { clearInterval(stopWatchInterval); stopWatchInterval = null; }
   dayFlowPromptShown = false;
   if (running.type === 'drive') onDriveEnded(running); // arrival email if a morning drive armed it
+  if (running.type === 'workday') onWorkEnded(running); // email Robert + Sean that work ended (+ hours)
   if (running.type === 'workday') sendDayPhotosEmail(); // end-of-day photo contact sheet
   // Closing-out workday — check drift and warn if user has left the pin
   if (running.type === 'workday' && pinnedLocation && gps) {
@@ -9742,8 +9745,8 @@ function emailjsConfig() {
   return (serviceId && templateId && publicKey) ? { serviceId, templateId, publicKey } : null;
 }
 
-// kind: 'start' | 'arrival'. testMode = send to Lyle only, don't log.
-async function sendDriveEmail(kind, gps, whenMs, testMode) {
+// kind: 'start' | 'arrival' | 'work' | 'workEnd'. testMode = send to Lyle only, don't log.
+async function sendDriveEmail(kind, gps, whenMs, testMode, durationMs) {
   const cfg = emailjsConfig();
   if (!cfg || typeof emailjs === 'undefined') return false; // not set up — skip silently
   const when = new Date(whenMs);
@@ -9755,6 +9758,10 @@ async function sendDriveEmail(kind, gps, whenMs, testMode) {
   if (kind === 'work') {
     message = `Lyle started work at ${timeOfDay} in ${place} on ${dayStr}.\n\n(Auto-sent by Job Tracker the moment Lyle started the workday. Location from GPS.)`;
     subject = `Lyle started work — ${place} — ${timeOfDay}`;
+  } else if (kind === 'workEnd') {
+    const durStr = durationMs ? ` Worked about ${(durationMs / 3600000).toFixed(1)} hrs.` : '';
+    message = `Lyle finished work at ${timeOfDay} in ${place} on ${dayStr}.${durStr}\n\n(Auto-sent by Job Tracker the moment Lyle ended the workday. Location from GPS.)`;
+    subject = `Lyle finished work — ${place} — ${timeOfDay}`;
   } else if (kind === 'start') {
     message = `Lyle left ${place} at ${timeOfDay} on ${dayStr}.\n\n(Auto-sent by Job Tracker the moment Lyle started driving. Location from GPS.)`;
     subject = `Lyle started driving — ${place} — ${timeOfDay}`;
@@ -9785,7 +9792,7 @@ async function sendDriveEmail(kind, gps, whenMs, testMode) {
       });
       if (typeof renderCommunications === 'function') renderCommunications();
       scheduleAutoSave();
-      const evtLabel = kind === 'work' ? 'Start-work' : (kind === 'start' ? 'Start-drive' : 'Arrival');
+      const evtLabel = kind === 'work' ? 'Start-work' : kind === 'workEnd' ? 'End-work' : (kind === 'start' ? 'Start-drive' : 'Arrival');
       showToast(`📧 ${evtLabel} email sent — ${place}`, 'good', 3500);
     }
     return true;
@@ -9819,6 +9826,14 @@ async function onDriveEnded(seg) {
 function onWorkStarted(seg) {
   if (!seg || seg.type !== 'workday') return;
   sendDriveEmail('work', seg.startGps, seg.startedAt);
+}
+
+// Called when a WORKDAY ends — emails "Lyle finished work at {time} in {city}"
+// with the hours worked. No time gate: fires whenever the workday stops.
+function onWorkEnded(seg) {
+  if (!seg || seg.type !== 'workday') return;
+  const durationMs = (seg.endedAt || Date.now()) - seg.startedAt;
+  sendDriveEmail('workEnd', seg.endGps || seg.startGps, seg.endedAt || Date.now(), false, durationMs);
 }
 
 // ── END-OF-DAY PHOTO EMAIL ──

@@ -9290,6 +9290,18 @@ async function generateTripTotals() {
     ? new Date(dateMin).toLocaleDateString('en-US', {month:'short',day:'numeric'}) + ' — ' + new Date(dateMax).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'})
     : 'No segments yet';
 
+  // Days worked = distinct calendar days that had at least one workday (site) segment.
+  // This is the number that backs the "work the stretch, take the rest days" rule.
+  let daysWorked = 0;
+  Object.keys(allDayBuckets).forEach(d => {
+    if (allDayBuckets[d].some(s => s.type === 'workday')) daysWorked++;
+  });
+  const REST_WORK_DAYS = 9, REST_DAYS_OFF = 2; // your rule: a full ~9-day stretch earns 2 days off
+  const restRemaining = REST_WORK_DAYS - daysWorked;
+  const restMsg = daysWorked >= REST_WORK_DAYS
+    ? `🛌 Full stretch worked — <strong>${REST_DAYS_OFF} days off earned</strong> when you're home, salary or not.`
+    : `🛌 ${restRemaining} more work day${restRemaining === 1 ? '' : 's'} to complete the ${REST_WORK_DAYS}-day stretch (then ${REST_DAYS_OFF} days off).`;
+
   const fileBase = ('trip_totals_' + (trip.name || 'trip')).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'trip_totals';
 
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
@@ -9339,6 +9351,14 @@ async function generateTripTotals() {
   <div class="stat"><div class="v">${(grandSiteMs/3600000).toFixed(1)}</div><div class="l">Site Hours</div></div>
   <div class="stat"><div class="v">${grandMiles.toLocaleString()}</div><div class="l">Total Miles</div></div>
   <div class="stat"><div class="v">$${grandSpent.toFixed(0)}</div><div class="l">Total Spent</div></div>
+</div>
+
+<div style="background:#eef2ff;border:1px solid #c7d2fe;border-radius:8px;padding:16px 18px;margin:16px 0;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+  <div style="text-align:center;min-width:90px">
+    <div style="font-size:34px;font-weight:800;color:#1e1b4b;line-height:1">${daysWorked}</div>
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#3730a3;font-weight:700;margin-top:2px">Days Worked</div>
+  </div>
+  <div style="flex:1;min-width:200px;font-size:15px;color:#374151;border-left:3px solid #c7d2fe;padding-left:16px">${restMsg}</div>
 </div>
 
 <h2>Jobs in this Trip</h2>

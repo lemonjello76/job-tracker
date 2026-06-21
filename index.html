@@ -2814,34 +2814,24 @@ function renderDayFlow(force) {
   const running = getRunningSegment();
   const clientEl = document.getElementById('client');
   const client = clientEl ? clientEl.value.trim() : '';
-  const state = !running ? 'idle' : (running.type === 'drive' ? (dayFlowPromptShown ? 'stopped' : 'driving') : 'working');
+  const state = !running ? 'idle' : (running.type === 'drive' ? 'driving' : 'working');
   const key = state + '|' + (running ? running.id : '') + '|' + client;
   if (!force && key === __lastDayFlowKey) return;
   __lastDayFlowKey = key;
   if (state === 'idle') {
     box.innerHTML = `
-      <button class="dash-btn dash-btn-drive" style="width:100%;padding:18px;font-size:17px" onclick="dayStartDriving()">🚗 I'M DRIVING</button>
-      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:6px">One tap. Not tied to any job — the day starts with the drive.</div>
+      <button class="dash-btn dash-btn-drive" style="width:100%;padding:18px;font-size:17px" onclick="dayStartDriving()">🚗 START DRIVE</button>
+      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:6px">Sends a "started driving" email with your location.</div>
       <button class="action-btn-sm" style="width:100%;margin:8px 0 0;font-size:12px" onclick="dayStartWork()">🏗️ Already on site? Start work</button>`;
   } else if (state === 'driving') {
     box.innerHTML = `
       <div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:8px">🚗 Driving <span class="day-flow-timer" style="color:var(--accent);font-variant-numeric:tabular-nums">${fmtClock(Date.now() - running.startedAt)}</span></div>
-      <button class="dash-btn dash-btn-work" style="width:100%;padding:18px;font-size:17px" onclick="dayArrived()">⏹ I'VE STOPPED</button>
-      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:6px">GPS is watching — I'll ask when it looks like you've stopped.</div>`;
-  } else if (state === 'stopped') {
-    box.innerHTML = `
-      <div style="text-align:center;font-weight:700;font-size:16px;margin-bottom:10px">📍 Looks like you've stopped. Doing a job?</div>
-      <div style="display:grid;gap:8px">
-        <button class="dash-btn dash-btn-work" style="padding:16px;font-size:16px" onclick="dayYesJob()">🏗️ YES — START WORK</button>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <button class="dash-btn dash-btn-drive" onclick="dayKeepDriving()">🚗 KEEP DRIVING</button>
-          <button class="dash-btn" style="background:var(--input);color:var(--text);border:1px solid var(--border)" onclick="dayDoneDriving()">🅿️ DONE FOR NOW</button>
-        </div>
-      </div>`;
+      <button class="dash-btn dash-btn-stop" style="width:100%;padding:18px;font-size:17px" onclick="dayDoneDriving()">⏹ STOP DRIVE</button>
+      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:6px">Sends an "arrived" email with your location, then tap Start Work.</div>`;
   } else {
     box.innerHTML = `
       <div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:8px">🏗️ Working${client ? ' — ' + esc(client) : ''} <span class="day-flow-timer" style="color:var(--green);font-variant-numeric:tabular-nums">${fmtClock(Date.now() - running.startedAt)}</span></div>
-      <button class="dash-btn dash-btn-stop" style="width:100%;padding:18px;font-size:17px" onclick="dayLeaveSite()">⏹ DONE — LEAVING SITE</button>`;
+      <button class="dash-btn dash-btn-stop" style="width:100%;padding:18px;font-size:17px" onclick="dayLeaveSite()">⏹ STOP WORK</button>`;
   }
 }
 
@@ -2856,9 +2846,9 @@ async function dayStartDriving() {
   };
   segments.push(seg);
   dayFlowPromptShown = false;
-  renderSegments(); updateDashboard(); startSegmentTicker(); startStopWatcher(); scheduleAutoSave();
-  showToast('🚗 Driving — I\'ll ask when you stop', 'good', 3000);
-  onDriveStarted(seg); // pre-6am → email Robert + Sean
+  renderSegments(); updateDashboard(); startSegmentTicker(); scheduleAutoSave();
+  showToast('🚗 Driving — tap STOP DRIVE when you arrive', 'good', 3000);
+  onDriveStarted(seg); // email Robert + Sean that the drive started
   setTimeout(() => promptOdometerPhoto(seg.id, 'start'), 250);
 }
 
@@ -2903,7 +2893,7 @@ function dayKeepDriving() {       // false alarm (red light, gas, traffic)
   renderDayFlow();
 }
 
-async function dayDoneDriving() { // parked, not working (hotel, home)
+async function dayDoneDriving() { // STOP DRIVE — ends the drive, sends the "arrived" email
   dayFlowPromptShown = false;
   await stopCurrentSegment();
   renderDayFlow();
@@ -5524,9 +5514,8 @@ async function startDriveSegment() {
   renderSegments();
   updateDashboard();
   startSegmentTicker();
-  startStopWatcher();
   scheduleAutoSave();
-  onDriveStarted(seg); // pre-6am → email Robert + Sean
+  onDriveStarted(seg); // email Robert + Sean that the drive started
   if (tripLevel) showToast('🌍 Trip-level drive started', 'info', 2500);
   // Auto-prompt for start odometer photo
   setTimeout(() => promptOdometerPhoto(seg.id, 'start'), 200);
@@ -9736,7 +9725,6 @@ async function deleteCurrentDraft() {
 // ═══════════════════════════════
 const DRIVE_EMAIL_TO = 'robertl@mistamerica.com,seann@mistamerica.com';
 const DRIVE_EMAIL_CC = 'lylekrug@gmail.com';
-const DRIVE_EMAIL_BEFORE_HOUR = 6; // start email only fires before this local hour
 
 function emailjsConfig() {
   const serviceId = localStorage.getItem('emailjsServiceId');
@@ -9803,21 +9791,17 @@ async function sendDriveEmail(kind, gps, whenMs, testMode, durationMs) {
   }
 }
 
-// Called when a drive STARTS — fires the start email only if it's before 6am,
-// and arms the matching arrival email (flag persists across app sleep/reload).
+// Called when a drive STARTS (you tapped Start Drive) — emails with location.
+// No time gate: every start-drive tap sends.
 function onDriveStarted(seg) {
   if (!seg || seg.type !== 'drive') return;
-  if (new Date(seg.startedAt).getHours() < DRIVE_EMAIL_BEFORE_HOUR) {
-    localStorage.setItem('pendingArrivalEmail', '1');
-    sendDriveEmail('start', seg.startGps, seg.startedAt);
-  }
+  sendDriveEmail('start', seg.startGps, seg.startedAt);
 }
 
-// Called when a drive ENDS — sends the arrival email if a morning drive armed it.
+// Called when a drive ENDS (you tapped Stop Drive) — emails arrival with location.
+// No time gate: every stop-drive tap sends.
 async function onDriveEnded(seg) {
   if (!seg || seg.type !== 'drive') return;
-  if (localStorage.getItem('pendingArrivalEmail') !== '1') return;
-  localStorage.removeItem('pendingArrivalEmail');
   await sendDriveEmail('arrival', seg.endGps || seg.startGps, seg.endedAt || Date.now());
 }
 
@@ -10232,19 +10216,13 @@ async function maybeShowEodBanner() {
   updateDashboard();
   // Resume the live-segment ticker if a segment was running on reload
   if (getRunningSegment()) startSegmentTicker();
-  // Day flow: render card, build the week strip, re-arm stop detection if a
-  // drive was running when the app closed
+  // Day flow: render card and build the week strip (emails are tap-driven now,
+  // so there's no stop-detection to re-arm on resume)
   renderDayFlow(true);
   refreshWeekStrip();
-  const resumedSeg = getRunningSegment();
-  if (resumedSeg && resumedSeg.type === 'drive') startStopWatcher();
-  // Phone screens sleep — when the app comes back, check right away if he stopped
+  // Phone screens sleep — refresh the week strip when the app comes back
   document.addEventListener('visibilitychange', () => {
-    if (!document.hidden) {
-      const r = getRunningSegment();
-      if (r && r.type === 'drive') checkDriveStopped();
-      refreshWeekStrip();
-    }
+    if (!document.hidden) refreshWeekStrip();
   });
 
   // Show voice-unsupported warning up front if browser can't transcribe

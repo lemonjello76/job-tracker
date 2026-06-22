@@ -2815,7 +2815,11 @@ function renderDayFlow(force) {
   const clientEl = document.getElementById('client');
   const client = clientEl ? clientEl.value.trim() : '';
   const state = !running ? 'idle' : (running.type === 'drive' ? 'driving' : 'working');
-  const key = state + '|' + (running ? running.id : '') + '|' + client;
+  const todayK = dayKey();
+  const sentToday = localStorage.getItem('dayEndEmailDate') === todayK;
+  const activeToday = segments.some(s => dayKey(s.startedAt) === todayK);
+  const eodShow = (activeToday && !sentToday) ? '1' : '0';
+  const key = state + '|' + (running ? running.id : '') + '|' + client + '|' + eodShow;
   if (!force && key === __lastDayFlowKey) return;
   __lastDayFlowKey = key;
   if (state === 'idle') {
@@ -2832,6 +2836,11 @@ function renderDayFlow(force) {
     box.innerHTML = `
       <div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:8px">🏗️ Working${client ? ' — ' + esc(client) : ''} <span class="day-flow-timer" style="color:var(--green);font-variant-numeric:tabular-nums">${fmtClock(Date.now() - running.startedAt)}</span></div>
       <button class="dash-btn dash-btn-stop" style="width:100%;padding:18px;font-size:17px" onclick="dayLeaveSite()">⏹ STOP WORK</button>`;
+  }
+  // Evening bookend — show "Done for the day" once the day has activity and the
+  // "I'm back" email hasn't gone out yet today.
+  if (eodShow === '1') {
+    box.innerHTML += `<button class="action-btn-sm" style="width:100%;margin-top:10px;padding:10px;font-size:13px;border-style:solid;border-color:var(--border)" onclick="endOfDay()">🏁 Done for the day — email "I'm back"</button>`;
   }
 }
 
@@ -3051,6 +3060,19 @@ async function dayLeaveSite() {
   await stopCurrentSegment();
   renderDayFlow();
   refreshWeekStrip();
+}
+
+// Evening bookend — closes out the day and emails the office "I'm back for the
+// night" (the only notification besides the morning "started driving").
+async function endOfDay() {
+  if (getRunningSegment()) await stopCurrentSegment(); // capture final mileage / work time
+  const gps = await getGps();
+  localStorage.setItem('dayEndEmailDate', dayKey());
+  await sendDriveEmail('dayEnd', gps, Date.now());
+  if (typeof sendDayPhotosEmail === 'function') sendDayPhotosEmail(); // day's photo contact sheet, once
+  renderDayFlow(true);
+  refreshWeekStrip();
+  updateDashboard();
 }
 
 // ── Week strip (Sun–Sat) ──
@@ -5576,9 +5598,9 @@ async function stopCurrentSegment() {
   if (driftCheckInterval) { clearInterval(driftCheckInterval); driftCheckInterval = null; }
   if (stopWatchInterval) { clearInterval(stopWatchInterval); stopWatchInterval = null; }
   dayFlowPromptShown = false;
-  if (running.type === 'drive') onDriveEnded(running); // arrival email if a morning drive armed it
-  if (running.type === 'workday') onWorkEnded(running); // email Robert + Sean that work ended (+ hours)
-  if (running.type === 'workday') sendDayPhotosEmail(); // end-of-day photo contact sheet
+  // Day-bookends mode: starts/stops are recorded silently. The morning
+  // "started driving" goes out from onDriveStarted; the evening "done for the
+  // day" + photo contact sheet go out once, from endOfDay().
   // Closing-out workday — check drift and warn if user has left the pin
   if (running.type === 'workday' && pinnedLocation && gps) {
     const dist = distanceMeters(gps, pinnedLocation);
@@ -9770,6 +9792,9 @@ async function sendDriveEmail(kind, gps, whenMs, testMode, durationMs) {
     const durStr = durationMs ? ` Worked about ${(durationMs / 3600000).toFixed(1)} hrs.` : '';
     message = `Lyle finished work at ${timeOfDay} in ${place} on ${dayStr}.${durStr}\n\n(Auto-sent by Job Tracker the moment Lyle ended the workday. Location from GPS.)`;
     subject = `Lyle finished work — ${place} — ${timeOfDay}`;
+  } else if (kind === 'dayEnd') {
+    message = `Lyle is done for the day — back in ${place} at ${timeOfDay} on ${dayStr}.\n\n(Auto-sent by Job Tracker when Lyle wrapped up the day. Location from GPS.)`;
+    subject = `Lyle done for the day — ${place} — ${timeOfDay}`;
   } else if (kind === 'start') {
     message = `Lyle left ${place} at ${timeOfDay} on ${dayStr}.\n\n(Auto-sent by Job Tracker the moment Lyle started driving. Location from GPS.)`;
     subject = `Lyle started driving — ${place} — ${timeOfDay}`;
@@ -9800,7 +9825,7 @@ async function sendDriveEmail(kind, gps, whenMs, testMode, durationMs) {
       });
       if (typeof renderCommunications === 'function') renderCommunications();
       scheduleAutoSave();
-      const evtLabel = kind === 'work' ? 'Start-work' : kind === 'workEnd' ? 'End-work' : (kind === 'start' ? 'Start-drive' : 'Arrival');
+      const evtLabel = kind === 'work' ? 'Start-work' : kind === 'workEnd' ? 'End-work' : kind === 'dayEnd' ? 'Done-for-day' : (kind === 'start' ? 'Started-driving' : 'Arrival');
       showToast(`📧 ${evtLabel} email sent — ${place}`, 'good', 3500);
     }
     return true;
@@ -9811,34 +9836,26 @@ async function sendDriveEmail(kind, gps, whenMs, testMode, durationMs) {
   }
 }
 
-// Called when a drive STARTS (you tapped Start Drive) — emails with location.
-// No time gate: every start-drive tap sends.
+// ── DAY BOOKEND EMAILS ──
+// Office gets exactly two notices a day: one when the day's FIRST drive starts
+// ("started driving"), and one when Lyle taps Done For The Day ("back for the
+// night" — see endOfDay()). Every other start/stop is recorded silently.
+function dayKey(ms) { return new Date(ms || Date.now()).toLocaleDateString('en-CA'); } // local YYYY-MM-DD
+
+// Called when a drive STARTS — emails only on the first drive of the day.
 function onDriveStarted(seg) {
   if (!seg || seg.type !== 'drive') return;
+  const today = dayKey(seg.startedAt);
+  if (localStorage.getItem('dayDepartEmailDate') === today) return; // morning bookend already sent
+  localStorage.setItem('dayDepartEmailDate', today);
   sendDriveEmail('start', seg.startGps, seg.startedAt);
 }
 
-// Called when a drive ENDS (you tapped Stop Drive) — emails arrival with location.
-// No time gate: every stop-drive tap sends.
-async function onDriveEnded(seg) {
-  if (!seg || seg.type !== 'drive') return;
-  await sendDriveEmail('arrival', seg.endGps || seg.startGps, seg.endedAt || Date.now());
-}
-
-// Called when a WORKDAY starts — emails "Lyle started work at {time} in {city}".
-// No time gate: fires whenever the workday begins (4am, 6am, whenever).
-function onWorkStarted(seg) {
-  if (!seg || seg.type !== 'workday') return;
-  sendDriveEmail('work', seg.startGps, seg.startedAt);
-}
-
-// Called when a WORKDAY ends — emails "Lyle finished work at {time} in {city}"
-// with the hours worked. No time gate: fires whenever the workday stops.
-function onWorkEnded(seg) {
-  if (!seg || seg.type !== 'workday') return;
-  const durationMs = (seg.endedAt || Date.now()) - seg.startedAt;
-  sendDriveEmail('workEnd', seg.endGps || seg.startGps, seg.endedAt || Date.now(), false, durationMs);
-}
+// Drive end / work start / work end are recorded silently — no email.
+// (The evening bookend is sent explicitly from endOfDay().)
+async function onDriveEnded(seg) { /* silent — bookends only */ }
+function onWorkStarted(seg) { /* silent — bookends only */ }
+function onWorkEnded(seg) { /* silent — bookends only */ }
 
 // ── END-OF-DAY PHOTO EMAIL ──
 // At workday's end, tile the day's photos into ONE shrunk JPEG (a contact

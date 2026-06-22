@@ -834,7 +834,6 @@
 
 <!-- DASHBOARD — live totals + segment controls -->
 <div class="dashboard">
-  <div id="weekOverageBadge" style="display:none;text-align:center;padding:8px;border-radius:var(--radius);font-weight:700;font-size:14px;margin-bottom:10px;letter-spacing:1px"></div>
   <div class="dash-status" id="dashStatus">
     <span id="dashStatusIcon">⏸</span>
     <span id="dashStatusText">Not started</span>
@@ -5158,22 +5157,8 @@ async function getCurrentWeekHours() {
   return totalMs / 3600000;
 }
 
-async function refreshOverageBadge() {
-  const hrs = await getCurrentWeekHours();
-  const el = document.getElementById('weekOverageBadge');
-  if (!el) return;
-  if (hrs < 40) {
-    el.style.display = 'none';
-    return;
-  }
-  el.style.display = '';
-  let bg = 'var(--yellow)', txt = '#111';
-  if (hrs >= 60) { bg = 'var(--red)'; txt = '#fff'; }
-  else if (hrs >= 50) { bg = '#fb923c'; txt = '#111'; }
-  el.style.background = bg;
-  el.style.color = txt;
-  el.innerHTML = `⚠️ ${hrs.toFixed(1)}h THIS WEEK · ${(hrs - 40).toFixed(1)}h OVER 40`;
-}
+// Over-40 overage badge removed — the week reads as a plain log of what got
+// done, with no overtime flag.
 
 // ═══════════════════════════════
 // SEGMENTS — drive / workday tracking
@@ -5252,7 +5237,6 @@ function updateDashboard() {
     const st = document.getElementById('state').value.trim();
     jobSummaryEl.textContent = c ? c + (ci ? ' · ' + ci + (st ? ', ' + st.toUpperCase() : '') : '') : 'no job selected — tap to fill in';
   }
-  refreshOverageBadge();
 }
 
 function startSegmentTicker() {
@@ -6926,8 +6910,6 @@ async function generateWeeklyDigest() {
   });
 
   const totalH = (totalDriveMs + totalSiteMs) / 3600000;
-  const overage = Math.max(0, totalH - 40);
-  const fteCount = totalH / 40;
   const daysWorked = Object.keys(dayActivity).length;
   const avgPerDay = daysWorked ? totalH / daysWorked : 0;
   const avgRespDays = respDaysCount ? (sumRespDays / respDaysCount).toFixed(1) : '—';
@@ -6935,11 +6917,6 @@ async function generateWeeklyDigest() {
   const discIgnored = allDiscRaised - allDiscAck;
 
   const fileBase = ('weekly_digest_' + weekStart.toLocaleDateString('en-CA')).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-
-  // Color code overage banner
-  let overageBg = '#fef3c7', overageColor = '#78350f';
-  if (totalH >= 60) { overageBg = '#fee2e2'; overageColor = '#7f1d1d'; }
-  else if (totalH >= 50) { overageBg = '#ffedd5'; overageColor = '#7c2d12'; }
 
   let html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -6950,7 +6927,6 @@ async function generateWeeklyDigest() {
   h1{font-size:22px;border-bottom:3px solid #111;padding-bottom:8px;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px}
   .meta{font-size:14px;color:#444} .meta strong{color:#111}
   h2{font-size:14px;text-transform:uppercase;letter-spacing:.5px;color:#333;margin:22px 0 8px;padding-bottom:4px;border-bottom:1px solid #ccc}
-  .overage-banner{background:${overageBg};color:${overageColor};padding:14px 18px;border-radius:8px;margin:14px 0;font-weight:700;text-align:center;font-size:15px}
   .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0}
   .stat{background:#f6f7fa;padding:14px;border-radius:6px;text-align:center}
   .stat .v{font-size:24px;font-weight:700;color:#111}
@@ -6979,8 +6955,6 @@ async function generateWeeklyDigest() {
 <h1>Weekly Digest</h1>
 <p class="meta"><strong>Week of:</strong> ${weekStart.toLocaleDateString('en-US', {month:'long', day:'numeric'})} — ${new Date(weekEnd.getTime()-86400000).toLocaleDateString('en-US', {month:'long', day:'numeric', year:'numeric'})}</p>
 <p class="meta"><strong>Days Worked:</strong> ${daysWorked} · <strong>Avg per workday:</strong> ${avgPerDay.toFixed(1)} hrs</p>
-
-${totalH >= 40 ? `<div class="overage-banner">⚠️ ${totalH.toFixed(1)} HOURS THIS WEEK · ${overage.toFixed(1)} HRS OVER STANDARD 40 · ${fteCount.toFixed(2)} FTE-EQUIVALENT EFFORT</div>` : ''}
 
 <div class="stats">
   <div class="stat"><div class="v">${totalH.toFixed(1)}</div><div class="l">Total Hours</div></div>

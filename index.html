@@ -744,6 +744,7 @@
 <div class="header">
   <h1><span>Mist</span>America</h1>
   <div style="display:flex;gap:8px;align-items:center">
+    <span id="appVersion" style="font-size:10px;color:#8b90a0;font-weight:600" title="App version — read this to confirm you're on the latest"></span>
     <span id="cloudSyncIndicator" style="font-size:12px;color:#8b90a0;cursor:pointer;font-weight:600" onclick="manualSync()" title="Tap to sync now">☁️ ...</span>
     <button class="header-btn" onclick="openSettings()" title="Settings">⚙️</button>
     <button class="header-btn" onclick="openSidebar()">Completed Jobs (<span id="completedCount">0</span>)</button>
@@ -1777,8 +1778,10 @@ const firebaseConfig = {
   messagingSenderId: "491853979701",
   appId: "1:491853979701:web:64da6ffeb49e9c6e4d517c"
 };
+const APP_VERSION = '2026-06-22.2'; // bump on each deploy so the header confirms what's live
 const CLOUD_USER_ID = 'lyle-mistamerica';  // fixed for now — single-user app
 let cloudReady = false;
+let lastCloudError = ''; // last Firestore failure (code/message) — surfaced via the cloud indicator
 let fdb = null;
 let cloudUserRef = null;
 let cloudSyncQueue = []; // pending operations while offline / not initialized
@@ -1820,7 +1823,11 @@ function setSyncStatus(state, label) {
   };
   el.style.color = colors[state] || '#8b90a0';
   el.textContent = label || (state === 'synced' ? '☁️ Synced' : state === 'syncing' ? '☁️ Syncing...' : state === 'error' ? '☁️ Sync error' : state === 'pulling' ? '☁️ Pulling...' : '☁️ Offline');
+  el.title = state === 'error'
+    ? 'Sync error: ' + (lastCloudError || 'unknown') + ' — tap for details'
+    : 'Tap to sync now';
 }
+function noteCloudError(e) { lastCloudError = (e && (e.code || e.message)) || 'unknown error'; }
 
 async function cloudPushDraft(draft) {
   if (!cloudReady || cloudSyncSilenced) return;
@@ -1831,14 +1838,14 @@ async function cloudPushDraft(draft) {
     setSyncStatus('synced');
   } catch (e) {
     console.warn('cloudPushDraft failed:', e);
-    setSyncStatus('error');
+    noteCloudError(e); setSyncStatus('error');
   }
 }
 
 async function cloudDeleteDraft(id) {
   if (!cloudReady || cloudSyncSilenced) return;
   try { await cloudUserRef.collection('drafts').doc(id).delete(); setSyncStatus('synced'); }
-  catch (e) { console.warn('cloudDeleteDraft failed:', e); setSyncStatus('error'); }
+  catch (e) { console.warn('cloudDeleteDraft failed:', e); noteCloudError(e); setSyncStatus('error'); }
 }
 
 async function cloudPushJob(job) {
@@ -1853,14 +1860,14 @@ async function cloudPushJob(job) {
     setSyncStatus('synced');
   } catch (e) {
     console.warn('cloudPushJob failed:', e);
-    setSyncStatus('error');
+    noteCloudError(e); setSyncStatus('error');
   }
 }
 
 async function cloudDeleteJob(id) {
   if (!cloudReady || cloudSyncSilenced) return;
   try { await cloudUserRef.collection('jobs').doc(String(id)).delete(); setSyncStatus('synced'); }
-  catch (e) { console.warn('cloudDeleteJob failed:', e); setSyncStatus('error'); }
+  catch (e) { console.warn('cloudDeleteJob failed:', e); noteCloudError(e); setSyncStatus('error'); }
 }
 
 async function cloudPushTrip(trip) {
@@ -1869,13 +1876,13 @@ async function cloudPushTrip(trip) {
   try {
     await cloudUserRef.collection('trips').doc(trip.id).set(trip);
     setSyncStatus('synced');
-  } catch (e) { console.warn('cloudPushTrip failed:', e); setSyncStatus('error'); }
+  } catch (e) { console.warn('cloudPushTrip failed:', e); noteCloudError(e); setSyncStatus('error'); }
 }
 
 async function cloudDeleteTrip(id) {
   if (!cloudReady || cloudSyncSilenced) return;
   try { await cloudUserRef.collection('trips').doc(id).delete(); setSyncStatus('synced'); }
-  catch (e) { console.warn('cloudDeleteTrip failed:', e); setSyncStatus('error'); }
+  catch (e) { console.warn('cloudDeleteTrip failed:', e); noteCloudError(e); setSyncStatus('error'); }
 }
 
 // Pull EVERYTHING from cloud and merge into local IndexedDB
@@ -1935,7 +1942,7 @@ async function pullFromCloud() {
     }
   } catch (e) {
     console.warn('pullFromCloud failed:', e);
-    setSyncStatus('error');
+    noteCloudError(e); setSyncStatus('error');
   } finally {
     cloudSyncSilenced = false;
   }
@@ -2650,11 +2657,26 @@ async function manualSync() {
     alert('Cloud sync not available right now (offline or Firebase failed to load). Try refreshing the page.');
     return;
   }
-  // Push current state to cloud first, then pull
   showToast('☁️ Syncing...', 'info', 2000);
-  await autoSave();
-  await pullFromCloud();
-  showToast('☁️ Sync complete', 'good', 2500);
+  setSyncStatus('syncing');
+  try {
+    // Probe write — surfaces permission/config errors directly instead of hiding them
+    await cloudUserRef.collection('_meta').doc('ping').set({ at: Date.now(), v: APP_VERSION });
+    await autoSave();
+    await pullFromCloud();
+    setSyncStatus('synced');
+    showToast('☁️ Sync complete', 'good', 2500);
+  } catch (e) {
+    noteCloudError(e);
+    setSyncStatus('error');
+    const msg = lastCloudError;
+    const hint = /permission|insufficient/i.test(msg)
+      ? '\n\nThis is a Firestore SECURITY RULES problem — the rules need to be published in the Firebase console (firestore.rules in the repo). Send Claude this exact message.'
+      : /not-found|failed-precondition/i.test(msg)
+      ? '\n\nThe Firestore database may not be created yet (or is in Datastore mode). Send Claude this exact message.'
+      : '\n\nSend Claude this exact message.';
+    alert('Cloud sync FAILED:\n\n' + msg + hint);
+  }
 }
 
 // ═══════════════════════════════
@@ -10672,6 +10694,8 @@ async function maybeShowEodBanner() {
   }
 
   // Initial dashboard render
+  const verEl = document.getElementById('appVersion');
+  if (verEl) verEl.textContent = 'v' + APP_VERSION;
   renderSegments();
   updateDashboard();
   closeStaleRunningSegment(); // close any timer left running from a previous day

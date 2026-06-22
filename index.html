@@ -3158,8 +3158,8 @@ async function endOfDay() {
   await autoCompleteServicesToday(); // services close themselves; installs stay open
   const gps = await getGps();
   localStorage.setItem('dayEndEmailDate', dayKey());
-  await sendDriveEmail('dayEnd', gps, Date.now());
-  if (typeof sendDayPhotosEmail === 'function') sendDayPhotosEmail(); // day's photo contact sheet, once
+  await sendDriveEmail('dayEnd', gps, Date.now()); // #2 — "back at the hotel"
+  await sendDayRecapEmail();                       // #3 — what got done + WO + photos
   renderDayFlow(true);
   refreshWeekStrip();
   updateDashboard();
@@ -10230,6 +10230,121 @@ async function sendDayPhotosEmail() {
   } catch (e) {
     console.warn('Photo email failed:', e);
     showToast('⚠️ Photo email failed — check EmailJS plan / 500KB limit', 'warn', 5000);
+    return false;
+  }
+}
+
+// ── DAY RECAP EMAIL (#3 of the day) ──
+// One email at day's end: what was done across every stop + work-order details
+// + the day's photos. Sends with the photo template (attachment) when photos
+// exist, otherwise the plain text template — either way it always goes out.
+function woSummaryText(wo) {
+  if (!wo) return '';
+  const bits = [];
+  const svc = [];
+  for (const g of Object.keys(WO_GROUPS)) {
+    WO_GROUPS[g].items.forEach(([k, lbl]) => { if (wo[g] && wo[g][k]) svc.push(lbl); });
+  }
+  if (svc.length) bits.push('Services: ' + svc.join(', '));
+  const parts = (wo.parts || []).filter(p => p && (p.partNum || p.desc));
+  if (parts.length) bits.push('Parts: ' + parts.map(p => `${p.qty || ''} ${p.desc || p.partNum}`.trim()).join('; '));
+  if (wo.totalDue) bits.push('Total Due: $' + wo.totalDue);
+  if (wo.techSig || wo.custSig) bits.push('Signed: ' + [wo.techSig ? 'tech' : '', wo.custSig ? 'customer' : ''].filter(Boolean).join(' & '));
+  return bits.join('\n   ');
+}
+
+async function gatherTodayRecap() {
+  const tk = dayKey();
+  const jobs = [];
+  let firstStart = Infinity, lastEnd = 0, totalMiles = 0;
+  const consume = (name, place, jobKind, segs, wo) => {
+    let driveMs = 0, siteMs = 0, miles = 0, any = false;
+    (segs || []).forEach(s => {
+      if (dayKey(s.startedAt) !== tk) return;
+      any = true;
+      const dur = (s.endedAt || Date.now()) - s.startedAt;
+      firstStart = Math.min(firstStart, s.startedAt);
+      lastEnd = Math.max(lastEnd, s.endedAt || Date.now());
+      if (s.type === 'drive') { driveMs += dur; const mi = segDriveMiles(s); miles += mi; totalMiles += mi; }
+      else if (s.type === 'workday') siteMs += dur;
+    });
+    if (any) jobs.push({ name, place, jobKind, driveMs, siteMs, miles, wo });
+  };
+  consume(
+    document.getElementById('client').value.trim() || 'Untitled',
+    [document.getElementById('city').value.trim(), document.getElementById('state').value.trim()].filter(Boolean).join(', '),
+    document.getElementById('jobKind').value, segments, workOrder
+  );
+  if (db) {
+    try {
+      for (const d of await dbGetAllDrafts()) {
+        if (d.id === currentDraftId) continue;
+        const st = d.state || {};
+        consume(d.name || 'Untitled', [st.city, st.state].filter(Boolean).join(', '), st.jobKind, st.segments, st.workOrder);
+      }
+    } catch (e) {}
+  }
+  const spanMs = (isFinite(firstStart) && lastEnd > firstStart) ? lastEnd - firstStart : 0;
+  return { jobs, spanMs, totalMiles, tk };
+}
+
+async function sendDayRecapEmail() {
+  const cfg = emailjsConfig();
+  if (!cfg || typeof emailjs === 'undefined') return false;
+  const { jobs, spanMs, totalMiles, tk } = await gatherTodayRecap();
+  if (!jobs.length) return false;
+  const fmt = ms => (ms / 3600000).toFixed(1) + 'h';
+  const place = jobs[0].place || document.getElementById('city').value.trim() || 'the field';
+  const lines = [`Day recap — ${tk}`, ''];
+  lines.push(`Hotel-to-hotel: ${fmt(spanMs)} · Miles: ${totalMiles.toLocaleString()} · Stops: ${jobs.length}`);
+  lines.push('');
+  jobs.forEach(j => {
+    lines.push(`• ${j.name}${j.place ? ' (' + j.place + ')' : ''}${j.jobKind ? ' [' + j.jobKind + ']' : ''}`);
+    lines.push(`   Site ${fmt(j.siteMs)} · Drive ${fmt(j.driveMs)}${j.miles ? ' · ' + j.miles.toLocaleString() + ' mi' : ''}`);
+    const wo = woSummaryText(j.wo);
+    if (wo) lines.push('   ' + wo);
+  });
+  lines.push('');
+  lines.push('(Auto-sent by Job Tracker at end of day.)');
+  const message = lines.join('\n');
+  const subject = `Lyle — day recap — ${place} — ${tk}`;
+
+  // Attach today's photos as a contact sheet when a photo template is configured
+  const photoTemplateId = localStorage.getItem('emailjsPhotoTemplateId');
+  const b = eodTodayBounds();
+  let todays = (photos || []).filter(p => eodIsToday(p.stamp, b) && !p._emailedEod);
+  let capped = false;
+  if (todays.length > PHOTO_EMAIL_MAX_COUNT) { todays = todays.slice(0, PHOTO_EMAIL_MAX_COUNT); capped = true; }
+  let montage = null;
+  if (photoTemplateId && todays.length) montage = await buildPhotoMontage(todays, PHOTO_EMAIL_MAX_BYTES, subject);
+
+  try {
+    emailjs.init({ publicKey: cfg.publicKey });
+    if (montage) {
+      await emailjs.send(cfg.serviceId, photoTemplateId, {
+        to_email: DRIVE_EMAIL_TO, cc_email: DRIVE_EMAIL_CC, subject,
+        message: message + (capped ? `\n\n(First ${PHOTO_EMAIL_MAX_COUNT} photos attached — rest in the full report.)` : '\n\nPhotos attached as a contact sheet.'),
+        photos_image: montage.b64,
+        photos_name: `recap-${tk}.jpg`
+      });
+      todays.forEach(p => p._emailedEod = true);
+    } else {
+      await emailjs.send(cfg.serviceId, cfg.templateId, {
+        to_email: DRIVE_EMAIL_TO, cc_email: DRIVE_EMAIL_CC, subject, message
+      });
+    }
+    communications.push({
+      id: 'comm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      kind: 'email', to: 'Robert + Sean (CC Lyle)', subject, summary: message,
+      sentAt: tk, responseReceived: false, responseAt: '', responseSummary: ''
+    });
+    if (typeof renderCommunications === 'function') renderCommunications();
+    scheduleAutoSave();
+    showToast(`📧 Day recap sent${montage ? ' + photos' : ''} — ${place}`, 'good', 4500);
+    return true;
+  } catch (e) {
+    console.warn('Recap email failed:', e);
+    showToast('⚠️ Recap email failed — check EmailJS / signal', 'warn', 5000);
     return false;
   }
 }

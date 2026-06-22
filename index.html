@@ -757,6 +757,7 @@
   <div id="weekStrip" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:10px"></div>
   <div id="dayDetailPanel" style="display:none;margin-bottom:10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
   <div id="dayFlowBox"></div>
+  <button class="action-btn-sm" style="width:100%;margin-top:8px;padding:8px;font-size:12px" onclick="quickVoiceNote(this)">🎤 Quick voice note</button>
 </div>
 
 <!-- TRIP SELECTOR -->
@@ -843,6 +844,10 @@
     <span id="dashStatusIcon">⏸</span>
     <span id="dashStatusText">Not started</span>
     <span id="dashLiveTimer" class="dash-timer"></span>
+  </div>
+  <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--dim);letter-spacing:.5px;margin-bottom:6px">
+    <span style="font-weight:700">THIS WEEK <span style="font-weight:400">(resets Sun)</span></span>
+    <span id="dashTodaySpan"></span>
   </div>
   <div class="dash-stats">
     <div class="dash-stat" onclick="toggleTimeLog()">
@@ -3089,6 +3094,71 @@ function sundayStart(date) {
   return d;
 }
 
+// ── THIS-WEEK dashboard totals (Sun→Sat, every job) ──
+// The dashboard tiles show the current week, not whatever job is open, so they
+// roll to zero on their own every Sunday. Cached + throttled because
+// updateDashboard runs every second.
+let __weekAgg = { driveMs: 0, siteMs: 0, miles: 0, spent: 0 };
+let __weekAggAt = 0;
+
+function _segInThisWeek(s, ws, we) { return s.startedAt >= ws && s.startedAt < we; }
+
+async function refreshWeekAgg(force) {
+  if (!force && Date.now() - __weekAggAt < 12000) return;
+  __weekAggAt = Date.now();
+  const ws = sundayStart(new Date()).getTime();
+  const we = ws + 7 * 86400000;
+  let driveMs = 0, siteMs = 0, miles = 0, spent = 0;
+  const addSegs = segs => (segs || []).forEach(s => {
+    if (!_segInThisWeek(s, ws, we)) return;
+    const dur = (s.endedAt || Date.now()) - s.startedAt;
+    if (s.type === 'drive') { driveMs += dur; miles += segDriveMiles(s); }
+    else if (s.type === 'workday') siteMs += dur;
+  });
+  const addReceipts = arr => (arr || []).forEach(r => {
+    const amt = parseFloat(r.amount) || 0;
+    if (!amt) return;
+    const t = r.stamp ? new Date(r.stamp).getTime() : NaN;
+    if (!isNaN(t) && t >= ws && t < we) spent += amt;
+  });
+  // Current in-memory job first (freshest), then everything in the DB
+  addSegs(segments); addReceipts(receipts);
+  if (db) {
+    try {
+      (await dbGetAllDrafts()).forEach(d => {
+        if (d.id === currentDraftId) return; // already counted from memory
+        addSegs(d.state?.segments); addReceipts(d.state?.receipts);
+      });
+      (await dbGetAll()).forEach(j => { addSegs(j.rawState?.segments); addReceipts(j.rawState?.receipts); });
+    } catch (e) {}
+  }
+  __weekAgg = { driveMs, siteMs, miles, spent };
+  renderWeekTiles();
+}
+
+function renderWeekTiles() {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('dashDriveTotal', fmtHrsShort(__weekAgg.driveMs));
+  set('dashSiteTotal', fmtHrsShort(__weekAgg.siteMs));
+  set('dashMilesTotal', __weekAgg.miles ? __weekAgg.miles.toLocaleString() : '0');
+  set('dashSpentTotal', '$' + __weekAgg.spent.toFixed(0));
+}
+
+// Hotel-to-hotel span for a given day: first segment start → last segment end.
+function hotelToHotelMs(dayDate) {
+  const ws = new Date(dayDate); ws.setHours(0, 0, 0, 0);
+  const a = ws.getTime(), b = a + 86400000;
+  let first = Infinity, last = 0;
+  const scan = segs => (segs || []).forEach(s => {
+    if (s.startedAt >= a && s.startedAt < b) {
+      first = Math.min(first, s.startedAt);
+      last = Math.max(last, s.endedAt || Date.now());
+    }
+  });
+  scan(segments);
+  return isFinite(first) && last > first ? last - first : 0;
+}
+
 async function refreshWeekStrip() {
   const strip = document.getElementById('weekStrip');
   if (!strip) return;
@@ -3354,8 +3424,8 @@ function renderWorkOrder() {
   // — Notes & recommendations —
   html += `<div class="wo-sub">Notes & Recommendations</div>`;
   html += `<div class="field" style="margin-bottom:12px"><label>Notes</label><textarea id="woNotes" oninput="workOrder.notes=this.value;scheduleAutoSave()" placeholder="e.g. Summer Start Up for Rental — or tap 🎤 and say it">${esc(w.notes || '')}</textarea><button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px;align-self:flex-start" onclick="toggleDictation('woNotes', v=>{workOrder.notes=v;}, this)">🎤 Dictate</button></div>`;
-  html += `<div class="field" style="margin-bottom:12px"><label>Additional Recommendations</label><textarea id="woAddRecs" oninput="workOrder.additionalRecs=this.value;scheduleAutoSave()"></textarea></div>`;
-  html += `<div class="field" style="margin-bottom:12px"><label>Reason for Return Trip</label><textarea id="woReturn" oninput="workOrder.returnReason=this.value;scheduleAutoSave()"></textarea></div>`;
+  html += `<div class="field" style="margin-bottom:12px"><label>Additional Recommendations</label><textarea id="woAddRecs" oninput="workOrder.additionalRecs=this.value;scheduleAutoSave()"></textarea><button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px;align-self:flex-start" onclick="toggleDictation('woAddRecs', v=>{workOrder.additionalRecs=v;}, this)">🎤 Dictate</button></div>`;
+  html += `<div class="field" style="margin-bottom:12px"><label>Reason for Return Trip</label><textarea id="woReturn" oninput="workOrder.returnReason=this.value;scheduleAutoSave()"></textarea><button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px;align-self:flex-start" onclick="toggleDictation('woReturn', v=>{workOrder.returnReason=v;}, this)">🎤 Dictate</button></div>`;
   html += `<div style="font-size:11px;color:var(--dim);font-style:italic;background:var(--input);padding:10px 12px;border-radius:var(--radius);margin-bottom:14px">Parts Warranty: All parts as recorded are warrantied for one year, with the exception of nozzles and filters. We do not warranty parts purchased from others even if we install them. If repairs become necessary later due to other defective parts, they will be charged separately.</div>`;
 
   // — Signatures —
@@ -4890,6 +4960,17 @@ function dictateNote(i, btn) {
   toggleDictation('noteText_' + i, v => { notes[i] = notes[i] || { title: '', text: '' }; notes[i].text = v; }, btn);
 }
 
+// One-tap from the day screen: open Notes, make a fresh note, start talking
+function quickVoiceNote(btn) {
+  if (__activeRecognition) { try { __activeRecognition.stop(); } catch (_) {} return; }
+  document.getElementById('notesSection').classList.remove('hidden');
+  if (!notes.length || (notes[notes.length - 1].text || '').trim()) addNote();
+  renderNotes();
+  const i = notes.length - 1;
+  document.getElementById('notesSection').scrollIntoView({ behavior: 'smooth' });
+  toggleDictation('noteText_' + i, v => { notes[i].text = v; }, btn);
+}
+
 // ═══════════════════════════════
 // CONTACTS
 // ═══════════════════════════════
@@ -5317,12 +5398,13 @@ function updateDashboard() {
     txt.textContent = segments.length ? 'Paused' : 'Not started';
     timer.textContent = '';
   }
-  document.getElementById('dashDriveTotal').textContent = fmtHrsShort(totalMsByType('drive'));
-  document.getElementById('dashSiteTotal').textContent = fmtHrsShort(totalMsByType('workday'));
-  const m = totalMilesFromSegments();
-  document.getElementById('dashMilesTotal').textContent = m ? m.toLocaleString() : '0';
-  const spent = receipts.reduce((sum, r) => sum + (parseFloat(r.amount) || 0), 0);
-  document.getElementById('dashSpentTotal').textContent = '$' + spent.toFixed(0);
+  // Tiles show THIS WEEK across all jobs (resets Sunday) — render cache now, refresh in background
+  renderWeekTiles();
+  refreshWeekAgg();
+  // Today, hotel-to-hotel (first departure → now/return)
+  const todaySpan = hotelToHotelMs(new Date());
+  const tEl = document.getElementById('dashTodaySpan');
+  if (tEl) tEl.textContent = todaySpan ? 'Today: ' + fmtHrsShort(todaySpan) + ' hotel-to-hotel' : '';
   document.getElementById('dashStopBtn').disabled = !live;
   // Day flow card + collapsed Job Info summary line
   renderDayFlow();
@@ -5690,6 +5772,7 @@ async function stopCurrentSegment() {
   }
   renderSegments();
   updateDashboard();
+  refreshWeekAgg(true); // segment just closed — recompute the week now
   scheduleAutoSave();
   // Drive segment → prompt for end odometer
   if (running.type === 'drive') {
@@ -9665,6 +9748,7 @@ function applyDraftState(s) {
   renderCommunications();
   renderDiscrepancies();
   updateDashboard();
+  refreshWeekAgg(true); // recompute week totals for the newly loaded job
   refreshPinDisplay();
   // If there's a live segment running, restart the ticker
   if (getRunningSegment()) startSegmentTicker();
@@ -10330,6 +10414,7 @@ async function maybeShowEodBanner() {
   // Initial dashboard render
   renderSegments();
   updateDashboard();
+  refreshWeekAgg(true); // seed this-week totals across all jobs on startup
   // Resume the live-segment ticker if a segment was running on reload
   if (getRunningSegment()) startSegmentTicker();
   // Day flow: render card and build the week strip (emails are tap-driven now,

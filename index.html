@@ -812,6 +812,18 @@
     <div class="field"><label>Email</label><input type="email" id="jobEmail" placeholder="manager@store.com"></div>
   </div>
   <div class="form-row">
+    <div class="field"><label>Job Type</label>
+      <select id="jobKind" onchange="scheduleAutoSave();refreshDraftSelector()" style="padding:10px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:15px;font-family:inherit;outline:none">
+        <option value="">— Pick type —</option>
+        <option value="install">🔧 Install (may span days)</option>
+        <option value="service">🛠️ Service (one day)</option>
+      </select>
+    </div>
+    <div class="field"><label>Status</label>
+      <button id="jobDoneBtn" class="action-btn-sm" style="margin:0;padding:10px 12px;border-style:solid" onclick="toggleJobDone()">✓ Mark Job Done</button>
+    </div>
+  </div>
+  <div class="form-row">
     <div class="field"><label>Crew Size</label>
       <select id="crewSize" style="padding:10px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:15px;font-family:inherit;outline:none">
         <option value="1">1 — Solo Installer</option>
@@ -1546,6 +1558,8 @@ let pendingOdoTarget = null; // { segId, which:'start'|'end' }
 let communications = []; // { id, kind:'email'|'text'|'call'|'in-person', to, subject, summary, sentAt, responseReceived, responseAt, responseSummary }
 let discrepancies = []; // { id, area, specSays, siteShows, flaggedAt, raisedToOffice, responseReceived, responseAt, responseSummary }
 let dailyNotes = { workCompleted: '', blockers: '', selfNotes: '' }; // free-text fields filled in for daily report
+let jobDone = false;   // job marked complete (✓ Job Done); installs stay open until tapped, services auto-close at day end
+let jobDoneAt = '';    // ISO timestamp when the job was marked done
 let db = null;
 let lastReportHTML = '';
 let lastSummaryHTML = '';
@@ -3071,10 +3085,77 @@ async function dayLeaveSite() {
   refreshWeekStrip();
 }
 
+// ── JOB COMPLETION (Install vs Service) ──
+function updateJobDoneUI() {
+  const btn = document.getElementById('jobDoneBtn');
+  if (!btn) return;
+  if (jobDone) {
+    btn.textContent = '✓ Done — tap to reopen';
+    btn.style.background = 'var(--green)';
+    btn.style.color = '#fff';
+    btn.style.borderColor = 'var(--green)';
+  } else {
+    btn.textContent = '✓ Mark Job Done';
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.borderColor = 'var(--border)';
+  }
+}
+
+async function toggleJobDone() {
+  if (jobDone) { // reopen
+    jobDone = false; jobDoneAt = '';
+    updateJobDoneUI();
+    await autoSave();
+    await refreshDraftSelector();
+    showToast('Job reopened', 'info', 2500);
+    return;
+  }
+  const name = (document.getElementById('client').value || '').trim() || 'this job';
+  if (!confirm('Mark "' + name + '" as DONE?\n\nIt moves to your finished list (you can reopen it anytime).')) return;
+  jobDone = true; jobDoneAt = new Date().toISOString();
+  if (!document.getElementById('dateEnd').value) document.getElementById('dateEnd').value = new Date().toISOString().slice(0, 10);
+  updateJobDoneUI();
+  await autoSave();
+  await refreshDraftSelector();
+  showToast('✓ Job marked done — starting a fresh job', 'good', 3000);
+  await newDraft();
+}
+
+// At day's end, auto-close every SERVICE job worked today (install jobs stay open).
+async function autoCompleteServicesToday() {
+  const tk = dayKey();
+  const isServiceTodayOpen = (kind, done, segs) =>
+    kind === 'service' && !done && (segs || []).some(s => dayKey(s.startedAt) === tk);
+  // current in-memory job
+  if (isServiceTodayOpen(document.getElementById('jobKind')?.value, jobDone, segments)) {
+    jobDone = true; jobDoneAt = new Date().toISOString();
+    if (!document.getElementById('dateEnd').value) document.getElementById('dateEnd').value = new Date().toISOString().slice(0, 10);
+    updateJobDoneUI();
+    await autoSave();
+  }
+  // other saved drafts from today
+  if (db) {
+    try {
+      for (const d of await dbGetAllDrafts()) {
+        if (d.id === currentDraftId) continue;
+        const st = d.state || {};
+        if (isServiceTodayOpen(st.jobKind, st.jobDone, st.segments)) {
+          st.jobDone = true; st.jobDoneAt = new Date().toISOString();
+          if (!st.dateEnd) st.dateEnd = new Date().toISOString().slice(0, 10);
+          await dbPutDraft(d);
+        }
+      }
+    } catch (e) {}
+  }
+  await refreshDraftSelector();
+}
+
 // Evening bookend — closes out the day and emails the office "I'm back for the
 // night" (the only notification besides the morning "started driving").
 async function endOfDay() {
   if (getRunningSegment()) await stopCurrentSegment(); // capture final mileage / work time
+  await autoCompleteServicesToday(); // services close themselves; installs stay open
   const gps = await getGps();
   localStorage.setItem('dayEndEmailDate', dayKey());
   await sendDriveEmail('dayEnd', gps, Date.now());
@@ -7330,6 +7411,9 @@ function clearForm() {
   if (document.getElementById('workOrderBody')) renderWorkOrder();
   document.getElementById('crewSize').value = '1';
   document.getElementById('stdCrewSize').value = '';
+  document.getElementById('jobKind').value = '';
+  jobDone = false; jobDoneAt = '';
+  updateJobDoneUI();
   document.getElementById('dnWorkCompleted').value = '';
   document.getElementById('dnBlockers').value = '';
   document.getElementById('dnSelfNotes').value = '';
@@ -9649,6 +9733,8 @@ function serializeCurrentState() {
     driveBackHours: document.getElementById('driveBackHours').value,
     crewSize: document.getElementById('crewSize').value,
     stdCrewSize: document.getElementById('stdCrewSize').value,
+    jobKind: document.getElementById('jobKind').value,
+    jobDone, jobDoneAt,
     photos, receipts, jobFiles, notes, trips, contacts, videos,
     checklist, clockState, segments, pinnedLocation,
     communications, discrepancies, dailyNotes, userGuideDetails, gcDetails, workOrder
@@ -9731,6 +9817,9 @@ function applyDraftState(s) {
   }
   document.getElementById('crewSize').value = s.crewSize || '1';
   document.getElementById('stdCrewSize').value = s.stdCrewSize || '';
+  document.getElementById('jobKind').value = s.jobKind || '';
+  jobDone = !!s.jobDone; jobDoneAt = s.jobDoneAt || '';
+  updateJobDoneUI();
   document.getElementById('dnWorkCompleted').value = dailyNotes.workCompleted || '';
   document.getElementById('dnBlockers').value = dailyNotes.blockers || '';
   document.getElementById('dnSelfNotes').value = dailyNotes.selfNotes || '';
@@ -9850,15 +9939,26 @@ async function refreshDraftSelector() {
   drafts.sort((a, b) => b.savedAt - a.savedAt);
   const sel = document.getElementById('draftSelector');
   if (!sel) return;
+  const kindIcon = k => k === 'install' ? '🔧 ' : k === 'service' ? '🛠️ ' : '';
+  const openDrafts = drafts.filter(d => !(d.state && d.state.jobDone));
+  const doneDrafts = drafts.filter(d => d.state && d.state.jobDone);
   let html;
-  if (!drafts.length) {
-    const label = currentTripId ? '— No jobs in this trip yet — tap + New —' : '— No solo jobs —';
+  if (!openDrafts.length) {
+    const label = currentTripId ? '— No open jobs in this trip — tap + New —' : '— No open solo jobs —';
     html = `<option value="">${label}</option>`;
   } else {
-    html = drafts.map(d => {
-      const label = d.name + (d.meta ? ' (' + d.meta + ')' : '');
+    html = openDrafts.map(d => {
+      const label = kindIcon(d.state?.jobKind) + d.name + (d.meta ? ' (' + d.meta + ')' : '');
       return `<option value="${d.id}"${d.id === currentDraftId ? ' selected' : ''}>${esc(label)}</option>`;
     }).join('');
+  }
+  // Jobs marked done this trip — still reopenable (return visit, punch list)
+  if (doneDrafts.length) {
+    html += `<optgroup label="✓ Done this trip — pick to reopen">` +
+      doneDrafts.map(d => {
+        const label = kindIcon(d.state?.jobKind) + d.name + (d.meta ? ' (' + d.meta + ')' : '');
+        return `<option value="${d.id}"${d.id === currentDraftId ? ' selected' : ''}>✓ ${esc(label)}</option>`;
+      }).join('') + `</optgroup>`;
   }
   // Finished jobs ride along at the bottom — picking one reopens it so a
   // return visit (service call, punch list) lands on the right job

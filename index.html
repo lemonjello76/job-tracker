@@ -1778,7 +1778,7 @@ const firebaseConfig = {
   messagingSenderId: "491853979701",
   appId: "1:491853979701:web:64da6ffeb49e9c6e4d517c"
 };
-const APP_VERSION = '2026-06-22.2'; // bump on each deploy so the header confirms what's live
+const APP_VERSION = '2026-06-22.3'; // bump on each deploy so the header confirms what's live
 const CLOUD_USER_ID = 'lyle-mistamerica';  // fixed for now — single-user app
 let cloudReady = false;
 let lastCloudError = ''; // last Firestore failure (code/message) — surfaced via the cloud indicator
@@ -1903,6 +1903,9 @@ async function pullFromCloud() {
     for (const dSnap of draftsSnap.docs) {
       const cloudDraft = dSnap.data();
       const localDraft = await dbGetDraft(cloudDraft.id);
+      // Newest-wins: if local was saved more recently than cloud, keep local
+      // untouched (it'll push up on the next save). Protects unsynced work.
+      if (localDraft && (localDraft.savedAt || 0) > (cloudDraft.savedAt || 0)) continue;
       const mergedState = mergeStatesPreservingBinaries(localDraft && localDraft.state, cloudDraft.state);
       await dbPutDraft({ ...cloudDraft, state: mergedState });
     }
@@ -1911,6 +1914,8 @@ async function pullFromCloud() {
     for (const jSnap of jobsSnap.docs) {
       const cloudJob = jSnap.data();
       const localJob = await dbGet(parseInt(jSnap.id, 10));
+      // Newest-wins: keep a more-recently-saved local job as-is
+      if (localJob && (localJob.savedAt || 0) > (cloudJob.savedAt || 0)) continue;
       const merged = { ...cloudJob };
       if (localJob) {
         // Local report HTML wins (has the photos baked in)
@@ -2652,6 +2657,20 @@ function exportMasterLogPDF() {
 }
 
 // Manual sync button handler
+// Upload every local draft / job / trip to the cloud. Used on reconnect so the
+// phone (which has the freshest data after an outage) becomes the cloud truth
+// BEFORE any pull can bring stale cloud data back down.
+async function pushAllToCloud() {
+  if (!cloudReady) return;
+  setSyncStatus('syncing');
+  try {
+    for (const d of await dbGetAllDrafts()) await cloudPushDraft(d);
+    for (const j of await dbGetAll()) await cloudPushJob(j);
+    if (typeof dbGetAllTrips === 'function') { for (const t of await dbGetAllTrips()) await cloudPushTrip(t); }
+    setSyncStatus('synced');
+  } catch (e) { noteCloudError(e); setSyncStatus('error'); throw e; }
+}
+
 async function manualSync() {
   if (!cloudReady) {
     alert('Cloud sync not available right now (offline or Firebase failed to load). Try refreshing the page.');
@@ -2663,7 +2682,8 @@ async function manualSync() {
     // Probe write — surfaces permission/config errors directly instead of hiding them
     await cloudUserRef.collection('_meta').doc('ping').set({ at: Date.now(), v: APP_VERSION });
     await autoSave();
-    await pullFromCloud();
+    await pushAllToCloud(); // phone → cloud first (phone is freshest after the outage)
+    await pullFromCloud();  // cloud → phone, but newest-wins keeps your local work
     setSyncStatus('synced');
     showToast('☁️ Sync complete', 'good', 2500);
   } catch (e) {

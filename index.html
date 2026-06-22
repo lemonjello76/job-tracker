@@ -10105,19 +10105,28 @@ async function sendDriveEmail(kind, gps, whenMs, testMode, durationMs) {
 // night" — see endOfDay()). Every other start/stop is recorded silently.
 function dayKey(ms) { return new Date(ms || Date.now()).toLocaleDateString('en-CA'); } // local YYYY-MM-DD
 
-// Called when a drive STARTS — emails only on the first drive of the day.
-function onDriveStarted(seg) {
-  if (!seg || seg.type !== 'drive') return;
-  const today = dayKey(seg.startedAt);
-  if (localStorage.getItem('dayDepartEmailDate') === today) return; // morning bookend already sent
+// Morning bookend — fires once on the FIRST activity of the day, whether that's
+// a drive or starting work (so days that begin on-site still send the notice).
+function sendMorningBookendOnce(kind, gps, whenMs) {
+  const today = dayKey(whenMs);
+  if (localStorage.getItem('dayDepartEmailDate') === today) return; // already sent today
   localStorage.setItem('dayDepartEmailDate', today);
-  sendDriveEmail('start', seg.startGps, seg.startedAt);
+  sendDriveEmail(kind, gps, whenMs); // 'start' = started driving, 'work' = started work
 }
 
-// Drive end / work start / work end are recorded silently — no email.
-// (The evening bookend is sent explicitly from endOfDay().)
+// Called when a drive STARTS — first drive of the day = the morning bookend.
+function onDriveStarted(seg) {
+  if (!seg || seg.type !== 'drive') return;
+  sendMorningBookendOnce('start', seg.startGps, seg.startedAt);
+}
+
+// Work start: silent UNLESS it's the day's first activity — then it's the
+// morning bookend. Work end is always silent.
+function onWorkStarted(seg) {
+  if (!seg || seg.type !== 'workday') return;
+  sendMorningBookendOnce('work', seg.startGps, seg.startedAt);
+}
 async function onDriveEnded(seg) { /* silent — bookends only */ }
-function onWorkStarted(seg) { /* silent — bookends only */ }
 function onWorkEnded(seg) { /* silent — bookends only */ }
 
 // ── END-OF-DAY PHOTO EMAIL ──

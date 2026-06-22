@@ -893,6 +893,10 @@
     <button onclick="toggleTimeLog()" style="background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
   </h2>
   <div style="font-size:11px;color:var(--dim);margin-bottom:8px">Day-to-day numbers live in the week strip up top — this is the deep-edit view (notes, odometer photos, trip-level flags). Tap 🚗 DRIVE or 🏗️ SITE on the dashboard to open it.</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+    <button class="action-btn-sm" style="margin:0;font-size:12px" onclick="addPastSegment('drive')">+ Add past drive</button>
+    <button class="action-btn-sm" style="margin:0;font-size:12px" onclick="addPastSegment('workday')">+ Add past workday</button>
+  </div>
   <div id="segmentsList"></div>
 </div>
 
@@ -5512,10 +5516,37 @@ function startSegmentTicker() {
   }, 1000);
 }
 
+// Backfill a forgotten day — creates a segment (default: yesterday 8am, 4h) and
+// opens it straight in the editor so you set the date, duration, and miles.
+function addPastSegment(type) {
+  const d = new Date(); d.setDate(d.getDate() - 1); d.setHours(8, 0, 0, 0);
+  const start = d.getTime();
+  const seg = {
+    id: newSegId(), type, startedAt: start, endedAt: start + 4 * 3600000,
+    startGps: null, endGps: null, startOdoPhoto: null, startOdoMiles: null,
+    endOdoPhoto: null, endOdoMiles: null, manualMiles: null,
+    note: 'added later', tripLevel: type === 'drive'
+  };
+  segments.push(seg);
+  editingSegmentId = seg.id;
+  const sec = document.getElementById('segmentsSection');
+  if (sec) sec.classList.remove('hidden');
+  renderSegments();
+  updateDashboard();
+  refreshWeekAgg(true);
+  scheduleAutoSave();
+  setTimeout(() => {
+    const el = document.querySelector(`[data-segid="${seg.id}"]`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 60);
+  showToast('Set the date, time' + (type === 'drive' ? ' and miles' : '') + ', then ✓ Save', 'info', 5000);
+}
+
 function renderSegments() {
   const list = document.getElementById('segmentsList');
   if (!list) return;
-  document.getElementById('segmentCount').textContent = segments.length;
+  const cntEl = document.getElementById('segmentCount');
+  if (cntEl) cntEl.textContent = segments.length;
   if (!segments.length) {
     list.innerHTML = '<p style="color:var(--dim);text-align:center;padding:14px;font-size:13px">No segments yet. Tap a Start button above to begin tracking time.</p>';
     return;
@@ -5722,6 +5753,7 @@ function saveSegmentEdit(id) {
   editingSegmentId = null;
   renderSegments();
   updateDashboard();
+  refreshWeekAgg(true); // a backfilled/edited day changes this week's totals
   scheduleAutoSave();
   showToast('✓ Segment updated', 'good', 2000);
 }

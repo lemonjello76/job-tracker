@@ -3203,12 +3203,22 @@ function toggleJobInfo() {
 //  top-level `let workOrder = newWorkOrder()` can reference them at load.)
 // ═══════════════════════════════
 // Open from the big button — reveal the section and expand the body
+// Pull what the app already knows about this job into the Work Order — fills
+// only blanks, so it never clobbers anything you've already typed on the form.
+function prefillWorkOrderFromJob() {
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  if (!workOrder.custName && g('client')) workOrder.custName = g('client');
+  if (!workOrder.custCity && g('city')) workOrder.custCity = g('city');
+  if (!workOrder.custState && g('state')) workOrder.custState = g('state').toUpperCase().slice(0, 2);
+  if (!workOrder.woDate) workOrder.woDate = g('dateStart') || new Date().toISOString().slice(0, 10);
+}
+
 function openWorkOrder() {
   const sec = document.getElementById('workOrderSection');
   sec.classList.remove('hidden');
-  const body = document.getElementById('workOrderBody');
-  if (!body.innerHTML) renderWorkOrder();
-  body.style.display = '';
+  prefillWorkOrderFromJob();
+  renderWorkOrder(); // rebuild so the pulled-in job details show
+  document.getElementById('workOrderBody').style.display = '';
   document.getElementById('workOrderCaret').textContent = '▾';
   refreshWoSignatures();
   sec.scrollIntoView({ behavior: 'smooth', block: 'start' });

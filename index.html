@@ -805,6 +805,11 @@
     <div class="field"><label>Date Started</label><input type="date" id="dateStart"></div>
     <div class="field"><label>Date Completed</label><input type="date" id="dateEnd"></div>
   </div>
+  <div class="form-row three">
+    <div class="field"><label>Address</label><input type="text" id="jobAddress" placeholder="123 Main St"></div>
+    <div class="field"><label>Phone</label><input type="tel" id="jobPhone" placeholder="(480) 555-0100"></div>
+    <div class="field"><label>Email</label><input type="email" id="jobEmail" placeholder="manager@store.com"></div>
+  </div>
   <div class="form-row">
     <div class="field"><label>Crew Size</label>
       <select id="crewSize" style="padding:10px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:15px;font-family:inherit;outline:none">
@@ -3210,6 +3215,9 @@ function prefillWorkOrderFromJob() {
   if (!workOrder.custName && g('client')) workOrder.custName = g('client');
   if (!workOrder.custCity && g('city')) workOrder.custCity = g('city');
   if (!workOrder.custState && g('state')) workOrder.custState = g('state').toUpperCase().slice(0, 2);
+  if (!workOrder.custAddress && g('jobAddress')) workOrder.custAddress = g('jobAddress');
+  if (!workOrder.custPhone && g('jobPhone')) workOrder.custPhone = g('jobPhone');
+  if (!workOrder.custEmail && g('jobEmail')) workOrder.custEmail = g('jobEmail');
   if (!workOrder.woDate) workOrder.woDate = g('dateStart') || new Date().toISOString().slice(0, 10);
 }
 
@@ -3345,7 +3353,7 @@ function renderWorkOrder() {
 
   // — Notes & recommendations —
   html += `<div class="wo-sub">Notes & Recommendations</div>`;
-  html += `<div class="field" style="margin-bottom:12px"><label>Notes</label><textarea id="woNotes" oninput="workOrder.notes=this.value;scheduleAutoSave()" placeholder="e.g. Summer Start Up for Rental">${esc(w.notes || '')}</textarea></div>`;
+  html += `<div class="field" style="margin-bottom:12px"><label>Notes</label><textarea id="woNotes" oninput="workOrder.notes=this.value;scheduleAutoSave()" placeholder="e.g. Summer Start Up for Rental — or tap 🎤 and say it">${esc(w.notes || '')}</textarea><button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px;align-self:flex-start" onclick="toggleDictation('woNotes', v=>{workOrder.notes=v;}, this)">🎤 Dictate</button></div>`;
   html += `<div class="field" style="margin-bottom:12px"><label>Additional Recommendations</label><textarea id="woAddRecs" oninput="workOrder.additionalRecs=this.value;scheduleAutoSave()"></textarea></div>`;
   html += `<div class="field" style="margin-bottom:12px"><label>Reason for Return Trip</label><textarea id="woReturn" oninput="workOrder.returnReason=this.value;scheduleAutoSave()"></textarea></div>`;
   html += `<div style="font-size:11px;color:var(--dim);font-style:italic;background:var(--input);padding:10px 12px;border-radius:var(--radius);margin-bottom:14px">Parts Warranty: All parts as recorded are warrantied for one year, with the exception of nozzles and filters. We do not warranty parts purchased from others even if we install them. If repairs become necessary later due to other defective parts, they will be charged separately.</div>`;
@@ -4794,14 +4802,92 @@ function addNote() {
 function addNoteIfEmpty() {
   if (!notes.length) addNote();
 }
+
+// ═══════════════════════════════
+// VOICE DICTATION — tap mic, talk, words land in the field
+// Reusable: pass a field id, a commit callback, and the mic button element.
+// ═══════════════════════════════
+let __activeRecognition = null;
+let __activeMicBtn = null;
+
+function speechSupported() {
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+function stopDictationUI() {
+  if (__activeMicBtn) {
+    __activeMicBtn.textContent = __activeMicBtn.dataset.idle || '🎤';
+    __activeMicBtn.style.background = '';
+    __activeMicBtn.style.color = '';
+  }
+  __activeRecognition = null;
+  __activeMicBtn = null;
+}
+
+function toggleDictation(elId, onCommit, btn) {
+  // Tapping again (or any active mic) stops the current session
+  if (__activeRecognition) {
+    try { __activeRecognition.stop(); } catch (_) {}
+    return;
+  }
+  if (!speechSupported()) {
+    showToast('Voice typing needs Chrome or Safari — type it instead', 'warn', 4000);
+    return;
+  }
+  const el = document.getElementById(elId);
+  if (!el) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new SR();
+  rec.lang = 'en-US';
+  rec.continuous = true;
+  rec.interimResults = true;
+  const base = el.value ? el.value.trimEnd() + ' ' : ''; // append to whatever's already there
+  let finalText = '';
+  rec.onresult = e => {
+    let interim = '';
+    finalText = '';
+    for (let k = 0; k < e.results.length; k++) {
+      const t = e.results[k][0].transcript;
+      if (e.results[k].isFinal) finalText += t; else interim += t;
+    }
+    el.value = base + finalText + interim;
+    if (onCommit) onCommit(el.value);
+  };
+  rec.onerror = ev => {
+    stopDictationUI();
+    if (ev && ev.error === 'not-allowed') showToast('Mic blocked — allow microphone access for this site', 'warn', 5000);
+  };
+  rec.onend = () => {
+    el.value = (base + finalText).trim();
+    if (onCommit) onCommit(el.value);
+    scheduleAutoSave();
+    stopDictationUI();
+  };
+  __activeRecognition = rec;
+  __activeMicBtn = btn || null;
+  if (__activeMicBtn) {
+    __activeMicBtn.dataset.idle = __activeMicBtn.textContent;
+    __activeMicBtn.textContent = '⏹ Stop';
+    __activeMicBtn.style.background = 'var(--red)';
+    __activeMicBtn.style.color = '#fff';
+  }
+  showToast('🎤 Listening — tap Stop when done', 'good', 3000);
+  try { rec.start(); } catch (_) { stopDictationUI(); }
+}
 function renderNotes() {
   document.getElementById('notesList').innerHTML = notes.map((n, i) => `
     <div class="note-card">
       <button class="remove-btn" onclick="notes.splice(${i},1);renderNotes()">×</button>
       <input type="text" placeholder="Topic — e.g. Water Quality, Switch Locations, Ladder Needed..." value="${esc(n.title)}" onchange="notes[${i}].title=this.value">
-      <textarea placeholder="Details..." onchange="notes[${i}].text=this.value">${esc(n.text)}</textarea>
+      <textarea id="noteText_${i}" placeholder="Details… or tap 🎤 and just say what you did" oninput="notes[${i}].text=this.value" onchange="notes[${i}].text=this.value">${esc(n.text)}</textarea>
+      <button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px" onclick="dictateNote(${i}, this)">🎤 Dictate</button>
     </div>
   `).join('');
+}
+
+// dictate spoken words straight into note i's details box
+function dictateNote(i, btn) {
+  toggleDictation('noteText_' + i, v => { notes[i] = notes[i] || { title: '', text: '' }; notes[i].text = v; }, btn);
 }
 
 // ═══════════════════════════════
@@ -7135,6 +7221,9 @@ function clearForm() {
   document.getElementById('client').value = '';
   document.getElementById('city').value = '';
   document.getElementById('state').value = '';
+  document.getElementById('jobAddress').value = '';
+  document.getElementById('jobPhone').value = '';
+  document.getElementById('jobEmail').value = '';
   document.getElementById('dateStart').value = '';
   document.getElementById('dateEnd').value = '';
   document.getElementById('siteHours').value = '';
@@ -9467,6 +9556,9 @@ function serializeCurrentState() {
     client: document.getElementById('client').value,
     city: document.getElementById('city').value,
     state: document.getElementById('state').value,
+    jobAddress: document.getElementById('jobAddress').value,
+    jobPhone: document.getElementById('jobPhone').value,
+    jobEmail: document.getElementById('jobEmail').value,
     dateStart: document.getElementById('dateStart').value,
     dateEnd: document.getElementById('dateEnd').value,
     siteHours: document.getElementById('siteHours').value,
@@ -9485,6 +9577,9 @@ function applyDraftState(s) {
   document.getElementById('client').value = s.client || '';
   document.getElementById('city').value = s.city || '';
   document.getElementById('state').value = s.state || '';
+  document.getElementById('jobAddress').value = s.jobAddress || '';
+  document.getElementById('jobPhone').value = s.jobPhone || '';
+  document.getElementById('jobEmail').value = s.jobEmail || '';
   document.getElementById('dateStart').value = s.dateStart || '';
   document.getElementById('dateEnd').value = s.dateEnd || '';
   document.getElementById('siteHours').value = s.siteHours || '';

@@ -2679,13 +2679,14 @@ function toggleSection(id) {
 }
 
 // Try to get current GPS — quick timeout, no big delay if denied or unavailable
+let lastKnownGps = null; // most recent successful fix — reused when a fresh one fails
 function getGps() {
   return new Promise(resolve => {
-    if (!navigator.geolocation) return resolve(null);
+    if (!navigator.geolocation) return resolve(lastKnownGps);
     navigator.geolocation.getCurrentPosition(
-      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 6000, maximumAge: 30000 }
+      pos => { lastKnownGps = { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }; resolve(lastKnownGps); },
+      () => resolve(lastKnownGps), // denied / timeout / no signal → fall back to last known, not null
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
     );
   });
 }
@@ -2949,38 +2950,17 @@ async function dayYesJob() {
     onDriveEnded(running); // arrival email if a morning drive armed it
     if (running.type === 'drive') setTimeout(() => promptOdometerPhoto(running.id, 'end'), 250);
   }
-  // Back-end intelligence: inside a pinned job's fence → that's the job, no questions
-  let placed = false;
-  if (gps) {
-    const nearest = await findNearestPinnedJob(gps);
-    if (nearest && nearest.inside) {
-      if (nearest.draft.id !== currentDraftId) await switchToDraft(nearest.draft.id);
-      placed = true;
-      showToast(`📍 You're at "${nearest.draft.name}"`, 'good', 3000);
-    }
-  }
-  if (!placed) {
-    const ok = await dayPickJob(gps);
-    if (!ok) { renderDayFlow(); refreshWeekStrip(); return; } // backed out — drive stays ended
-  }
+  // Always let you choose — picker shows the nearest pinned job on top AND a
+  // "➕ New job here" button, so being near an old site never traps you.
+  const ok = await dayPickJob(gps);
+  if (!ok) { renderDayFlow(); refreshWeekStrip(); return; } // backed out — drive stays ended
   await dayBeginWorkSegment(gps);
 }
 
 async function dayStartWork() {   // woke up on site — no drive first
   const gps = await getGps();
-  let placed = false;
-  if (gps) {
-    const nearest = await findNearestPinnedJob(gps);
-    if (nearest && nearest.inside) {
-      if (nearest.draft.id !== currentDraftId) await switchToDraft(nearest.draft.id);
-      placed = true;
-      showToast(`📍 You're at "${nearest.draft.name}"`, 'good', 3000);
-    }
-  }
-  if (!placed) {
-    const ok = await dayPickJob(gps);
-    if (!ok) return;
-  }
+  const ok = await dayPickJob(gps);
+  if (!ok) return;
   await dayBeginWorkSegment(gps);
 }
 
@@ -5427,6 +5407,24 @@ async function getCurrentWeekHours() {
 // ═══════════════════════════════
 function newSegId() { return 'seg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 function getRunningSegment() { return segments.find(s => !s.endedAt); }
+
+// A timer left running from an earlier day would keep counting into today (and
+// inflate the week). On load, close any such segment, bounded to its own day,
+// so yesterday's drive can never lump into today.
+function closeStaleRunningSegment() {
+  const r = getRunningSegment();
+  if (!r) return false;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  if (r.startedAt >= todayStart.getTime()) return false; // started today — leave it live
+  const dayEnd = new Date(r.startedAt); dayEnd.setHours(23, 59, 0, 0);
+  r.endedAt = Math.min(Date.now(), dayEnd.getTime()); // never spill past its own day
+  r.note = (r.note ? r.note + ' · ' : '') + 'auto-closed (left running — set the real end time)';
+  if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
+  if (driftCheckInterval) { clearInterval(driftCheckInterval); driftCheckInterval = null; }
+  renderSegments(); updateDashboard(); refreshWeekAgg(true); scheduleAutoSave();
+  showToast('A timer from an earlier day was left running — I closed it. Check its end time in the Time Log.', 'warn', 8000);
+  return true;
+}
 
 function fmtHrsShort(ms) {
   const h = ms / 3600000;
@@ -10076,7 +10074,13 @@ async function sendDriveEmail(kind, gps, whenMs, testMode, durationMs) {
   if (!cfg || typeof emailjs === 'undefined') return false; // not set up — skip silently
   const when = new Date(whenMs);
   const geo = await reverseGeocode(gps);
-  const place = geo ? (geo.city + (geo.state ? ', ' + geo.state : '')) : 'an unknown location';
+  let place = geo ? (geo.city + (geo.state ? ', ' + geo.state : '')) : '';
+  if (!place) { // GPS/geocode failed — fall back to the job's own city/state
+    const c = (document.getElementById('city')?.value || '').trim();
+    const st = (document.getElementById('state')?.value || '').trim();
+    place = [c, st].filter(Boolean).join(', ');
+  }
+  if (!place) place = 'an unknown location';
   const timeOfDay = when.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
   const dayStr = when.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   let message, subject;
@@ -10670,6 +10674,7 @@ async function maybeShowEodBanner() {
   // Initial dashboard render
   renderSegments();
   updateDashboard();
+  closeStaleRunningSegment(); // close any timer left running from a previous day
   refreshWeekAgg(true); // seed this-week totals across all jobs on startup
   // Resume the live-segment ticker if a segment was running on reload
   if (getRunningSegment()) startSegmentTicker();

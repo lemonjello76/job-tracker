@@ -1778,7 +1778,7 @@ const firebaseConfig = {
   messagingSenderId: "491853979701",
   appId: "1:491853979701:web:64da6ffeb49e9c6e4d517c"
 };
-const APP_VERSION = '2026-06-22.3'; // bump on each deploy so the header confirms what's live
+const APP_VERSION = '2026-06-22.4'; // bump on each deploy so the header confirms what's live
 const CLOUD_USER_ID = 'lyle-mistamerica';  // fixed for now — single-user app
 let cloudReady = false;
 let lastCloudError = ''; // last Firestore failure (code/message) — surfaced via the cloud indicator
@@ -5631,6 +5631,10 @@ function renderSegments() {
             <input type="datetime-local" id="editEnd_${s.id}" value="${endVal}" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px">
           </div>
         </div>
+        <div style="margin-bottom:10px">
+          <label style="font-size:11px;color:var(--dim);font-weight:600">TOTAL HOURS — type it directly (e.g. 10.7); overrides the end time above</label>
+          <input type="number" step="0.1" id="editHours_${s.id}" value="${s.endedAt ? ((s.endedAt - s.startedAt) / 3600000).toFixed(1) : ''}" placeholder="e.g. 10.7" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px">
+        </div>
         ${s.type === 'drive' ? `
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
           <div>
@@ -5771,6 +5775,12 @@ function saveSegmentEdit(id) {
   }
   if (endInput && endInput.value !== endInput.defaultValue) {
     s.endedAt = endInput.value ? new Date(endInput.value).getTime() : null;
+  }
+  // Total-hours override — if edited, it sets the end from start + hours (wins over the end field)
+  const hoursInput = document.getElementById(`editHours_${id}`);
+  if (hoursInput && hoursInput.value !== hoursInput.defaultValue) {
+    const h = parseFloat(hoursInput.value);
+    if (!isNaN(h) && h >= 0) s.endedAt = s.startedAt + Math.round(h * 3600000);
   }
   if (startMiInput) {
     const v = parseFloat(startMiInput.value);

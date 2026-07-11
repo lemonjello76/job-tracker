@@ -137,8 +137,8 @@ const doc = dom.window.document;
   const findBtn = (re) => [...doc.querySelectorAll('button')].find(b => re.test((b.textContent || '').replace(/\s+/g, ' ').trim()));
   const required = [
     ['CHECKLIST',       /CHECKLIST/],
-    ['UPLOAD VIDEOS',   /UPLOAD VIDEOS/],
-    ['UPLOAD PHOTOS',   /UPLOAD PHOTOS/],
+    ['VIDEOS',          /VIDEOS/],
+    ['PHOTOS',          /PHOTOS/],
     ['COMM LOG',        /COMM LOG/],
     ['START DRIVE',     /START DRIVE/],
     ['FULL REPORT',     /^FULL REPORT$/],

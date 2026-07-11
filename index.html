@@ -6,12 +6,16 @@
 <title>MistAmerica Job Tracker</title>
 <!-- PWA — installable, offline-capable -->
 <link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#1e40af">
+<meta name="theme-color" content="#0d0e10">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Job Tracker">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
+<!-- Type: DIN-flavored condensed grotesque — jobsite signage, not app-store gloss -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
 <!-- Firebase (cloud sync between phone and laptop) -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
@@ -30,32 +34,44 @@
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
-    --bg: #111318;
-    --surface: #1a1d26;
-    --input: #242836;
-    --border: #333849;
-    --text: #e8eaf0;
-    --dim: #8b90a0;
-    --accent: #4f8cff;
-    --green: #22c55e;
-    --green-hover: #16a34a;
-    --red: #ef4444;
-    --yellow: #fbbf24;
-    --radius: 8px;
+    /* Asphalt + steel + safety amber — equipment-panel palette */
+    --bg: #0d0e10;
+    --surface: #17181c;
+    --input: #1f2127;
+    --border: #34373f;
+    --text: #eceded;
+    --dim: #969aa4;
+    --accent: #f5a300;       /* safety amber — the working color */
+    --accent-press: #d18b00;
+    --green: #34c063;        /* go / on-site */
+    --green-hover: #2aa554;
+    --red: #e5484d;
+    --yellow: #ffc53d;
+    --radius: 6px;
+    --font-disp: 'Barlow Condensed', 'Arial Narrow', -apple-system, sans-serif;
+    --font-body: 'Barlow', -apple-system, 'Segoe UI', Roboto, sans-serif;
+    /* thin hazard tape, used as an accent edge only */
+    --hazard: repeating-linear-gradient(-45deg, #f5a300 0 10px, #131418 10px 20px);
   }
   body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--bg);
+    font-family: var(--font-body);
+    background:
+      radial-gradient(1200px 500px at 50% -200px, rgba(245,163,0,0.05), transparent 60%),
+      var(--bg);
     color: var(--text);
     line-height: 1.5;
     min-height: 100vh;
   }
+  /* Icon plumbing — inline SVG symbols, stroke follows text color */
+  .ic { width: 1.25em; height: 1.25em; vertical-align: -0.25em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .ic-lg { width: 30px; height: 30px; }
 
-  /* Header bar */
+  /* Header bar — name plate riveted to the top */
   .header {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 14px 20px;
+    background: #121316;
+    border-bottom: 1px solid #000;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 2px 8px rgba(0,0,0,0.5);
+    padding: 10px 16px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -63,25 +79,57 @@
     top: 0;
     z-index: 50;
   }
-  .header h1 { font-size: 20px; font-weight: 700; }
+  .header::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; bottom: -4px;
+    height: 4px;
+    background: var(--hazard);
+    opacity: .85;
+  }
+  .header h1 {
+    font-family: var(--font-disp);
+    font-size: 22px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    line-height: 1;
+  }
   .header h1 span { color: var(--accent); }
+  .header h1 small {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    color: var(--dim);
+    margin-top: 2px;
+  }
   .header-btn {
-    padding: 8px 16px;
+    padding: 9px 14px;
     background: var(--input);
     border: 1px solid var(--border);
+    border-bottom-color: #000;
     border-radius: var(--radius);
     color: var(--text);
+    font-family: var(--font-disp);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
   }
   .header-btn:hover { border-color: var(--accent); }
 
   .main { max-width: 900px; margin: 0 auto; padding: 20px; }
   h2 {
-    font-size: 14px;
+    font-family: var(--font-disp);
+    font-size: 15px;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.5px;
     color: var(--dim);
     margin-bottom: 12px;
   }
@@ -123,40 +171,57 @@
   .field input:focus, .field select:focus, .field textarea:focus { border-color: var(--accent); }
   .field textarea { resize: vertical; min-height: 60px; }
 
-  /* Big action buttons */
+  /* Tool tiles — machined steel, glove-sized */
   .actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 14px;
+    gap: 10px;
     margin-bottom: 16px;
   }
   .action-btn {
-    padding: 18px;
-    border: 2px dashed var(--border);
+    min-height: 76px;
+    padding: 14px 10px;
+    border: 1px solid var(--border);
+    border-top-color: #43464e;
+    border-bottom-color: #000;
     border-radius: var(--radius);
-    background: var(--surface);
+    background: linear-gradient(180deg, #22242a, #191b1f);
     color: var(--text);
-    font-size: 15px;
+    font-family: var(--font-disp);
+    font-size: 17px;
     font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
     cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
+    transition: border-color 0.15s;
     text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
   }
-  .action-btn:hover { border-color: var(--accent); background: var(--input); }
-  .action-btn .icon { font-size: 28px; display: block; margin-bottom: 4px; }
+  .action-btn:hover { border-color: var(--accent); }
+  .action-btn:active { transform: translateY(1px); }
+  .action-btn .ic { width: 26px; height: 26px; color: var(--accent); }
   .action-btn-sm {
     padding: 10px 16px;
-    border: 1px dashed var(--border);
+    border: 1px solid var(--border);
+    border-bottom-color: #000;
     border-radius: var(--radius);
-    background: var(--surface);
+    background: var(--input);
     color: var(--dim);
-    font-size: 13px;
+    font-family: var(--font-disp);
+    font-size: 14px;
     font-weight: 600;
+    letter-spacing: .6px;
+    text-transform: uppercase;
     cursor: pointer;
     display: inline-block;
     margin-bottom: 12px;
   }
   .action-btn-sm:hover { border-color: var(--accent); color: var(--text); }
+  .action-btn-sm:active { transform: translateY(1px); }
 
   /* Service Work Order form */
   .wo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
@@ -412,41 +477,54 @@
   .file-row .file-size { font-size: 12px; color: var(--dim); flex-shrink: 0; }
   .file-row img { width: 44px; height: 44px; object-fit: cover; border-radius: 4px; flex-shrink: 0; cursor: pointer; }
 
-  /* Bottom buttons */
+  /* Reports — one steel rack, not a paint store */
   .bottom-btns {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 14px;
+    gap: 10px;
     margin-bottom: 16px;
   }
   .generate-btn {
     width: 100%;
-    padding: 22px;
-    border: none;
+    padding: 16px 12px;
+    border: 1px solid var(--border);
+    border-top-color: #43464e;
+    border-bottom-color: #000;
+    border-left: 4px solid var(--accent);
     border-radius: var(--radius);
-    background: var(--green);
-    color: #fff;
-    font-size: 20px;
+    background: linear-gradient(180deg, #22242a, #191b1f);
+    color: var(--text);
+    font-family: var(--font-disp);
+    font-size: 16px;
     font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
     cursor: pointer;
-    transition: background 0.2s;
-    letter-spacing: 0.5px;
+    text-align: left;
+    transition: border-color 0.15s;
   }
-  .generate-btn:hover { background: var(--green-hover); }
+  .generate-btn:hover { border-color: var(--accent); }
+  .generate-btn:active { transform: translateY(1px); }
   .send-btn {
     width: 100%;
-    padding: 22px;
+    padding: 20px;
     border: none;
     border-radius: var(--radius);
-    background: var(--accent);
-    color: #fff;
+    background: linear-gradient(180deg, #ffb61e, #f5a300);
+    color: #101114;
+    font-family: var(--font-disp);
     font-size: 20px;
-    font-weight: 700;
+    font-weight: 800;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
     cursor: pointer;
-    transition: background 0.2s;
-    letter-spacing: 0.5px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.35),
+      inset 0 -3px 0 rgba(0,0,0,0.3),
+      0 4px 0 rgba(0,0,0,0.55);
   }
-  .send-btn:hover { background: #6fa0ff; }
+  .send-btn:hover { background: linear-gradient(180deg, #ffc244, #ffb61e); }
+  .send-btn:active { transform: translateY(3px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), 0 1px 0 rgba(0,0,0,0.55); }
 
   /* Sidebar */
   .sidebar-overlay {
@@ -565,28 +643,66 @@
 
   .hidden { display: none; }
 
-  /* DASHBOARD */
+  /* DASHBOARD / DAY BOARD */
   .dashboard {
     background: var(--surface);
     border: 1px solid var(--border);
+    border-top-color: #43464e;
     border-radius: var(--radius);
     padding: 14px;
     margin-bottom: 16px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.35);
+  }
+  /* Big date plate at the top of the day board */
+  .today-plate {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding: 2px 2px 10px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 12px;
+  }
+  .today-plate .tp-day {
+    font-family: var(--font-disp);
+    font-size: 30px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    line-height: 1;
+  }
+  .today-plate .tp-day span { color: var(--accent); }
+  .today-plate .tp-span {
+    font-family: var(--font-disp);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--dim);
+    font-variant-numeric: tabular-nums;
   }
   .dash-status {
-    font-size: 15px;
+    font-family: var(--font-disp);
+    font-size: 17px;
     font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
     text-align: center;
     margin-bottom: 12px;
     padding: 10px;
-    background: var(--input);
+    background: #101114;
+    border: 1px solid var(--border);
     border-radius: var(--radius);
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
   }
   .dash-status .dash-timer {
     color: var(--accent);
     font-variant-numeric: tabular-nums;
-    margin-left: 10px;
-    font-size: 18px;
+    font-size: 20px;
   }
   .dash-stats {
     display: grid;
@@ -595,44 +711,99 @@
     margin-bottom: 12px;
   }
   .dash-stat {
-    background: var(--input);
+    background: #101114;
     padding: 10px 4px;
     border-radius: var(--radius);
     text-align: center;
     cursor: pointer;
-    border: 1px solid transparent;
+    border: 1px solid var(--border);
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.5);
   }
   .dash-stat:hover { border-color: var(--accent); }
-  .dash-stat-label { font-size: 9px; color: var(--dim); font-weight: 700; letter-spacing: 1px; }
-  .dash-stat-value { font-size: 17px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .dash-stat-label { font-family: var(--font-disp); font-size: 11px; color: var(--dim); font-weight: 700; letter-spacing: 1.5px; }
+  .dash-stat-value { font-family: var(--font-disp); font-size: 22px; font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
   .dash-buttons {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
   }
+  /* Machine buttons — heavy, beveled, they press DOWN like real controls */
   .dash-btn {
-    padding: 14px 8px;
+    padding: 16px 10px;
     border: none;
     border-radius: var(--radius);
-    font-size: 14px;
-    font-weight: 700;
+    font-family: var(--font-disp);
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
     cursor: pointer;
-    color: #fff;
-    letter-spacing: 0.5px;
+    color: #101114;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.35),
+      inset 0 -3px 0 rgba(0,0,0,0.3),
+      0 4px 0 rgba(0,0,0,0.55),
+      0 6px 12px rgba(0,0,0,0.35);
   }
-  .dash-btn-drive { background: #4f8cff; }
-  .dash-btn-drive:hover { background: #6fa0ff; }
-  .dash-btn-work { background: #22c55e; }
-  .dash-btn-work:hover { background: #16a34a; }
-  .dash-btn-gas { background: #fbbf24; color: #111; }
-  .dash-btn-gas:hover { background: #f59e0b; }
-  .dash-btn-stop { background: #ef4444; }
-  .dash-btn-stop:hover { background: #dc2626; }
-  .dash-btn:disabled { background: var(--input); color: var(--dim); cursor: not-allowed; }
+  .dash-btn:active { transform: translateY(3px); box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), inset 0 -1px 0 rgba(0,0,0,0.3), 0 1px 0 rgba(0,0,0,0.55); }
+  .dash-btn-drive { background: linear-gradient(180deg, #ffb61e, #f5a300); }
+  .dash-btn-drive:hover { background: linear-gradient(180deg, #ffc244, #ffb61e); }
+  .dash-btn-work { background: linear-gradient(180deg, #45cf74, #34c063); }
+  .dash-btn-work:hover { background: linear-gradient(180deg, #58d883, #45cf74); }
+  .dash-btn-gas { background: linear-gradient(180deg, #ffd35c, #ffc53d); color: #101114; }
+  .dash-btn-gas:hover { background: linear-gradient(180deg, #ffdc7a, #ffd35c); }
+  .dash-btn-stop { background: linear-gradient(180deg, #ec5f63, #e5484d); color: #fff; }
+  .dash-btn-stop:hover { background: linear-gradient(180deg, #f07579, #ec5f63); }
+  .dash-btn:disabled { background: var(--input); color: var(--dim); cursor: not-allowed; box-shadow: none; }
+  /* The one MEGA control — whatever the day needs next */
+  .btn-mega { width: 100%; padding: 22px 12px; font-size: 24px; letter-spacing: 2px; }
+  .btn-mega .ic { width: 30px; height: 30px; }
+  /* End-of-day: flagged with hazard tape */
+  .btn-endday {
+    width: 100%;
+    margin-top: 10px;
+    padding: 14px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: #101114;
+    color: var(--text);
+    font-family: var(--font-disp);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-endday::before {
+    content: '';
+    position: absolute;
+    left: 0; right: 0; top: 0;
+    height: 5px;
+    background: var(--hazard);
+  }
+  .btn-endday:hover { border-color: var(--accent); }
+  .btn-endday:active { transform: translateY(1px); }
+  /* Day timeline rows (today panel) */
+  .day-row-ic { color: var(--accent); }
+  /* Utility bar under the day board */
+  .day-utils { display: flex; gap: 8px; margin-top: 10px; }
+  .day-utils .action-btn-sm { flex: 1; margin: 0; padding: 12px 8px; text-align: center; }
   @media (max-width:480px) {
     .dash-stats { gap: 4px; }
-    .dash-stat-value { font-size: 15px; }
-    .dash-btn { padding: 12px 4px; font-size: 13px; }
+    .dash-stat-value { font-size: 18px; }
+    .dash-btn { padding: 14px 6px; font-size: 16px; }
+    .btn-mega { padding: 20px 10px; font-size: 21px; }
+    .today-plate .tp-day { font-size: 26px; }
   }
 
   /* MARKUP OVERLAY */
@@ -721,11 +892,12 @@
   }
   @media (max-width: 700px) {
     .main { padding: 12px; }
-    .header h1 { font-size: 17px; }
+    .header h1 { font-size: 19px; }
     .section { padding: 14px; }
-    .actions { gap: 10px; }
-    .action-btn { padding: 14px 10px; font-size: 13px; }
-    .action-btn .icon { font-size: 26px; }
+    .actions { gap: 8px; }
+    .action-btn { min-height: 68px; padding: 12px 8px; font-size: 15px; }
+    .action-btn .ic { width: 24px; height: 24px; }
+    .generate-btn { font-size: 15px; padding: 14px 12px; }
     .form-row, .form-row.three { grid-template-columns: 1fr; }
     .photo-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
     .receipt-grid { grid-template-columns: 1fr; }
@@ -740,25 +912,74 @@
 </head>
 <body>
 
+<!-- Icon sprite — plain stroke tools, no emoji -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-truck" viewBox="0 0 24 24"><path d="M1 6h12v10H1z"/><path d="M13 10h4l3 3v3h-7"/><circle cx="6" cy="18" r="2"/><circle cx="16.5" cy="18" r="2"/></symbol>
+  <symbol id="i-hat" viewBox="0 0 24 24"><path d="M4 14a8 8 0 0 1 16 0"/><path d="M2 14h20v3H2z"/><path d="M10 6.5V4h4v2.5"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5v14M15 5v14"/></symbol>
+  <symbol id="i-fuel" viewBox="0 0 24 24"><rect x="3" y="4" width="10" height="16"/><path d="M6 8h4"/><path d="M13 10h3l3 3v5a1.5 1.5 0 0 1-3 0v-7"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h13l-2.5 4L18 12H5"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></symbol>
+  <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v12H3z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+  <symbol id="i-video" viewBox="0 0 24 24"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3"/></symbol>
+  <symbol id="i-receipt" viewBox="0 0 24 24"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h6l2 2h10v12H3z"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M17 3l4 4L8 20H4v-4z"/><path d="M14 6l4 4"/></symbol>
+  <symbol id="i-people" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 5a3.5 3.5 0 0 1 0 7"/><path d="M17.5 14.5a6.5 6.5 0 0 1 4 5.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M4 13l5 5L20 7"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><path d="M3 7l9 6 9-6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3L1 21h22z"/><path d="M12 10v5"/><path d="M12 18.2v.3"/></symbol>
+  <symbol id="i-clipboard" viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="18" rx="1"/><path d="M9 4.5a3 3 0 0 1 6 0"/><path d="M9 11h6M9 15h6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></symbol>
+  <symbol id="i-cloud" viewBox="0 0 24 24"><path d="M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 10 4 4 0 0 1 19 18z"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></symbol>
+  <symbol id="i-week" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="1"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 14h10l1-14"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="M12 16V4"/><path d="M6 10l6-6 6 6"/><path d="M4 20h16"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="M12 4v12"/><path d="M6 10l6 6 6-6"/><path d="M4 20h16"/></symbol>
+  <symbol id="i-dollar" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M17 6.5H10a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6H6.5"/></symbol>
+  <symbol id="i-road" viewBox="0 0 24 24"><path d="M5 21L10 3M19 21L14 3"/><path d="M12 7v2M12 13v2M12 19v2"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+</svg>
+
 <!-- Header -->
 <div class="header">
-  <h1><span>Mist</span>America</h1>
+  <h1><span>Mist</span>America<small>JOB LOG</small></h1>
   <div style="display:flex;gap:8px;align-items:center">
-    <span id="appVersion" style="font-size:10px;color:#8b90a0;font-weight:600" title="App version — read this to confirm you're on the latest"></span>
-    <span id="cloudSyncIndicator" style="font-size:12px;color:#8b90a0;cursor:pointer;font-weight:600" onclick="manualSync()" title="Tap to sync now">☁️ ...</span>
-    <button class="header-btn" onclick="openSettings()" title="Settings">⚙️</button>
-    <button class="header-btn" onclick="openSidebar()">Completed Jobs (<span id="completedCount">0</span>)</button>
+    <span id="appVersion" style="font-size:10px;color:#969aa4;font-weight:600" title="App version — read this to confirm you're on the latest"></span>
+    <span id="cloudSyncIndicator" style="font-size:12px;color:#969aa4;cursor:pointer;font-weight:700;font-family:var(--font-disp);letter-spacing:1px;text-transform:uppercase" onclick="manualSync()" title="Tap to sync now">SYNC …</span>
+    <button class="header-btn" onclick="openSettings()" title="Settings"><svg class="ic"><use href="#i-gear"/></svg></button>
+    <button class="header-btn" onclick="openSidebar()">Done (<span id="completedCount">0</span>)</button>
   </div>
 </div>
 
 <div class="main">
 
-<!-- MY DAY — day-first flow: week strip + one-tap drive/work state machine -->
+<!-- DAY BOARD — the whole app opens on TODAY: status, one big next action, today's timeline -->
 <div class="dashboard" id="myDayCard">
-  <div id="weekStrip" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:10px"></div>
-  <div id="dayDetailPanel" style="display:none;margin-bottom:10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
+  <div class="today-plate">
+    <div class="tp-day" id="todayPlateDay">TODAY</div>
+    <div class="tp-span" id="dashTodaySpan"></div>
+  </div>
+  <div class="dash-status" id="dashStatus">
+    <span id="dashStatusIcon" style="display:inline-flex"><svg class="ic"><use href="#i-pause"/></svg></span>
+    <span id="dashStatusText">Not started</span>
+    <span id="dashLiveTimer" class="dash-timer"></span>
+  </div>
   <div id="dayFlowBox"></div>
-  <button class="action-btn-sm" style="width:100%;margin-top:8px;padding:8px;font-size:12px" onclick="quickVoiceNote(this)">🎤 Quick voice note</button>
+  <div id="dayDetailPanel" style="display:none;margin-top:10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden"></div>
+  <div id="weekStripWrap" style="display:none;margin-top:10px">
+    <div id="weekStrip" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px"></div>
+  </div>
+  <div class="day-utils">
+    <button class="action-btn-sm" onclick="quickVoiceNote(this)"><svg class="ic"><use href="#i-mic"/></svg> Voice note</button>
+    <button class="action-btn-sm" onclick="logGasStop()"><svg class="ic"><use href="#i-fuel"/></svg> Log gas</button>
+    <button class="action-btn-sm" id="weekToggleBtn" onclick="toggleWeekStrip()"><svg class="ic"><use href="#i-week"/></svg> Week</button>
+  </div>
 </div>
 
 <!-- TRIP SELECTOR -->
@@ -768,9 +989,9 @@
     <option value="">— Solo jobs (no trip) —</option>
   </select>
   <button class="action-btn-sm" style="margin:0;padding:7px 10px;font-size:12px" onclick="newTrip()" title="Start a new multi-job trip">+ Trip</button>
-  <button class="action-btn-sm" id="tripTotalsBtn" style="margin:0;padding:7px 10px;font-size:12px;background:var(--yellow);color:#111" onclick="generateTripTotals()" disabled title="Generate trip totals report">📋 Totals</button>
-  <button class="action-btn-sm" id="closeTripBtn" style="margin:0;padding:7px 10px;font-size:12px" onclick="closeTrip()" disabled title="Mark trip as closed">✓ Close</button>
-  <button class="action-btn-sm" id="deleteTripBtn" style="margin:0;padding:7px 10px;font-size:12px" onclick="deleteCurrentTrip()" disabled title="Delete trip (jobs become solo)">🗑</button>
+  <button class="action-btn-sm" id="tripTotalsBtn" style="margin:0;padding:7px 10px;font-size:12px;background:var(--yellow);color:#101114" onclick="generateTripTotals()" disabled title="Generate trip totals report">Totals</button>
+  <button class="action-btn-sm" id="closeTripBtn" style="margin:0;padding:7px 10px;font-size:12px" onclick="closeTrip()" disabled title="Mark trip as closed">Close</button>
+  <button class="action-btn-sm" id="deleteTripBtn" style="margin:0;padding:7px 10px;font-size:12px" onclick="deleteCurrentTrip()" disabled title="Delete trip (jobs become solo)"><svg class="ic"><use href="#i-trash"/></svg></button>
 </div>
 
 <!-- DRAFT SELECTOR -->
@@ -780,14 +1001,14 @@
     <option value="">— New Job —</option>
   </select>
   <button class="action-btn-sm" style="margin:0;padding:8px 12px" onclick="newDraft()" title="Start a new in-progress job (in current trip)">+ New</button>
-  <button class="action-btn-sm" style="margin:0;padding:8px 10px" onclick="deleteCurrentDraft()" title="Delete this in-progress job">🗑</button>
-  <button class="action-btn-sm" style="margin:0;padding:8px 10px;background:var(--accent);color:#fff" onclick="composeEodEmail()" title="Email today's end-of-day summary to Robert + Seann">📧 EOD</button>
+  <button class="action-btn-sm" style="margin:0;padding:8px 10px" onclick="deleteCurrentDraft()" title="Delete this in-progress job"><svg class="ic"><use href="#i-trash"/></svg></button>
+  <button class="action-btn-sm" style="margin:0;padding:8px 10px;background:var(--accent);color:#101114" onclick="composeEodEmail()" title="Email today's end-of-day summary to Robert + Seann"><svg class="ic"><use href="#i-mail"/></svg> EOD</button>
   <span id="autoSaveIndicator" style="font-size:11px;color:var(--green);min-width:54px;text-align:right;opacity:0;transition:opacity .3s">✓ Saved</span>
 </div>
 
 <!-- END-OF-DAY BANNER (shown after 4pm if today has unsent activity) -->
 <div id="eodBanner" style="display:none;position:fixed;bottom:16px;left:10px;right:10px;z-index:9999;background:var(--accent);color:#fff;padding:14px 16px;border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.4);align-items:center;gap:10px;flex-wrap:wrap;max-width:560px;margin:0 auto">
-  <div style="flex:1;min-width:180px;font-weight:600;font-size:14px">📧 Send today's EOD summary to Robert + Seann?</div>
+  <div style="flex:1;min-width:180px;font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px"><svg class="ic"><use href="#i-mail"/></svg> Send today's EOD summary to Robert + Seann?</div>
   <button onclick="composeEodEmail()" style="padding:8px 16px;background:#fff;color:var(--accent);border:none;border-radius:var(--radius);font-weight:700;cursor:pointer;font-family:inherit">Send</button>
   <button onclick="dismissEodBanner()" style="padding:8px 12px;background:transparent;color:#fff;border:1px solid #fff;border-radius:var(--radius);cursor:pointer;font-family:inherit">Later</button>
 </div>
@@ -844,47 +1065,35 @@
   </div>
   <!-- Pin Site Location -->
   <div id="pinSiteBox" style="margin-top:14px;padding:12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <div id="pinStatusText" style="flex:1;min-width:180px;font-size:14px;color:var(--dim)">📍 No site location pinned — tap "Pin Spot" when you're on site</div>
-    <button class="action-btn-sm" style="margin:0;padding:8px 14px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="pinSiteLocation()">📍 Pin Spot</button>
+    <div id="pinStatusText" style="flex:1;min-width:180px;font-size:14px;color:var(--dim)">No site location pinned — tap "Pin Spot" when you're on site</div>
+    <button class="action-btn-sm" style="margin:0;padding:8px 14px;background:var(--accent);color:#101114;border-color:var(--accent)" onclick="pinSiteLocation()"><svg class="ic"><use href="#i-pin"/></svg> Pin Spot</button>
     <button id="unpinBtn" class="action-btn-sm" style="margin:0;padding:8px 12px;display:none" onclick="unpinSiteLocation()">Clear</button>
   </div>
   </div><!-- /jobInfoBody -->
 </div>
 
-<!-- DASHBOARD — live totals + segment controls -->
+<!-- THIS WEEK — running totals across every job (resets Sunday). Tap a tile for the deep-edit time log. -->
 <div class="dashboard">
-  <div class="dash-status" id="dashStatus">
-    <span id="dashStatusIcon">⏸</span>
-    <span id="dashStatusText">Not started</span>
-    <span id="dashLiveTimer" class="dash-timer"></span>
+  <div style="display:flex;justify-content:space-between;align-items:center;font-family:var(--font-disp);font-size:13px;color:var(--dim);letter-spacing:1.5px;margin-bottom:8px;text-transform:uppercase">
+    <span style="font-weight:700">This Week <span style="font-weight:500">(resets Sun)</span></span>
   </div>
-  <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--dim);letter-spacing:.5px;margin-bottom:6px">
-    <span style="font-weight:700">THIS WEEK <span style="font-weight:400">(resets Sun)</span></span>
-    <span id="dashTodaySpan"></span>
-  </div>
-  <div class="dash-stats">
+  <div class="dash-stats" style="margin-bottom:0">
     <div class="dash-stat" onclick="toggleTimeLog()">
-      <div class="dash-stat-label">🚗 DRIVE</div>
+      <div class="dash-stat-label">DRIVE</div>
       <div class="dash-stat-value" id="dashDriveTotal">0h</div>
     </div>
     <div class="dash-stat" onclick="toggleTimeLog()">
-      <div class="dash-stat-label">🏗️ SITE</div>
+      <div class="dash-stat-label">SITE</div>
       <div class="dash-stat-value" id="dashSiteTotal">0h</div>
     </div>
     <div class="dash-stat" onclick="toggleTimeLog()">
-      <div class="dash-stat-label">🛣️ MILES</div>
+      <div class="dash-stat-label">MILES</div>
       <div class="dash-stat-value" id="dashMilesTotal">0</div>
     </div>
     <div class="dash-stat" onclick="document.getElementById('receiptsSection').scrollIntoView({behavior:'smooth'})">
-      <div class="dash-stat-label">💰 SPENT</div>
+      <div class="dash-stat-label">SPENT</div>
       <div class="dash-stat-value" id="dashSpentTotal">$0</div>
     </div>
-  </div>
-  <div class="dash-buttons">
-    <button class="dash-btn dash-btn-drive" onclick="startDriveSegment()">🚗 START DRIVE</button>
-    <button class="dash-btn dash-btn-work" onclick="startWorkdaySegment()">🏗️ START WORKDAY</button>
-    <button class="dash-btn dash-btn-gas" onclick="logGasStop()">⛽ LOG GAS</button>
-    <button class="dash-btn dash-btn-stop" id="dashStopBtn" onclick="stopCurrentSegment()" disabled>■ STOP</button>
   </div>
 </div>
 
@@ -893,7 +1102,7 @@
   <h2 style="display:flex;justify-content:space-between;align-items:center">Time Log <span style="font-weight:400;color:var(--dim);text-transform:none;letter-spacing:0">(<span id="segmentCount">0</span> segments)</span>
     <button onclick="toggleTimeLog()" style="background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
   </h2>
-  <div style="font-size:11px;color:var(--dim);margin-bottom:8px">Day-to-day numbers live in the week strip up top — this is the deep-edit view (notes, odometer photos, trip-level flags). Tap 🚗 DRIVE or 🏗️ SITE on the dashboard to open it.</div>
+  <div style="font-size:11px;color:var(--dim);margin-bottom:8px">Day-to-day numbers live on the day board up top — this is the deep-edit view (notes, odometer photos, trip-level flags). Tap DRIVE or SITE on the This Week tiles to open it.</div>
   <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
     <button class="action-btn-sm" style="margin:0;font-size:12px" onclick="addPastSegment('drive')">+ Add past drive</button>
     <button class="action-btn-sm" style="margin:0;font-size:12px" onclick="addPastSegment('workday')">+ Add past workday</button>
@@ -901,42 +1110,54 @@
   <div id="segmentsList"></div>
 </div>
 
-<!-- 7 BIG BUTTONS -->
+<!-- TOOL GRID — the four you grab all day, the rest behind MORE -->
 <div class="actions">
   <button class="action-btn" onclick="document.getElementById('photoInput').click()">
-    <span class="icon">📷</span> UPLOAD PHOTOS
-  </button>
-  <button class="action-btn" onclick="document.getElementById('videoInput').click()">
-    <span class="icon">📹</span> UPLOAD VIDEOS
+    <svg class="ic"><use href="#i-camera"/></svg> PHOTOS
   </button>
   <button class="action-btn" onclick="document.getElementById('receiptInput').click()">
-    <span class="icon">🧾</span> UPLOAD RECEIPTS
-  </button>
-  <button class="action-btn" onclick="document.getElementById('jobFileInput').click()">
-    <span class="icon">📁</span> UPLOAD JOB FILES
+    <svg class="ic"><use href="#i-receipt"/></svg> RECEIPTS
   </button>
   <button class="action-btn" onclick="toggleSection('notesSection'); addNoteIfEmpty()">
-    <span class="icon">📝</span> NOTES
-  </button>
-  <button class="action-btn" onclick="toggleSection('contactsSection'); addContactIfEmpty()">
-    <span class="icon">👥</span> CONTACTS
-  </button>
-  <button class="action-btn" onclick="toggleSection('checklistSection')">
-    <span class="icon">✅</span> CHECKLIST
-  </button>
-  <button class="action-btn" onclick="toggleSection('communicationsSection'); addCommunicationIfEmpty()">
-    <span class="icon">📧</span> COMM LOG
-  </button>
-  <button class="action-btn" onclick="toggleSection('discrepanciesSection'); addDiscrepancyIfEmpty()">
-    <span class="icon">⚠️</span> DISCREPANCIES
+    <svg class="ic"><use href="#i-note"/></svg> NOTES
   </button>
   <button class="action-btn" onclick="openWorkOrder()">
-    <span class="icon">🧾</span> WORK ORDER
-  </button>
-  <button class="action-btn" onclick="toggleSection('hoursSection')" style="opacity:.6">
-    <span class="icon">🕐</span> MANUAL HOURS<br><span style="font-size:11px;font-weight:400;color:var(--dim)">(legacy form)</span>
+    <svg class="ic"><use href="#i-clipboard"/></svg> WORK ORDER
   </button>
 </div>
+<button class="action-btn-sm" id="moreToolsBtn" style="width:100%;text-align:center;margin-bottom:12px" onclick="toggleMoreTools()"><svg class="ic"><use href="#i-more"/></svg> MORE TOOLS</button>
+<div class="actions" id="moreTools" style="display:none">
+  <button class="action-btn" onclick="document.getElementById('videoInput').click()">
+    <svg class="ic"><use href="#i-video"/></svg> VIDEOS
+  </button>
+  <button class="action-btn" onclick="document.getElementById('jobFileInput').click()">
+    <svg class="ic"><use href="#i-folder"/></svg> JOB FILES
+  </button>
+  <button class="action-btn" onclick="toggleSection('contactsSection'); addContactIfEmpty()">
+    <svg class="ic"><use href="#i-people"/></svg> CONTACTS
+  </button>
+  <button class="action-btn" onclick="toggleSection('checklistSection')">
+    <svg class="ic"><use href="#i-check"/></svg> CHECKLIST
+  </button>
+  <button class="action-btn" onclick="toggleSection('communicationsSection'); addCommunicationIfEmpty()">
+    <svg class="ic"><use href="#i-mail"/></svg> COMM LOG
+  </button>
+  <button class="action-btn" onclick="toggleSection('discrepanciesSection'); addDiscrepancyIfEmpty()">
+    <svg class="ic"><use href="#i-alert"/></svg> DISCREPANCIES
+  </button>
+  <button class="action-btn" onclick="toggleSection('hoursSection')" style="opacity:.7">
+    <svg class="ic"><use href="#i-clock"/></svg> MANUAL HOURS
+  </button>
+</div>
+<script>
+function toggleMoreTools() {
+  const g = document.getElementById('moreTools');
+  const b = document.getElementById('moreToolsBtn');
+  const show = g.style.display === 'none';
+  g.style.display = show ? '' : 'none';
+  if (b) b.innerHTML = `<svg class="ic" style="transform:${show ? 'rotate(180deg)' : 'none'}"><use href="#i-more"/></svg> ${show ? 'FEWER TOOLS' : 'MORE TOOLS'}`;
+}
+</script>
 
 <!-- Hidden file inputs -->
 <input type="file" id="photoInput" class="hidden" multiple accept="image/*">
@@ -1155,19 +1376,33 @@
 </div>
 
 <!-- GENERATE -->
-<div class="bottom-btns">
-  <button class="generate-btn" onclick="generateReport()">FULL REPORT</button>
-  <button class="generate-btn" style="background:var(--yellow);color:#111" onclick="generateSummary()">PROJECT SUMMARY</button>
-  <button class="generate-btn" style="background:#a78bfa;color:#fff" onclick="generateDailyReport()">📅 DAILY REPORT</button>
-  <button class="generate-btn" style="background:#0d9488;color:#fff;grid-column:1 / -1" onclick="generateWorkOrder()">🧾 SERVICE WORK ORDER — PRINT / SHARE FILLED FORM</button>
-  <button class="generate-btn" style="background:#ec4899;color:#fff" onclick="generateWeeklyDigest()">📊 WEEKLY DIGEST</button>
-  <button class="generate-btn" style="background:#0ea5e9;color:#fff;grid-column:1 / -1" onclick="openMasterLog()">📋 MASTER LOG — EVERY JOB, EVERY HOUR, EVERY RECEIPT</button>
-  <button class="generate-btn" style="background:#8b5cf6;color:#fff;grid-column:1 / -1" onclick="openPhotoSearch()">🔍 SEARCH PHOTOS — ACROSS EVERY JOB</button>
-  <button class="generate-btn" style="display:none;background:#ea580c;color:#fff;grid-column:1 / -1" onclick="generateGcReport()">🏗️ GC COMPLETION REPORT — SEND TO GENERAL CONTRACTOR</button>
-  <button class="generate-btn" style="display:none;background:#16a34a;color:#fff;grid-column:1 / -1" onclick="generateUserGuide()">📘 USER GUIDE — ONE-PAGER FOR THE SITE CONTACT</button>
-  <button class="generate-btn" style="display:none;background:#0f172a;color:#fff;grid-column:1 / -1" onclick="generateQrSticker()">📱 GENERATE QR HELP STICKER — FOR ON-EQUIPMENT</button>
-  <button class="send-btn" onclick="sendReport()" style="grid-column:1 / -1">SEND REPORT ✉</button>
+<div class="section" style="padding:14px">
+  <h2 onclick="toggleReportsRack()" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;margin-bottom:0">Reports
+    <span id="reportsCaret" style="color:var(--dim)">▸</span>
+  </h2>
+  <div class="bottom-btns" id="reportsRack" style="display:none;margin:12px 0 0">
+    <button class="generate-btn" onclick="generateReport()">FULL REPORT</button>
+    <button class="generate-btn" onclick="generateSummary()">PROJECT SUMMARY</button>
+    <button class="generate-btn" onclick="generateDailyReport()">DAILY REPORT</button>
+    <button class="generate-btn" onclick="generateWeeklyDigest()">WEEKLY DIGEST</button>
+    <button class="generate-btn" style="grid-column:1 / -1" onclick="generateWorkOrder()">SERVICE WORK ORDER — PRINT / SHARE</button>
+    <button class="generate-btn" style="grid-column:1 / -1" onclick="openMasterLog()">MASTER LOG — EVERY JOB, EVERY HOUR, EVERY RECEIPT</button>
+    <button class="generate-btn" style="grid-column:1 / -1" onclick="openPhotoSearch()">SEARCH PHOTOS — ACROSS EVERY JOB</button>
+    <button class="generate-btn" style="display:none" onclick="generateGcReport()">GC COMPLETION REPORT</button>
+    <button class="generate-btn" style="display:none" onclick="generateUserGuide()">USER GUIDE ONE-PAGER</button>
+    <button class="generate-btn" style="display:none" onclick="generateQrSticker()">QR HELP STICKER</button>
+  </div>
 </div>
+<button class="send-btn" onclick="sendReport()" style="margin-bottom:16px">SEND REPORT</button>
+<script>
+function toggleReportsRack() {
+  const r = document.getElementById('reportsRack');
+  const c = document.getElementById('reportsCaret');
+  const show = r.style.display === 'none';
+  r.style.display = show ? '' : 'none';
+  if (c) c.textContent = show ? '▾' : '▸';
+}
+</script>
 
 </div><!-- /main -->
 
@@ -1179,8 +1414,8 @@
     <button class="sidebar-close" onclick="closeSidebar()">&times;</button>
   </div>
   <div class="sidebar-backup">
-    <button onclick="exportAllJobs()">📤 Backup</button>
-    <button onclick="document.getElementById('importInput').click()">📥 Restore</button>
+    <button onclick="exportAllJobs()"><svg class="ic"><use href="#i-up"/></svg> Backup</button>
+    <button onclick="document.getElementById('importInput').click()"><svg class="ic"><use href="#i-down"/></svg> Restore</button>
   </div>
   <div class="sidebar-body" id="sidebarBody"></div>
 </div>
@@ -1778,7 +2013,7 @@ const firebaseConfig = {
   messagingSenderId: "491853979701",
   appId: "1:491853979701:web:64da6ffeb49e9c6e4d517c"
 };
-const APP_VERSION = '2026-06-22.5'; // bump on each deploy so the header confirms what's live
+const APP_VERSION = '2026-07-11.1'; // bump on each deploy so the header confirms what's live
 const CLOUD_USER_ID = 'lyle-mistamerica';  // fixed for now — single-user app
 let cloudReady = false;
 let lastCloudError = ''; // last Firestore failure (code/message) — surfaced via the cloud indicator
@@ -1815,14 +2050,14 @@ function setSyncStatus(state, label) {
   const el = document.getElementById('cloudSyncIndicator');
   if (!el) return;
   const colors = {
-    syncing: '#fbbf24',
-    synced: '#22c55e',
-    error: '#ef4444',
-    offline: '#8b90a0',
-    pulling: '#4f8cff'
+    syncing: '#ffc53d',
+    synced: '#34c063',
+    error: '#e5484d',
+    offline: '#969aa4',
+    pulling: '#f5a300'
   };
-  el.style.color = colors[state] || '#8b90a0';
-  el.textContent = label || (state === 'synced' ? '☁️ Synced' : state === 'syncing' ? '☁️ Syncing...' : state === 'error' ? '☁️ Sync error' : state === 'pulling' ? '☁️ Pulling...' : '☁️ Offline');
+  el.style.color = colors[state] || '#969aa4';
+  el.textContent = label || (state === 'synced' ? '● SYNCED' : state === 'syncing' ? '● SYNCING…' : state === 'error' ? '● SYNC ERROR' : state === 'pulling' ? '● PULLING…' : '● OFFLINE');
   el.title = state === 'error'
     ? 'Sync error: ' + (lastCloudError || 'unknown') + ' — tap for details'
     : 'Tap to sync now';
@@ -2889,29 +3124,47 @@ function renderDayFlow(force) {
   const sentToday = localStorage.getItem('dayEndEmailDate') === todayK;
   const activeToday = segments.some(s => dayKey(s.startedAt) === todayK);
   const eodShow = (activeToday && !sentToday) ? '1' : '0';
-  const key = state + '|' + (running ? running.id : '') + '|' + client + '|' + eodShow;
+  const key = state + '|' + (running ? running.id : '') + '|' + client + '|' + eodShow + '|' + (activeToday ? 1 : 0);
   if (!force && key === __lastDayFlowKey) return;
   __lastDayFlowKey = key;
-  if (state === 'idle') {
+  const svg = k => `<svg class="ic"><use href="#${k}"/></svg>`;
+  if (state === 'idle' && !activeToday) {
+    // First tap of the morning — leaving the hotel IS the start of the workday
     box.innerHTML = `
-      <button class="dash-btn dash-btn-drive" style="width:100%;padding:18px;font-size:17px" onclick="dayStartDriving()">🚗 START DRIVE</button>
-      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:6px">Sends a "started driving" email with your location.</div>
-      <button class="action-btn-sm" style="width:100%;margin:8px 0 0;font-size:12px" onclick="dayStartWork()">🏗️ Already on site? Start work</button>`;
+      <button class="dash-btn dash-btn-drive btn-mega" onclick="dayStartDriving()">${svg('i-truck')} START DRIVE</button>
+      <div style="text-align:center;font-size:12px;color:var(--dim);margin-top:6px">Sends a "started driving" email with your location.</div>
+      <button class="action-btn-sm" style="width:100%;margin:8px 0 0" onclick="dayStartWork()">${svg('i-hat')} Already on site — start work</button>`;
+  } else if (state === 'idle') {
+    // Mid-day, between stops — next move is either back on the tools or back on the road
+    box.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <button class="dash-btn dash-btn-work btn-mega" style="font-size:20px" onclick="dayStartWork()">${svg('i-hat')} START WORK</button>
+        <button class="dash-btn dash-btn-drive btn-mega" style="font-size:20px" onclick="dayStartDriving()">${svg('i-truck')} START DRIVE</button>
+      </div>`;
   } else if (state === 'driving') {
     box.innerHTML = `
-      <div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:8px">🚗 Driving <span class="day-flow-timer" style="color:var(--accent);font-variant-numeric:tabular-nums">${fmtClock(Date.now() - running.startedAt)}</span></div>
-      <button class="dash-btn dash-btn-stop" style="width:100%;padding:18px;font-size:17px" onclick="dayDoneDriving()">⏹ STOP DRIVE</button>
-      <div style="text-align:center;font-size:11px;color:var(--dim);margin-top:6px">Sends an "arrived" email with your location, then tap Start Work.</div>`;
+      <button class="dash-btn dash-btn-work btn-mega" onclick="dayDoneDriving()">${svg('i-pin')} I'VE ARRIVED — STOP DRIVE</button>
+      <div style="text-align:center;font-size:12px;color:var(--dim);margin-top:6px">Sends an "arrived" email with your location, then tap Start Work.</div>`;
   } else {
     box.innerHTML = `
-      <div style="text-align:center;font-weight:700;font-size:15px;margin-bottom:8px">🏗️ Working${client ? ' — ' + esc(client) : ''} <span class="day-flow-timer" style="color:var(--green);font-variant-numeric:tabular-nums">${fmtClock(Date.now() - running.startedAt)}</span></div>
-      <button class="dash-btn dash-btn-stop" style="width:100%;padding:18px;font-size:17px" onclick="dayLeaveSite()">⏹ STOP WORK</button>`;
+      <button class="dash-btn dash-btn-stop btn-mega" onclick="dayLeaveSite()">${svg('i-stop')} STOP WORK — LEAVING SITE</button>`;
   }
   // Evening bookend — show "Done for the day" once the day has activity and the
   // "I'm back" email hasn't gone out yet today.
   if (eodShow === '1') {
-    box.innerHTML += `<button class="action-btn-sm" style="width:100%;margin-top:10px;padding:10px;font-size:13px;border-style:solid;border-color:var(--border)" onclick="endOfDay()">🏁 Done for the day — email "I'm back"</button>`;
+    box.innerHTML += `<button class="btn-endday" onclick="endOfDay()">${svg('i-flag')} DONE FOR THE DAY — SEND "I'M BACK"</button>`;
   }
+}
+
+// Week strip stays out of the way until asked for — the board is about TODAY
+function toggleWeekStrip() {
+  const wrap = document.getElementById('weekStripWrap');
+  const btn = document.getElementById('weekToggleBtn');
+  if (!wrap) return;
+  const show = wrap.style.display === 'none';
+  wrap.style.display = show ? '' : 'none';
+  if (show) refreshWeekStrip();
+  if (btn) btn.style.color = show ? 'var(--accent)' : '';
 }
 
 async function dayStartDriving() {
@@ -3205,7 +3458,7 @@ function sundayStart(date) {
 // The dashboard tiles show the current week, not whatever job is open, so they
 // roll to zero on their own every Sunday. Cached + throttled because
 // updateDashboard runs every second.
-let __weekAgg = { driveMs: 0, siteMs: 0, miles: 0, spent: 0 };
+let __weekAgg = { driveMs: 0, siteMs: 0, miles: 0, spent: 0, todaySpanMs: 0 };
 let __weekAggAt = 0;
 
 function _segInThisWeek(s, ws, we) { return s.startedAt >= ws && s.startedAt < we; }
@@ -3215,8 +3468,16 @@ async function refreshWeekAgg(force) {
   __weekAggAt = Date.now();
   const ws = sundayStart(new Date()).getTime();
   const we = ws + 7 * 86400000;
+  const td = new Date(); td.setHours(0, 0, 0, 0);
+  const ta = td.getTime(), tb = ta + 86400000;
   let driveMs = 0, siteMs = 0, miles = 0, spent = 0;
+  let todayFirst = Infinity, todayLast = 0;
   const addSegs = segs => (segs || []).forEach(s => {
+    // Hotel-to-hotel: today's first start → last end across EVERY job, not just the open one
+    if (s.startedAt >= ta && s.startedAt < tb) {
+      todayFirst = Math.min(todayFirst, s.startedAt);
+      todayLast = Math.max(todayLast, s.endedAt || Date.now());
+    }
     if (!_segInThisWeek(s, ws, we)) return;
     const dur = (s.endedAt || Date.now()) - s.startedAt;
     if (s.type === 'drive') { driveMs += dur; miles += segDriveMiles(s); }
@@ -3239,7 +3500,10 @@ async function refreshWeekAgg(force) {
       (await dbGetAll()).forEach(j => { addSegs(j.rawState?.segments); addReceipts(j.rawState?.receipts); });
     } catch (e) {}
   }
-  __weekAgg = { driveMs, siteMs, miles, spent };
+  __weekAgg = {
+    driveMs, siteMs, miles, spent,
+    todaySpanMs: (isFinite(todayFirst) && todayLast > todayFirst) ? todayLast - todayFirst : 0
+  };
   renderWeekTiles();
 }
 
@@ -3290,12 +3554,14 @@ async function refreshWeekStrip() {
     const d = new Date(ws + i * 86400000);
     const isToday = i === todayIdx;
     const hrs = t.ms / 3600000;
-    return `<div onclick="dayStripTap(${i})" style="text-align:center;padding:7px 2px;border-radius:8px;cursor:pointer;border:1px solid ${isToday ? 'var(--accent)' : 'var(--border)'};background:${isToday ? 'rgba(79,140,255,.12)' : 'var(--input)'}">
-      <div style="font-size:9px;font-weight:700;letter-spacing:1px;color:${isToday ? 'var(--accent)' : 'var(--dim)'}">${['SUN','MON','TUE','WED','THU','FRI','SAT'][i]}</div>
-      <div style="font-size:15px;font-weight:700">${d.getDate()}</div>
-      <div style="font-size:9px;color:${hrs > 0 ? 'var(--green)' : 'var(--dim)'};font-variant-numeric:tabular-nums">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</div>
+    return `<div onclick="dayStripTap(${i})" style="text-align:center;padding:7px 2px;border-radius:6px;cursor:pointer;font-family:var(--font-disp);border:1px solid ${isToday ? 'var(--accent)' : 'var(--border)'};background:${isToday ? 'rgba(245,163,0,.10)' : 'var(--input)'}">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1px;color:${isToday ? 'var(--accent)' : 'var(--dim)'}">${['SUN','MON','TUE','WED','THU','FRI','SAT'][i]}</div>
+      <div style="font-size:16px;font-weight:700">${d.getDate()}</div>
+      <div style="font-size:10px;color:${hrs > 0 ? 'var(--green)' : 'var(--dim)'};font-variant-numeric:tabular-nums">${hrs > 0 ? hrs.toFixed(1) + 'h' : '—'}</div>
     </div>`;
   }).join('');
+  // Keep the open day panel (usually TODAY) current whenever the strip recomputes
+  if (openDayPanelIdx !== null) dayStripTap(openDayPanelIdx, true);
 }
 
 // Tap a day in the week strip → everything that happened that day, every job,
@@ -3323,42 +3589,50 @@ async function dayStripTap(i, isRefresh) {
     .filter(e => e.startedAt >= dayStart && e.startedAt < dayEnd)
     .sort((a, b) => a.startedAt - b.startedAt);
   const d = new Date(dayStart);
-  const label = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const isTodayPanel = i === new Date().getDay();
+  const label = (isTodayPanel ? 'TODAY — ' : '') + d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   let driveMs = 0, workMs = 0, mi = 0, spent = 0;
   evts.forEach(e => {
     if (e.type === 'drive') driveMs += e.hours * 3600000;
     else if (e.type === 'workday') workMs += e.hours * 3600000;
     mi += e.miles; spent += e.amount;
   });
+  const psvg = (k, c) => `<svg class="ic" style="color:${c || 'var(--accent)'}"><use href="#${k}"/></svg>`;
   const bits = [];
-  if (driveMs) bits.push('🚗 ' + (driveMs / 3600000).toFixed(1) + 'h');
-  if (workMs) bits.push('🏗️ ' + (workMs / 3600000).toFixed(1) + 'h');
+  if (driveMs) bits.push('DRV ' + (driveMs / 3600000).toFixed(1) + 'h');
+  if (workMs) bits.push('SITE ' + (workMs / 3600000).toFixed(1) + 'h');
   if (mi) bits.push(Math.round(mi).toLocaleString() + ' mi');
   if (spent) bits.push('$' + spent.toFixed(2));
+  const rowIcon = {
+    drive: psvg('i-truck'),
+    workday: psvg('i-hat', 'var(--green)'),
+    receipt: psvg('i-dollar', 'var(--yellow)'),
+    video: psvg('i-video', 'var(--dim)')
+  };
   const rows = evts.map(e => {
-    const icon = { drive: '🚗', workday: '🏗️', receipt: '💰', video: '📹' }[e.type] || '•';
+    const icon = rowIcon[e.type] || '•';
     const t1 = new Date(e.startedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
     const t2 = (e.type === 'receipt' || e.type === 'video') ? '' : (e.endedAt ? new Date(e.endedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'now');
     const val = e.type === 'receipt'
       ? '$' + e.amount.toFixed(2)
       : (e.type === 'video' ? '' : e.hours.toFixed(1) + 'h' + (e.miles ? ' · ' + Math.round(e.miles).toLocaleString() + ' mi' : ''));
-    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--border);font-size:13px">
-      <span style="flex-shrink:0">${icon}</span>
+    return `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-top:1px solid var(--border);font-size:14px">
+      <span style="flex-shrink:0;display:inline-flex">${icon}</span>
       <div style="flex:1;min-width:0">
         <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.jobName)}${e.detail ? ` <span style="color:var(--dim);font-weight:400">· ${esc(e.detail)}</span>` : ''}</div>
-        <div style="color:var(--dim);font-size:11px">${t1}${t2 ? ' → ' + t2 : ''}${e.status === 'Completed' ? ' · ✅ finished job' : ''}</div>
+        <div style="color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums">${t1}${t2 ? ' → ' + t2 : ''}${e.status === 'Completed' ? ' · job finished' : ''}</div>
       </div>
-      <span style="font-variant-numeric:tabular-nums;font-size:12px;white-space:nowrap;color:var(--text)">${val}</span>
-      ${(e._src && e.type !== 'video') ? `<button onclick="mlOpenEdit(${e._idx})" title="Edit" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:11px;padding:3px 7px;color:var(--text);flex-shrink:0">✏️</button>` : ''}
+      <span style="font-variant-numeric:tabular-nums;font-size:13px;white-space:nowrap;color:var(--text);font-family:var(--font-disp);font-weight:600">${val}</span>
+      ${(e._src && e.type !== 'video') ? `<button onclick="mlOpenEdit(${e._idx})" title="Edit" style="background:none;border:1px solid var(--border);border-radius:4px;cursor:pointer;font-size:12px;padding:4px 9px;color:var(--dim);flex-shrink:0;font-family:var(--font-disp);letter-spacing:.5px">EDIT</button>` : ''}
     </div>`;
   }).join('');
   panel.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;background:var(--surface)">
-      <span style="font-weight:700;font-size:14px">📅 ${label}</span>
-      <span style="font-size:12px;color:var(--dim)">${bits.join(' · ') || 'nothing logged'}</span>
+      <span style="font-weight:700;font-size:14px;font-family:var(--font-disp);letter-spacing:1px;text-transform:uppercase;${isTodayPanel ? 'color:var(--accent)' : ''}">${label}</span>
+      <span style="font-size:12px;color:var(--dim);font-family:var(--font-disp);letter-spacing:.5px">${bits.join(' · ') || 'nothing logged'}</span>
       <button onclick="dayStripTap(${i})" style="background:none;border:none;color:var(--dim);font-size:16px;cursor:pointer;padding:0 4px">✕</button>
     </div>
-    ${rows || '<div style="padding:14px;text-align:center;color:var(--dim);font-size:13px">Nothing happened this day.</div>'}`;
+    ${rows || `<div style="padding:14px;text-align:center;color:var(--dim);font-size:13px">${isTodayPanel ? 'Nothing logged yet today — hit START DRIVE when you roll out.' : 'Nothing happened this day.'}</div>`}`;
 }
 
 // Time Log stays hidden — the week strip is the day-to-day view. The DRIVE /
@@ -4993,7 +5267,8 @@ function speechSupported() {
 
 function stopDictationUI() {
   if (__activeMicBtn) {
-    __activeMicBtn.textContent = __activeMicBtn.dataset.idle || '🎤';
+    // innerHTML, not textContent — the idle label may contain an SVG icon
+    __activeMicBtn.innerHTML = __activeMicBtn.dataset.idle || 'Dictate';
     __activeMicBtn.style.background = '';
     __activeMicBtn.style.color = '';
   }
@@ -5043,8 +5318,8 @@ function toggleDictation(elId, onCommit, btn) {
   __activeRecognition = rec;
   __activeMicBtn = btn || null;
   if (__activeMicBtn) {
-    __activeMicBtn.dataset.idle = __activeMicBtn.textContent;
-    __activeMicBtn.textContent = '⏹ Stop';
+    __activeMicBtn.dataset.idle = __activeMicBtn.innerHTML;
+    __activeMicBtn.innerHTML = '<svg class="ic"><use href="#i-stop"/></svg> STOP';
     __activeMicBtn.style.background = 'var(--red)';
     __activeMicBtn.style.color = '#fff';
   }
@@ -5514,23 +5789,38 @@ function updateDashboard() {
   const icon = document.getElementById('dashStatusIcon');
   const txt = document.getElementById('dashStatusText');
   const timer = document.getElementById('dashLiveTimer');
+  const iconSvg = k => `<svg class="ic"><use href="#${k}"/></svg>`;
   if (live) {
-    icon.textContent = live.type === 'drive' ? '🚗' : '🏗️';
-    txt.textContent = (live.type === 'drive' ? 'Driving' : 'Working') + (live.note ? ' — ' + live.note : '');
+    const k = live.type === 'drive' ? 'i-truck' : 'i-hat';
+    if (icon.dataset.k !== k) { icon.innerHTML = iconSvg(k); icon.dataset.k = k; }
+    icon.style.color = live.type === 'drive' ? 'var(--accent)' : 'var(--green)';
+    txt.textContent = (live.type === 'drive' ? 'Driving' : 'On site') + (live.note ? ' — ' + live.note : '');
     timer.textContent = fmtClock(Date.now() - live.startedAt);
   } else {
-    icon.textContent = '⏸';
-    txt.textContent = segments.length ? 'Paused' : 'Not started';
+    if (icon.dataset.k !== 'i-pause') { icon.innerHTML = iconSvg('i-pause'); icon.dataset.k = 'i-pause'; }
+    icon.style.color = 'var(--dim)';
+    txt.textContent = segments.length ? 'Off the clock' : 'Not started';
     timer.textContent = '';
+  }
+  // Big date plate — the board is about TODAY
+  const plate = document.getElementById('todayPlateDay');
+  if (plate) {
+    const now = new Date();
+    const label = now.toLocaleDateString('en-US', { weekday: 'long' }) + ' <span>' +
+      now.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).toUpperCase() + '</span>';
+    if (plate.dataset.d !== label) { plate.innerHTML = label; plate.dataset.d = label; }
   }
   // Tiles show THIS WEEK across all jobs (resets Sunday) — render cache now, refresh in background
   renderWeekTiles();
   refreshWeekAgg();
-  // Today, hotel-to-hotel (first departure → now/return)
-  const todaySpan = hotelToHotelMs(new Date());
+  // Today, hotel-to-hotel (first departure → now/return).
+  // Cross-job value comes from the throttled all-jobs scan; the in-memory
+  // current job keeps it live-ticking between refreshes.
+  const todaySpan = Math.max(hotelToHotelMs(new Date()), __weekAgg.todaySpanMs || 0);
   const tEl = document.getElementById('dashTodaySpan');
-  if (tEl) tEl.textContent = todaySpan ? 'Today: ' + fmtHrsShort(todaySpan) + ' hotel-to-hotel' : '';
-  document.getElementById('dashStopBtn').disabled = !live;
+  if (tEl) tEl.textContent = todaySpan ? 'HOTEL-TO-HOTEL ' + fmtHrsShort(todaySpan).toUpperCase() : '';
+  const stopBtn = document.getElementById('dashStopBtn');
+  if (stopBtn) stopBtn.disabled = !live;
   // Day flow card + collapsed Job Info summary line
   renderDayFlow();
   const jobSummaryEl = document.getElementById('jobInfoSummary');
@@ -10788,6 +11078,8 @@ async function maybeShowEodBanner() {
   // so there's no stop-detection to re-arm on resume)
   renderDayFlow(true);
   refreshWeekStrip();
+  // Day-first: the board opens on TODAY's timeline — every job touched today
+  dayStripTap(new Date().getDay());
   // Phone screens sleep — refresh the week strip when the app comes back
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) refreshWeekStrip();

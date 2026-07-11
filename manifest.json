@@ -1,13 +1,13 @@
 {
-  "name": "MistAmerica Job Tracker",
-  "short_name": "Job Tracker",
-  "description": "Field documentation, time tracking, and CYA log for traveling installers.",
+  "name": "Field Log — Lyle Krug",
+  "short_name": "Field Log",
+  "description": "Personal work-documentation app: GPS-stamped time, mileage, photo, and expense records. Built and owned by Lyle Krug.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#111318",
-  "theme_color": "#1e40af",
+  "background_color": "#0d0e10",
+  "theme_color": "#0d0e10",
   "icons": [
     {
       "src": "icon.svg",

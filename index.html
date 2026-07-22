@@ -5846,21 +5846,27 @@ async function getCurrentWeekHours() {
 function newSegId() { return 'seg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 function getRunningSegment() { return segments.find(s => !s.endedAt); }
 
-// A timer left running from an earlier day would keep counting into today (and
-// inflate the week). On load, close any such segment, bounded to its own day,
-// so yesterday's drive can never lump into today.
+// A timer genuinely left running for the better part of a day is a mistake
+// (forgot to tap STOP) and would inflate the week. BUT a normal overnight drive
+// legitimately crosses midnight — leave Las Vegas 9pm Saturday, reach Florida
+// 6am Sunday. So we gate on DURATION, never the calendar. Anything under 20h
+// stays live (covers every real drive/workday, overnighters included) and keeps
+// recording straight across midnight. Only a truly stale timer gets closed, and
+// even then we flag it for you to set the real end — we NEVER chop it at midnight
+// and silently lose your overnight hours.
+const MAX_LIVE_SEGMENT_MS = 20 * 3600000; // 20h — beyond any real single drive/workday
 function closeStaleRunningSegment() {
   const r = getRunningSegment();
   if (!r) return false;
-  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-  if (r.startedAt >= todayStart.getTime()) return false; // started today — leave it live
-  const dayEnd = new Date(r.startedAt); dayEnd.setHours(23, 59, 0, 0);
-  r.endedAt = Math.min(Date.now(), dayEnd.getTime()); // never spill past its own day
-  r.note = (r.note ? r.note + ' · ' : '') + 'auto-closed (left running — set the real end time)';
+  const runningMs = Date.now() - r.startedAt;
+  if (runningMs <= MAX_LIVE_SEGMENT_MS) return false; // normal (incl. overnight) — leave it live
+  // Genuinely stale: cap at 20h from the start and flag for manual correction.
+  r.endedAt = r.startedAt + MAX_LIVE_SEGMENT_MS;
+  r.note = (r.note ? r.note + ' · ' : '') + 'auto-closed after 20h (timer left running — set the real end time)';
   if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
   if (driftCheckInterval) { clearInterval(driftCheckInterval); driftCheckInterval = null; }
   renderSegments(); updateDashboard(); refreshWeekAgg(true); scheduleAutoSave();
-  showToast('A timer from an earlier day was left running — I closed it. Check its end time in the Time Log.', 'warn', 8000);
+  showToast('A timer ran over 20 hours — I closed it. Set its real end time in the Time Log.', 'warn', 8000);
   return true;
 }
 

@@ -2496,7 +2496,7 @@ function extractEvents(state, jobName, status, tripId, out, src) {
       endedAt: s.endedAt,
       type: s.type, // 'drive' | 'workday'
       jobName, status, tripId,
-      detail: (s.note || '') + (s.tripLevel ? ' 🌍 Trip-level' : ''),
+      detail: (s.note || '') + (s.tripLevel ? ' 🚗 Travel' : ''),
       hours, miles, amount: 0,
       gps: s.startGps || s.endGps || null,
       _raw: s,
@@ -6071,11 +6071,11 @@ function renderSegments() {
     const odoStart = s.startOdoPhoto ? `<div style="text-align:center"><img src="${s.startOdoPhoto}" style="width:90px;height:65px;object-fit:cover;border-radius:4px;cursor:zoom-in" onclick="window.open(this.src,'_blank')"><div style="font-size:10px;color:var(--dim);margin-top:2px">Start: ${s.startOdoMiles ? s.startOdoMiles.toLocaleString()+' mi' : '—'}</div></div>` : '';
     const odoEnd = s.endOdoPhoto ? `<div style="text-align:center"><img src="${s.endOdoPhoto}" style="width:90px;height:65px;object-fit:cover;border-radius:4px;cursor:zoom-in" onclick="window.open(this.src,'_blank')"><div style="font-size:10px;color:var(--dim);margin-top:2px">End: ${s.endOdoMiles ? s.endOdoMiles.toLocaleString()+' mi' : '—'}</div></div>` : '';
     const odoBlock = (odoStart || odoEnd) ? `<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">${odoStart}${odoEnd}</div>` : '';
-    const tripBadge = s.tripLevel ? ' <span style="background:#fbbf24;color:#111;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:700">🌍 TRIP</span>' : '';
+    const tripBadge = s.tripLevel ? ' <span style="background:#fbbf24;color:#111;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:700">🚗 TRAVEL</span>' : '';
     const tripToggle = s.type === 'drive'
       ? `<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--dim);cursor:pointer">
            <input type="checkbox" ${s.tripLevel?'checked':''} onchange="toggleSegmentTripLevel('${s.id}', this.checked)" style="width:auto;margin:0">
-           Trip-level drive (not tied to one job)
+           Travel drive — getting to or between jobs
          </label>` : '';
     const isEditing = editingSegmentId === s.id;
     if (isEditing) {
@@ -6346,7 +6346,7 @@ async function startDriveSegment() {
   startSegmentTicker();
   scheduleAutoSave();
   onDriveStarted(seg); // email Robert + Sean that the drive started
-  if (tripLevel) showToast('🌍 Trip-level drive started', 'info', 2500);
+  if (tripLevel) showToast('🚗 Travel drive started', 'info', 2500);
   // Auto-prompt for start odometer photo
   setTimeout(() => promptOdometerPhoto(seg.id, 'start'), 200);
 }
@@ -10301,7 +10301,7 @@ async function generateTripTotals() {
 
   // Trip-level drives (not tied to any single job)
   if (tripLevelSegs.length) {
-    html += `<h2>🌍 Trip-Level Drives <span style="font-size:11px;color:#666;font-weight:400">(positioning / bookend drives — not charged to any one job)</span></h2>`;
+    html += `<h2>🚗 Travel Drives <span style="font-size:11px;color:#666;font-weight:400">(getting to and between jobs — not charged to any one job)</span></h2>`;
     html += `<table><thead><tr><th>Date</th><th>From Job</th><th>Note</th><th style="text-align:right">Hours</th><th style="text-align:right">Miles</th></tr></thead><tbody>`;
     tripLevelSegs.sort((a,b) => a.startedAt - b.startedAt).forEach(s => {
       const dt = new Date(s.startedAt).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
@@ -10309,7 +10309,7 @@ async function generateTripTotals() {
       const segMi = segDriveMiles(s);
       html += `<tr><td>${dt}</td><td>${esc(s._jobName)}</td><td>${esc(s.note || '—')}</td><td style="text-align:right">${dur.toFixed(2)}</td><td style="text-align:right">${segMi ? segMi.toLocaleString() : '—'}</td></tr>`;
     });
-    html += `<tr class="total-row"><td colspan="3">Trip-Level Total</td><td style="text-align:right">${(tripLevelDriveMs/3600000).toFixed(2)} hrs</td><td style="text-align:right">${tripLevelMiles.toLocaleString()}</td></tr></tbody></table>`;
+    html += `<tr class="total-row"><td colspan="3">Travel Total</td><td style="text-align:right">${(tripLevelDriveMs/3600000).toFixed(2)} hrs</td><td style="text-align:right">${tripLevelMiles.toLocaleString()}</td></tr></tbody></table>`;
   }
 
   // Cost breakdown

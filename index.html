@@ -3324,23 +3324,42 @@ async function dayYesJob() {
   if (running) {
     running.endedAt = Date.now();
     running.endGps = gps;
+    if (running.type === 'drive') await deriveDriveScope(running); // auto-label between-sites vs at-site
     if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
     renderSegments(); scheduleAutoSave();
     onDriveEnded(running); // arrival email if a morning drive armed it
     if (running.type === 'drive') setTimeout(() => promptOdometerPhoto(running.id, 'end'), 250);
   }
-  // Always let you choose — picker shows the nearest pinned job on top AND a
-  // "➕ New job here" button, so being near an old site never traps you.
-  const ok = await dayPickJob(gps);
+  // GPS-first: if it recognizes the site, one-tap confirm; else the full picker.
+  const ok = await dayResolveJob(gps);
   if (!ok) { renderDayFlow(); refreshWeekStrip(); return; } // backed out — drive stays ended
   await dayBeginWorkSegment(gps);
 }
 
 async function dayStartWork() {   // woke up on site — no drive first
   const gps = await getGps();
-  const ok = await dayPickJob(gps);
+  const ok = await dayResolveJob(gps);
   if (!ok) return;
   await dayBeginWorkSegment(gps);
+}
+
+// GPS-first job resolution. If the phone recognizes the pinned site you're
+// standing at, it NAMES it and takes one tap to confirm — no list to scan.
+// "hey, are you at Kitchen 747 in Roseville?" — then start work. Only drops
+// to the full picker when GPS isn't sure, or you say "pick a different job."
+async function dayResolveJob(gps) {
+  if (!gps) gps = await getGps();
+  let near = null;
+  try { near = await findNearestPinnedJob(gps); } catch (e) {}
+  if (near && near.inside) {
+    const nm = near.draft.name || 'this site';
+    const meta = near.draft.meta ? ` (${near.draft.meta})` : '';
+    if (confirm(`📍 You're at ${nm}${meta}.\n\nStart work here?\n\nOK = yes, start work  ·  Cancel = pick a different job`)) {
+      if (near.draft.id !== currentDraftId) await switchToDraft(near.draft.id);
+      return true;
+    }
+  }
+  return await dayPickJob(gps);
 }
 
 // Quick picker: which job am I at?
@@ -3408,6 +3427,20 @@ function dayPickJob(gps) {
     });
     document.body.appendChild(ov);
   });
+}
+
+// Auto-figure a drive's scope from where it started vs. ended — no question asked.
+// Same job's geofence on BOTH ends = an at-site move (stays with that job).
+// Anything else (site-to-site, or a bookend hotel/city drive) = trip-level.
+// The per-segment TRIP checkbox remains as a manual override if a guess is off.
+async function deriveDriveScope(seg) {
+  if (!seg || seg.type !== 'drive' || !seg.startGps || !seg.endGps) return;
+  try {
+    const a = await findNearestPinnedJob(seg.startGps);
+    const b = await findNearestPinnedJob(seg.endGps);
+    const sameSite = a && b && a.inside && b.inside && a.draft.id === b.draft.id;
+    seg.tripLevel = !sameSite;
+  } catch (e) { /* leave the default in place on any lookup failure */ }
 }
 
 async function dayBeginWorkSegment(gps) {
@@ -6369,6 +6402,7 @@ async function stopCurrentSegment() {
   const gps = await getGps();
   running.endedAt = Date.now();
   running.endGps = gps;
+  if (running.type === 'drive') await deriveDriveScope(running); // auto-label between-sites vs at-site
   if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
   if (driftCheckInterval) { clearInterval(driftCheckInterval); driftCheckInterval = null; }
   if (stopWatchInterval) { clearInterval(stopWatchInterval); stopWatchInterval = null; }

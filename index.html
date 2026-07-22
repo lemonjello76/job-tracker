@@ -3080,6 +3080,74 @@ async function reverseGeocode(gps) {
   } catch (e) { return null; }
 }
 
+// Nearby named places from OpenStreetMap (free, no API key). GPS → a short list
+// of business names within ~160m, nearest first, so naming a new site is a tap
+// instead of typing. Returns [] on any failure / dead zone / uncovered area —
+// the caller always falls back to letting you type the name.
+async function nearbyPlaces(gps) {
+  if (!gps || gps.lat == null) return [];
+  const q = `[out:json][timeout:8];(` +
+    `node(around:160,${gps.lat},${gps.lng})[name][amenity];` +
+    `node(around:160,${gps.lat},${gps.lng})[name][shop];` +
+    `way(around:160,${gps.lat},${gps.lng})[name][amenity];` +
+    `);out center 30;`;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 7000);
+    const r = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST', body: 'data=' + encodeURIComponent(q), signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    if (!r.ok) return [];
+    const j = await r.json();
+    const seen = new Set(), out = [];
+    (j.elements || []).forEach(el => {
+      const nm = el.tags && el.tags.name;
+      if (!nm || seen.has(nm)) return;
+      seen.add(nm);
+      const plat = el.lat != null ? el.lat : (el.center && el.center.lat);
+      const plng = el.lon != null ? el.lon : (el.center && el.center.lon);
+      const dist = (plat != null) ? distanceMeters(gps, { lat: plat, lng: plng }) : Infinity;
+      out.push({ name: nm, dist });
+    });
+    out.sort((a, b) => a.dist - b.dist);
+    return out.slice(0, 8);
+  } catch (e) { return []; }
+}
+
+// Name-this-job overlay: shows nearby business names to tap, plus a "type it"
+// fallback. Returns the chosen/typed name, or '' if backed out.
+function suggestJobName(gps, geo) {
+  return new Promise(resolve => {
+    const where = geo ? `${esc(geo.city)}${geo.state ? ', ' + esc(geo.state) : ''}` : '';
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10060;display:flex;align-items:center;justify-content:center;padding:16px';
+    const shell = names => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;max-width:420px;width:100%;padding:18px;max-height:80vh;overflow:auto">
+      <div style="font-weight:700;font-size:16px;margin-bottom:4px;color:var(--text)">Name this job</div>
+      ${where ? `<div style="font-size:12px;color:var(--accent);margin-bottom:10px">📍 ${where}</div>` : '<div style="margin-bottom:10px"></div>'}
+      ${names}
+      <button class="action-btn-sm" style="width:100%;margin:6px 0 0;padding:12px;background:var(--accent);color:#fff;border-color:var(--accent)" data-type="1">⌨️ Type the name</button>
+    </div>`;
+    ov.innerHTML = shell('<div style="font-size:12px;color:var(--dim);margin-bottom:6px">Checking what\'s nearby…</div>');
+    document.body.appendChild(ov);
+    ov.addEventListener('click', ev => {
+      const nmBtn = ev.target.closest('[data-nm]');
+      const typeBtn = ev.target.closest('[data-type]');
+      if (nmBtn) { ov.remove(); resolve(nmBtn.getAttribute('data-nm')); return; }
+      if (typeBtn) { ov.remove(); resolve(prompt(geo ? `Job name (you're in ${geo.city}, ${geo.state}):` : 'Job name:') || ''); return; }
+      if (ev.target === ov) { ov.remove(); resolve(''); }
+    });
+    nearbyPlaces(gps).then(places => {
+      if (!document.body.contains(ov)) return; // already dismissed
+      const list = places.length
+        ? '<div style="font-size:12px;color:var(--dim);margin-bottom:6px">Nearby — tap one:</div>' +
+          places.map(p => `<button class="action-btn-sm" style="width:100%;margin:0 0 8px;text-align:left;padding:12px" data-nm="${esc(p.name)}">📍 ${esc(p.name)} <span style="float:right;color:var(--dim);font-size:11px">${metersToMilesStr(p.dist)}</span></button>`).join('')
+        : '<div style="font-size:12px;color:var(--dim);margin-bottom:6px">Nothing mapped nearby — just type the name.</div>';
+      ov.innerHTML = shell(list);
+    });
+  });
+}
+
 // ═══════════════════════════════
 // GEOFENCING — distance + nearest-job detection
 // ═══════════════════════════════
@@ -3407,7 +3475,7 @@ function dayPickJob(gps) {
       const pick = btn.getAttribute('data-pick');
       ov.remove();
       if (pick === '__new') {
-        const name = prompt(geo ? `Job name (you're in ${geo.city}, ${geo.state}):` : 'Job name (e.g. CFA #1234 Plano):') || '';
+        const name = await suggestJobName(gps, geo);
         await newDraft();
         if (name) document.getElementById('client').value = name;
         // GPS knows the city — fill it in so the job reads "CFA (Turlock, CA)"

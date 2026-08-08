@@ -1,64 +1,72 @@
 // Firestore Security Rules for mistamerica-job-tracker
 //
-// HOW TO APPLY:
-//   1. Open https://console.firebase.google.com/project/mistamerica-job-tracker/firestore/rules
-//   2. Replace whatever is there with the contents of this file (everything
-//      after the "rules_version" line below).
-//   3. Click "Publish".
+// ─────────────────────────────────────────────────────────────────────────
+// APPLY THESE — the app is not protected until you do.
 //
-// WHAT THIS DOES:
-//   - Restricts all reads/writes to the single known user path used by the
-//     app: /users/lyle-mistamerica/{drafts|jobs|trips|scans}/*
-//   - Blocks every other path. An attacker who knows the project ID can no
-//     longer probe for arbitrary collections.
+//   1. Firebase console → Authentication → Sign-in method → enable "Google".
+//      (Required first, or sign-in in the app will fail.)
+//   2. Open:
+//      https://console.firebase.google.com/project/mistamerica-job-tracker/firestore/rules
+//   3. Replace everything there with the rules below (from "rules_version").
+//   4. Click PUBLISH.
+//   5. In the app, tap "Sign in to sync" and pick your Google account.
 //
-// WHAT THIS DOES NOT DO:
-//   - The hardcoded path 'lyle-mistamerica' is visible in the client source
-//     (it's a public static site). Anyone who reads index.html can still
-//     read/write that path. To truly lock the data down, you need Firebase
-//     Auth — see "STRONGER OPTION" below.
+// Do step 1 BEFORE step 4, or you'll lock yourself out until you finish.
+// ─────────────────────────────────────────────────────────────────────────
+//
+// WHAT CHANGED AND WHY
+//
+// The previous rules scoped access to /users/lyle-mistamerica/** and then said
+// `allow read, write: if true`. That path is hardcoded in index.html, which is
+// served publicly from GitHub Pages — so anyone who viewed source could read the
+// entire record, and could also ALTER OR DELETE it. For a file whose whole value
+// is being an unaltered contemporaneous record, unauthenticated write access was
+// the real problem.
+//
+// These rules require a signed-in Google account whose verified email matches
+// OWNER_EMAIL. Everything else — every other path, every other account, every
+// unauthenticated request — is denied.
+//
+// The data path is deliberately UNCHANGED. Existing records stay exactly where
+// they are; nothing needs migrating.
 
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Allow the app's known paths only.
-    match /users/lyle-mistamerica/{collection}/{doc} {
-      allow read, write: if true;
+    // The single owner of this record. Google verifies the email, and Firebase
+    // signs the token, so this cannot be spoofed by editing client code.
+    function isOwner() {
+      return request.auth != null
+          && request.auth.token.email_verified == true
+          && request.auth.token.email == 'lylekrug@gmail.com';
     }
 
-    // Deny everything else.
+    // The app's data path. Same location as before — now owner-only.
+    match /users/lyle-mistamerica/{collection}/{doc} {
+      allow read, write: if isOwner();
+    }
+
+    // Everything else is denied, including probing for other collections.
     match /{document=**} {
       allow read, write: if false;
     }
   }
 }
 
-// ────────────────────────────────────────────────────────────────────────
-// STRONGER OPTION — requires a 10-line client change to add auth.
+// ─────────────────────────────────────────────────────────────────────────
+// IF YOU EVER CHANGE THE OWNER EMAIL
 //
-// In the Firebase console: Authentication → Sign-in method → enable
-// "Email/Password" or "Google". Sign in once from your phone, then look up
-// your Auth UID under Authentication → Users.
+// Update the address in isOwner() above and re-publish. If you'd rather pin to
+// a Firebase UID instead of an email (slightly stricter — survives an email
+// change on the Google account), sign in once, then read your UID at:
+//   Firebase console → Authentication → Users
+// and swap the isOwner() body for:
 //
-// Replace the rules above with:
+//   return request.auth != null && request.auth.uid == '<YOUR-UID>';
 //
-//   rules_version = '2';
-//   service cloud.firestore {
-//     match /databases/{database}/documents {
-//       match /users/{uid}/{collection}/{doc} {
-//         allow read, write: if request.auth != null
-//                            && request.auth.uid == "<YOUR-AUTH-UID-HERE>";
-//       }
-//       match /{document=**} { allow read, write: if false; }
-//     }
-//   }
+// VERIFYING THE LOCK WORKED
 //
-// And in index.html, after firebase.initializeApp(firebaseConfig), add:
-//
-//   firebase.auth().onAuthStateChanged(user => {
-//     if (!user) firebase.auth().signInWithEmailAndPassword(EMAIL, PASS);
-//   });
-//
-// Then your data is locked to you and only you, regardless of who has the
-// project ID. Worth doing if the job data is ever sensitive.
+// Open the app in a private/incognito window without signing in. The sync
+// indicator should read "Sign in to sync" and no job data should load from the
+// cloud. If data still appears, the rules did not publish — repeat step 3.

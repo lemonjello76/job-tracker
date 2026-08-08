@@ -193,6 +193,19 @@ const doc = dom.window.document;
     if (allOk) pass(types.length + ' checklist templates load and render');
   } catch (e) { fail('checklist load threw: ' + e.message.slice(0, 140)); }
 
+  // 2f. drive-time integrity — elapsed span must never be reported as drive
+  // time when the mileage can't support it (the 81mi/11.1h = 7mph defect).
+  try {
+    const HOUR = 3600000, T0 = Date.now() - 24 * HOUR;
+    const bad = win.segTimeBreakdown({ id: 'x', type: 'drive', startedAt: T0, endedAt: T0 + 11.1 * HOUR, manualMiles: 81 });
+    const good = win.segTimeBreakdown({ id: 'y', type: 'drive', startedAt: T0, endedAt: T0 + 8.5 * HOUR, manualMiles: 520 });
+    if (!bad.implausible) fail('drive integrity: 81mi/11.1h (7mph) not flagged');
+    else if (bad.driveMs / HOUR > 3) fail('drive integrity: 7mph span still reports ' + (bad.driveMs / HOUR).toFixed(1) + 'h drive');
+    else if (Math.abs((bad.driveMs + bad.unaccountedMs) - bad.elapsedMs) > 1000) fail('drive integrity: breakdown does not reconcile to elapsed');
+    else if (good.implausible || Math.abs(good.driveMs - 8.5 * HOUR) > 1000) fail('drive integrity: legitimate 520mi/8.5h haul was wrongly reduced');
+    else pass('drive-time integrity: implausible spans reduced, real hauls untouched');
+  } catch (e) { fail('drive integrity check threw: ' + e.message.slice(0, 140)); }
+
   if (failed) { console.error('\nSMOKE TEST FAILED'); process.exit(1); }
   console.log('\nAll checks passed.');
   process.exit(0);

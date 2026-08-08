@@ -20,6 +20,7 @@
      library bytes so a compromised CDN can't slip altered code into the evidence app -->
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js" integrity="sha384-+65NgAKqXr1Nb7sBmV6O09pL8ASqZsi29OE718meKinGAWaa70VE5V6LNjXVBjIA" crossorigin="anonymous"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js" integrity="sha384-YHSscHG455M7b+d6r5ibTMznxrZxV272bMjXT9ndTgmx05fLR7HsdmcVklhpBSyt" crossorigin="anonymous"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js" integrity="sha384-I1LYojsZ5RM1cOda44Z2h42Qa6YfsQ1XkXxREnhp4ueYBR/4d1pG1K+NZM537Vsj" crossorigin="anonymous"></script>
 <!-- QR code library REMOVED — the URL had been 404ing since it was added (npm package
      never shipped /build/qrcode.min.js) and the QR sticker feature is retired from the UI.
      If the feature comes back, load a proper UMD build and re-add an integrity hash. -->
@@ -954,6 +955,7 @@
   <div style="display:flex;gap:8px;align-items:center">
     <span id="appVersion" style="font-size:10px;color:#969aa4;font-weight:600" title="App version — read this to confirm you're on the latest"></span>
     <span id="cloudSyncIndicator" style="font-size:12px;color:#969aa4;cursor:pointer;font-weight:700;font-family:var(--font-disp);letter-spacing:1px;text-transform:uppercase" onclick="manualSync()" title="Tap to sync now">SYNC …</span>
+    <button id="cloudAuthBtn" class="header-btn" onclick="cloudAuthUser ? signOutOfCloud() : signInToCloud()" title="Cloud sync is off — data is saved on this device only" style="font-size:11px">Sign in to sync</button>
     <button class="header-btn" onclick="openSettings()" title="Settings"><svg class="ic"><use href="#i-gear"/></svg></button>
     <button class="header-btn" onclick="openSidebar()">Done (<span id="completedCount">0</span>)</button>
   </div>
@@ -1004,13 +1006,13 @@
   </select>
   <button class="action-btn-sm" style="margin:0;padding:8px 12px" onclick="newDraft()" title="Start a new in-progress job (in current trip)">+ New</button>
   <button class="action-btn-sm" style="margin:0;padding:8px 10px" onclick="deleteCurrentDraft()" title="Delete this in-progress job"><svg class="ic"><use href="#i-trash"/></svg></button>
-  <button class="action-btn-sm" style="margin:0;padding:8px 10px;background:var(--accent);color:#101114" onclick="composeEodEmail()" title="Email today's end-of-day summary to Robert + Seann"><svg class="ic"><use href="#i-mail"/></svg> EOD</button>
+  <button class="action-btn-sm" style="margin:0;padding:8px 10px;background:var(--accent);color:#101114" onclick="composeEodEmail()" title="Email this week's summary to Robert + Seann (sent Fridays)"><svg class="ic"><use href="#i-mail"/></svg> WEEK</button>
   <span id="autoSaveIndicator" style="font-size:11px;color:var(--green);min-width:54px;text-align:right;opacity:0;transition:opacity .3s">✓ Saved</span>
 </div>
 
 <!-- END-OF-DAY BANNER (shown after 4pm if today has unsent activity) -->
 <div id="eodBanner" style="display:none;position:fixed;bottom:16px;left:10px;right:10px;z-index:9999;background:var(--accent);color:#fff;padding:14px 16px;border-radius:var(--radius);box-shadow:0 4px 20px rgba(0,0,0,0.4);align-items:center;gap:10px;flex-wrap:wrap;max-width:560px;margin:0 auto">
-  <div style="flex:1;min-width:180px;font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px"><svg class="ic"><use href="#i-mail"/></svg> Send today's EOD summary to Robert + Seann?</div>
+  <div style="flex:1;min-width:180px;font-weight:600;font-size:14px;display:flex;align-items:center;gap:8px"><svg class="ic"><use href="#i-mail"/></svg> Send this week's summary to Robert + Seann?</div>
   <button onclick="composeEodEmail()" style="padding:8px 16px;background:#fff;color:var(--accent);border:none;border-radius:var(--radius);font-weight:700;cursor:pointer;font-family:inherit">Send</button>
   <button onclick="dismissEodBanner()" style="padding:8px 12px;background:transparent;color:#fff;border:1px solid #fff;border-radius:var(--radius);cursor:pointer;font-family:inherit">Later</button>
 </div>
@@ -2089,16 +2091,85 @@ let cloudUserRef = null;
 let cloudSyncQueue = []; // pending operations while offline / not initialized
 let cloudSyncSilenced = false; // true during pullFromCloud to prevent loop
 
+// ── CLOUD AUTH ───────────────────────────────────────────────────────────
+// The data path below (/users/lyle-mistamerica/...) is hardcoded in this file,
+// and this file is served publicly from GitHub Pages. Anyone who views source
+// learns the path. Before auth, the Firestore rules allowed read AND WRITE to
+// that path unconditionally — meaning a stranger could read, alter, or delete
+// the record. Sign-in pins access to one Google account; the matching rules in
+// firestore.rules reject every request that isn't this UID.
+//
+// The app does NOT require sign-in to run. IndexedDB is the source of truth and
+// everything works offline exactly as before — cloud sync is the only thing
+// gated. `cloudReady` stays false until authenticated, and every cloud call
+// already checks it, so an unauthenticated session behaves like an offline one.
+let fauth = null;
+let cloudAuthUser = null;
+
 try {
   if (typeof firebase !== 'undefined' && firebase.initializeApp) {
     firebase.initializeApp(firebaseConfig);
     fdb = firebase.firestore();
     cloudUserRef = fdb.collection('users').doc(CLOUD_USER_ID);
-    cloudReady = true;
+
+    if (firebase.auth) {
+      fauth = firebase.auth();
+      // Keep the session across app restarts so the field workflow is unchanged.
+      try { fauth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); } catch (e) {}
+      fauth.onAuthStateChanged(user => {
+        cloudAuthUser = user || null;
+        cloudReady = !!user;
+        if (user) {
+          lastCloudError = '';
+          setSyncStatus('synced', 'Signed in');
+        } else {
+          setSyncStatus('offline', 'Sign in to sync');
+        }
+        updateCloudAuthUI();
+      });
+    } else {
+      // Auth SDK missing (blocked/offline). Stay local-only rather than
+      // attempting writes that the rules will now reject anyway.
+      cloudReady = false;
+      lastCloudError = 'auth SDK unavailable';
+    }
   }
 } catch (e) {
   console.warn('Firebase init failed:', e);
   cloudReady = false;
+  lastCloudError = String(e && e.message || e);
+}
+
+async function signInToCloud() {
+  if (!fauth) { alert('Cloud sign-in unavailable offline. Your data is saved on this device.'); return; }
+  const provider = new firebase.auth.GoogleAuthProvider();
+  try {
+    await fauth.signInWithPopup(provider);
+  } catch (e) {
+    // Popups are unreliable in installed PWAs and mobile webviews; redirect works there.
+    if (e && /popup|blocked|closed|unsupported/i.test(String(e.code || e.message))) {
+      try { await fauth.signInWithRedirect(provider); return; } catch (e2) { e = e2; }
+    }
+    lastCloudError = String(e && e.message || e);
+    setSyncStatus('error', 'Sign-in failed');
+    console.warn('Cloud sign-in failed:', e);
+  }
+}
+
+async function signOutOfCloud() {
+  if (!fauth) return;
+  try { await fauth.signOut(); } catch (e) { console.warn('Sign-out failed:', e); }
+}
+
+// Reflects auth state on the cloud button if one is present. Kept defensive so
+// a missing element can never break startup.
+function updateCloudAuthUI() {
+  try {
+    const btn = document.getElementById('cloudAuthBtn');
+    if (!btn) return;
+    btn.textContent = cloudAuthUser ? 'Sync: on' : 'Sign in to sync';
+    btn.title = cloudAuthUser ? ('Signed in as ' + (cloudAuthUser.email || cloudAuthUser.uid)) : 'Cloud sync is off — data is saved on this device only';
+  } catch (e) {}
 }
 
 // Strip heavy binary (photos, audio, big embedded HTML) before cloud upload
@@ -3664,9 +3735,8 @@ async function refreshWeekAgg(force) {
       todayLast = Math.max(todayLast, s.endedAt || Date.now());
     }
     if (!_segInThisWeek(s, ws, we)) return;
-    const dur = (s.endedAt || Date.now()) - s.startedAt;
-    if (s.type === 'drive') { driveMs += dur; miles += segDriveMiles(s); }
-    else if (s.type === 'workday') siteMs += dur;
+    const b = segTimeBreakdown(s);
+    driveMs += b.driveMs; siteMs += b.workMs; miles += b.miles;
   });
   const addReceipts = arr => (arr || []).forEach(r => {
     const amt = parseFloat(r.amount) || 0;
@@ -5960,6 +6030,77 @@ function segHasManualMiles(s) {
   return s && s.manualMiles !== null && s.manualMiles !== undefined && s.manualMiles !== '' && !isNaN(parseFloat(s.manualMiles));
 }
 
+// ── DRIVE-TIME INTEGRITY ─────────────────────────────────────────────────
+// A drive segment measures wall-clock time between tapping START and STOP.
+// That span holds everything that happened in between — fuel, food, an hour
+// waiting on the GC, a hotel night in the middle of a two-day haul. Reporting
+// the whole span as "drive" is how 81 miles once got logged as 11.1 hours of
+// driving (7 mph) on a day with zero site time. One number like that puts every
+// other number in this log in question, so elapsed time is never reported as
+// drive time on its own. It gets checked against the miles actually covered:
+//
+//     implied mph = miles ÷ elapsed hours
+//
+// At or above IMPLIED_MPH_FLOOR the span is consistent with continuous driving
+// and stands exactly as recorded. Below it, the span provably contains
+// non-driving time, so we report a conservative drive estimate
+// (miles ÷ DRIVE_EST_MPH) and carry the remainder as UNACCOUNTED — still shown,
+// still adding back to the full span, but never counted as hours worked.
+//
+// Stored segments are NEVER rewritten. This derives at read time only, so the
+// raw record stays untouched and the arithmetic is reproducible by anyone.
+const IMPLIED_MPH_FLOOR = 15; // below this, a span cannot be continuous driving
+const DRIVE_EST_MPH = 55;     // conservative recovery rate for a flagged span
+
+function segTimeBreakdown(s) {
+  const base = { elapsedMs: 0, driveMs: 0, workMs: 0, unaccountedMs: 0, miles: 0, impliedMph: null, implausible: false, corroborated: false };
+  if (!s || !s.startedAt) return base;
+  const elapsedMs = Math.max(0, (s.endedAt || Date.now()) - s.startedAt);
+  if (s.type === 'workday') return Object.assign({}, base, { elapsedMs, workMs: elapsedMs, corroborated: true });
+  if (s.type !== 'drive') return Object.assign({}, base, { elapsedMs });
+
+  const miles = segDriveMiles(s);
+  const hours = elapsedMs / 3600000;
+  // No odometer and no manual miles — nothing to check the span against. Report
+  // it as recorded, but mark it uncorroborated so it can be shored up later.
+  if (!miles || hours <= 0) return Object.assign({}, base, { elapsedMs, driveMs: elapsedMs, corroborated: false });
+
+  const impliedMph = miles / hours;
+  if (impliedMph >= IMPLIED_MPH_FLOOR) {
+    return Object.assign({}, base, { elapsedMs, driveMs: elapsedMs, miles, impliedMph, corroborated: true });
+  }
+  const driveMs = Math.min(elapsedMs, (miles / DRIVE_EST_MPH) * 3600000);
+  return { elapsedMs, driveMs, workMs: 0, unaccountedMs: elapsedMs - driveMs, miles, impliedMph, implausible: true, corroborated: true };
+}
+
+// Duration cell for a segment row in any report. Shows the COUNTED hours, and
+// when a span was reduced, spells out the raw elapsed and the unaccounted
+// remainder right there — so every row reconciles to its day total on its face
+// and the reduction is visible rather than something you have to notice.
+function segDurationCell(s) {
+  const b = segTimeBreakdown(s);
+  const counted = (b.driveMs + b.workMs) / 3600000;
+  const mi = b.miles ? ` (${b.miles.toLocaleString()} mi)` : '';
+  if (!b.implausible) return `${counted.toFixed(2)} hrs${mi}`;
+  return `${counted.toFixed(2)} hrs${mi}<br><span style="font-size:11px;color:#888">`
+       + `${(b.elapsedMs / 3600000).toFixed(2)} elapsed · ${(b.unaccountedMs / 3600000).toFixed(2)} unaccounted `
+       + `(${b.impliedMph.toFixed(1)} mph implied)</span>`;
+}
+
+// Roll a set of segments into one total using that same derivation, so a day,
+// a job and the master log can never disagree about the hours.
+function sumTimeBreakdown(segs) {
+  const t = { elapsedMs: 0, driveMs: 0, workMs: 0, unaccountedMs: 0, miles: 0, flagged: 0, uncorroborated: 0 };
+  (segs || []).forEach(s => {
+    const b = segTimeBreakdown(s);
+    t.elapsedMs += b.elapsedMs; t.driveMs += b.driveMs; t.workMs += b.workMs;
+    t.unaccountedMs += b.unaccountedMs; t.miles += b.miles;
+    if (b.implausible) t.flagged++;
+    if (s && s.type === 'drive' && !b.corroborated) t.uncorroborated++;
+  });
+  return t;
+}
+
 function totalMilesFromSegments() {
   let m = 0;
   segments.forEach(s => {
@@ -6151,6 +6292,15 @@ function renderSegments() {
            <input type="checkbox" ${s.tripLevel?'checked':''} onchange="toggleSegmentTripLevel('${s.id}', this.checked)" style="width:auto;margin:0">
            Travel drive — getting to or between jobs
          </label>` : '';
+    // If the miles can't support the span, say so on the card — same day, while
+    // he can still correct the times from memory instead of a year later.
+    const bd = segTimeBreakdown(s);
+    const flagNote = bd.implausible
+      ? `<div style="margin-top:8px;padding:7px 9px;background:rgba(251,191,36,0.14);border:1px solid #fbbf24;border-radius:var(--radius);font-size:12px;line-height:1.45">
+           ⏸️ <b>${bd.impliedMph.toFixed(1)} mph implied</b> — ${bd.miles.toLocaleString()} mi over ${fmtClock(bd.elapsedMs)}.
+           Counting <b>${(bd.driveMs / 3600000).toFixed(1)}h</b> as drive, ${(bd.unaccountedMs / 3600000).toFixed(1)}h unaccounted.
+           If you really were driving that whole time, fix the miles or times below.
+         </div>` : '';
     const isEditing = editingSegmentId === s.id;
     if (isEditing) {
       // Edit mode — show editable fields for time and miles
@@ -6209,6 +6359,7 @@ function renderSegments() {
       <div style="font-size:13px;color:var(--dim);margin-top:4px">
         ${dateStr} → ${endStr} · <span class="seg-duration">${fmtClock(dur)}</span>${milesText}
       </div>
+      ${flagNote}
       ${odoBlock}
       <input type="text" placeholder="Note (e.g. Vegas → SF, or 'Day 2 site work')" value="${esc(s.note||'')}" onchange="updateSegmentNote('${s.id}', this.value)" style="width:100%;margin-top:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none">
       ${tripToggle}
@@ -6229,12 +6380,9 @@ function renderSegments() {
   const todayKey = new Date().toLocaleDateString('en-CA');
   list.innerHTML = order.map(k => {
     const segs = groups[k];
-    let driveMs = 0, workMs = 0, mi = 0;
-    segs.forEach(s => {
-      const dur = (s.endedAt || Date.now()) - s.startedAt;
-      if (s.type === 'drive') { driveMs += dur; mi += segDriveMiles(s); }
-      else workMs += dur;
-    });
+    const dayT = sumTimeBreakdown(segs);
+    const driveMs = dayT.driveMs, workMs = dayT.workMs, mi = dayT.miles;
+    const idleMs = dayT.unaccountedMs;
     const hasLive = segs.some(s => !s.endedAt);
     const hasEditing = segs.some(s => s.id === editingSegmentId);
     const open = hasLive || hasEditing || (segDayOpen[k] !== undefined ? segDayOpen[k] : k === todayKey);
@@ -6243,6 +6391,9 @@ function renderSegments() {
     const bits = [];
     if (driveMs) bits.push('🚗 ' + (driveMs / 3600000).toFixed(1) + 'h');
     if (workMs) bits.push('🏗️ ' + (workMs / 3600000).toFixed(1) + 'h');
+    // Time inside a drive that the mileage doesn't support — shown so it can be
+    // corrected in the field, never folded into drive hours.
+    if (idleMs >= 60000) bits.push('⏸️ ' + (idleMs / 3600000).toFixed(1) + 'h unaccounted');
     if (mi) bits.push(Math.round(mi).toLocaleString() + ' mi');
     return `<div style="margin-bottom:8px">
       <div onclick="toggleSegDay('${k}')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;background:var(--input);border:1px solid ${k === todayKey ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius);cursor:pointer;user-select:none">
@@ -6623,14 +6774,10 @@ async function generateReport() {
   const location = [city, state].filter(Boolean).join(', ') || 'N/A';
 
   // SEGMENTS-FIRST totals; fall back to old hours fields if no segments exist
-  let totalDriveMs = 0, totalSiteMs = 0;
-  segments.forEach(s => {
-    const dur = (s.endedAt || Date.now()) - s.startedAt;
-    if (s.type === 'drive') totalDriveMs += dur;
-    else if (s.type === 'workday') totalSiteMs += dur;
-  });
-  const segDriveH = totalDriveMs / 3600000;
-  const segSiteH = totalSiteMs / 3600000;
+  const repT = sumTimeBreakdown(segments);
+  const segDriveH = repT.driveMs / 3600000;
+  const segSiteH = repT.workMs / 3600000;
+  const segIdleH = repT.unaccountedMs / 3600000;
 
   const siteH = segments.length ? segSiteH : (parseFloat(document.getElementById('siteHours').value) || 0);
   const driveToH = segments.length ? segDriveH : (parseFloat(document.getElementById('driveToHours').value) || 0);
@@ -6844,9 +6991,7 @@ async function generateReport() {
         const ico = s.type === 'drive' ? '🚗 Drive' : '🏗️ Workday';
         const start = new Date(s.startedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
         const end = s.endedAt ? new Date(s.endedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) : 'now';
-        const dur = ((s.endedAt || Date.now()) - s.startedAt) / 3600000;
-        const milesStr = segDriveMiles(s) ? ` (${segDriveMiles(s).toLocaleString()} mi)` : '';
-        html += `<tr><td>${ico}</td><td>${start} → ${end}</td><td>${esc(s.note||'')}</td><td style="text-align:right">${dur.toFixed(2)} hrs${milesStr}</td></tr>`;
+        html += `<tr><td>${ico}</td><td>${start} → ${end}</td><td>${esc(s.note||'')}</td><td style="text-align:right">${segDurationCell(s)}</td></tr>`;
       });
       html += `<tr class="total-row"><td colspan="3">Day total</td><td style="text-align:right">${((dayDriveMs+dayWorkMs)/3600000).toFixed(2)} hrs${dayMiles ? ' · ' + dayMiles.toLocaleString() + ' mi' : ''}</td></tr>`;
       html += `</tbody></table>`;
@@ -7349,12 +7494,8 @@ function generateSummary() {
   const location = [city, state].filter(Boolean).join(', ') || 'N/A';
 
   // Segments-first totals (fall back to old hours/trips for legacy drafts)
-  let segDriveMs = 0, segSiteMs = 0;
-  segments.forEach(s => {
-    const dur = (s.endedAt || Date.now()) - s.startedAt;
-    if (s.type === 'drive') segDriveMs += dur;
-    else if (s.type === 'workday') segSiteMs += dur;
-  });
+  const gcT = sumTimeBreakdown(segments);
+  const segDriveMs = gcT.driveMs, segSiteMs = gcT.workMs;
   const siteH = segments.length ? (segSiteMs / 3600000) : (parseFloat(document.getElementById('siteHours').value) || 0);
   const driveToH = segments.length ? (segDriveMs / 3600000) : (parseFloat(document.getElementById('driveToHours').value) || 0);
   const driveBackH = segments.length ? 0 : (parseFloat(document.getElementById('driveBackHours').value) || 0);
@@ -7525,14 +7666,8 @@ function generateDailyReport() {
 
   // Today's segments
   const todaysSegs = segments.filter(s => s.startedAt >= todayStart && s.startedAt < todayEnd);
-  let driveMs = 0, siteMs = 0, miles = 0;
-  todaysSegs.forEach(s => {
-    const dur = (s.endedAt || Date.now()) - s.startedAt;
-    if (s.type === 'drive') {
-      driveMs += dur;
-      miles += segDriveMiles(s);
-    } else if (s.type === 'workday') siteMs += dur;
-  });
+  const dayT = sumTimeBreakdown(todaysSegs);
+  const driveMs = dayT.driveMs, siteMs = dayT.workMs, miles = dayT.miles;
   const totalH = (driveMs + siteMs) / 3600000;
 
   // Today's photos / receipts / contacts (filter by stamp.date if present, else include all from this draft)
@@ -7598,10 +7733,8 @@ function generateDailyReport() {
     todaysSegs.sort((a,b) => a.startedAt - b.startedAt).forEach(s => {
       const start = new Date(s.startedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
       const end = s.endedAt ? new Date(s.endedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) : 'now';
-      const dur = ((s.endedAt || Date.now()) - s.startedAt) / 3600000;
       const ico = s.type === 'drive' ? '🚗' : '🏗️';
-      const milesStr = (s.type === 'drive' && s.startOdoMiles && s.endOdoMiles) ? ` (${(s.endOdoMiles - s.startOdoMiles).toLocaleString()} mi)` : '';
-      html += `<tr><td>${ico} ${s.type === 'drive' ? 'Drive' : 'Workday'}</td><td>${start} → ${end}</td><td>${esc(s.note||'')}</td><td style="text-align:right">${dur.toFixed(2)} hrs${milesStr}</td></tr>`;
+      html += `<tr><td>${ico} ${s.type === 'drive' ? 'Drive' : 'Workday'}</td><td>${start} → ${end}</td><td>${esc(s.note||'')}</td><td style="text-align:right">${segDurationCell(s)}</td></tr>`;
     });
     html += `</tbody></table>`;
   }
@@ -7755,15 +7888,13 @@ async function generateWeeklyDigest() {
   const jobsThisWeek = []; // jobs with any activity this week
 
   buckets.forEach(b => {
-    let driveMs = 0, siteMs = 0, miles = 0;
+    const wkT = sumTimeBreakdown(b.segs);
+    const driveMs = wkT.driveMs, siteMs = wkT.workMs, miles = wkT.miles;
     b.segs.forEach(s => {
-      const dur = (s.endedAt || Date.now()) - s.startedAt;
-      if (s.type === 'drive') {
-        driveMs += dur;
-        miles += segDriveMiles(s);
-      } else if (s.type === 'workday') siteMs += dur;
+      const bd = segTimeBreakdown(s);
       const dayKey = new Date(s.startedAt).toLocaleDateString('en-CA');
-      dayActivity[dayKey] = (dayActivity[dayKey] || 0) + dur;
+      // Day activity reflects counted hours, not raw elapsed.
+      dayActivity[dayKey] = (dayActivity[dayKey] || 0) + bd.driveMs + bd.workMs;
     });
     const spent = b.receipts.reduce((s, r) => {
       // Only count receipts in this week (if stamp exists)
@@ -10210,18 +10341,15 @@ async function generateTripTotals() {
       const dur = (seg.endedAt || Date.now()) - seg.startedAt;
       if (seg.tripLevel) {
         // Trip-level: don't count under this job
-        if (seg.type === 'drive') {
-          tripLevelDriveMs += dur;
-          tripLevelMiles += segDriveMiles(seg);
-        }
+        const bd = segTimeBreakdown(seg);
+        tripLevelDriveMs += bd.driveMs;
+        tripLevelMiles += bd.miles;
         tripLevelSegs.push({ ...seg, _jobName: jobName });
       } else {
-        if (seg.type === 'drive') {
-          driveMs += dur;
-          miles += segDriveMiles(seg);
-        } else if (seg.type === 'workday') {
-          siteMs += dur;
-        }
+        const bd = segTimeBreakdown(seg);
+        driveMs += bd.driveMs;
+        miles += bd.miles;
+        siteMs += bd.workMs;
       }
       // Add to the day bucket for cross-job rollup
       const dayKey = new Date(seg.startedAt).toLocaleDateString('en-CA');
@@ -10402,24 +10530,16 @@ async function generateTripTotals() {
     days.forEach(d => {
       const dayDate = new Date(d + 'T00:00:00');
       const sorted = allDayBuckets[d].sort((a, b) => a.startedAt - b.startedAt);
-      let dayDriveMs = 0, dayWorkMs = 0, dayMiles = 0;
-      sorted.forEach(s => {
-        const dur = (s.endedAt || Date.now()) - s.startedAt;
-        if (s.type === 'drive') {
-          dayDriveMs += dur;
-          dayMiles += segDriveMiles(s);
-        } else { dayWorkMs += dur; }
-      });
+      const dT = sumTimeBreakdown(sorted);
+      const dayDriveMs = dT.driveMs, dayWorkMs = dT.workMs, dayMiles = dT.miles;
       html += `<h3>📅 ${dayDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})}</h3>`;
       html += `<table><thead><tr><th style="width:90px">Type</th><th style="width:140px">Time</th><th>Job · Note</th><th style="text-align:right;width:120px">Duration</th></tr></thead><tbody>`;
       sorted.forEach(s => {
         const ico = s.type === 'drive' ? '🚗 Drive' : '🏗️ Workday';
         const start = new Date(s.startedAt).toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
         const end = s.endedAt ? new Date(s.endedAt).toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'}) : 'now';
-        const dur = ((s.endedAt || Date.now()) - s.startedAt) / 3600000;
-        const milesStr = segDriveMiles(s) ? ' (' + segDriveMiles(s).toLocaleString() + ' mi)' : '';
         const noteStr = s.note ? ' — ' + esc(s.note) : '';
-        html += `<tr><td>${ico}</td><td>${start} → ${end}</td><td>${esc(s._jobName)}${noteStr}</td><td style="text-align:right">${dur.toFixed(2)} hrs${milesStr}</td></tr>`;
+        html += `<tr><td>${ico}</td><td>${start} → ${end}</td><td>${esc(s._jobName)}${noteStr}</td><td style="text-align:right">${segDurationCell(s)}</td></tr>`;
       });
       html += `<tr class="total-row"><td colspan="3">Day total</td><td style="text-align:right">${((dayDriveMs+dayWorkMs)/3600000).toFixed(2)} hrs${dayMiles ? ' · ' + dayMiles.toLocaleString() + ' mi' : ''}</td></tr>`;
       html += `</tbody></table>`;
@@ -10759,18 +10879,41 @@ async function deleteCurrentDraft() {
 const DRIVE_EMAIL_TO = 'robertl@mistamerica.com,seann@mistamerica.com';
 const DRIVE_EMAIL_CC = 'lylekrug@gmail.com';
 
+// ── REPORTING CADENCE ────────────────────────────────────────────────────
+// Reporting to the office is WEEKLY, not daily. One summary goes out Friday
+// (see composeEodEmail). The per-event pings that used to fire all day —
+// started driving / arrived on site / finished work / back at the hotel — and
+// the end-of-day photo recap are off.
+//
+// This changes ONLY what leaves the device. Every segment, GPS stamp, photo,
+// receipt, and timestamp is still captured and logged exactly as before. The
+// record is unchanged; the notifications are what stopped.
+//
+// Flip to true to restore the old per-event cadence.
+const DAILY_EMAILS_ENABLED = false;
+
 // ── APP IDENTITY ──
 // This is Lyle's personal tool — built, owned, and run by him on his own
-// devices and accounts. Not a company system. Every outgoing email carries
-// the attestation below so recipients are on notice of what the record is,
-// how it's captured, and who owns it.
+// devices, accounts, and time. Not a company system.
+//
+// The notice below is an OWNERSHIP notice, not an evidentiary one. Its job is
+// to make clear the app and its records are personal property and were not
+// developed for the employer, so no one can later claim it was built on company
+// time or ask to adopt it as a company tool.
+//
+// It deliberately does NOT recite the business-records elements ("ordinary
+// course," "at or near the time," "true and accurate contemporaneous record").
+// That language argued admissibility, which is decided by a court on the facts,
+// not by a footer — and it made routine field reports read as though they were
+// drafted for litigation. Stating the plain facts is stronger and carries none
+// of that baggage.
 const APP_NAME = 'Field Log';
 const EMAIL_ATTESTATION =
   '----------------------------------------\n' +
   'ABOUT THIS RECORD\n' +
-  APP_NAME + ' is a work-documentation application personally built, owned, and operated by Lyle Krug on his own phone, computer, and accounts. It is not a MistAmerica system.\n' +
-  'How it works: each entry is captured automatically at the moment the event happens — time-stamped by the device clock, location-stamped by GPS at capture, and synced to secure cloud storage. Entries are made in the ordinary course of work, at or near the time of the events they describe, and are retained as part of a continuous log of work hours, travel, mileage, and expenses.\n' +
-  'Lyle Krug maintains this log as his true and accurate contemporaneous record of the events described.';
+  APP_NAME + ' is a personal work-documentation tool built, owned, and operated by Lyle Krug on his own phone, computer, internet connection, and accounts, outside of working hours. It is not a MistAmerica system and is not a work made for hire.\n' +
+  'Entries are captured at the time of the event, time-stamped by the device clock and location-stamped by GPS.\n' +
+  '© 2026 Lyle Krug. Provided for informational purposes only; no license granted for reproduction or company use.';
 
 function emailjsConfig() {
   const serviceId = localStorage.getItem('emailjsServiceId');
@@ -10781,6 +10924,9 @@ function emailjsConfig() {
 
 // kind: 'start' | 'arrival' | 'work' | 'workEnd'. testMode = send to Lyle only, don't log.
 async function sendDriveEmail(kind, gps, whenMs, testMode, durationMs) {
+  // Weekly cadence: per-event pings to the office are off. testMode still sends
+  // so the Settings "send test email" button can verify EmailJS config.
+  if (!DAILY_EMAILS_ENABLED && !testMode) return false;
   const cfg = emailjsConfig();
   if (!cfg || typeof emailjs === 'undefined') return false; // not set up — skip silently
   const when = new Date(whenMs);
@@ -10946,8 +11092,8 @@ async function sendDayPhotosEmail() {
   const cfg = emailjsConfig();
   const photoTemplateId = localStorage.getItem('emailjsPhotoTemplateId');
   if (!cfg || !photoTemplateId || typeof emailjs === 'undefined') return false; // photos not set up — skip
-  const b = eodTodayBounds();
-  let todays = (photos || []).filter(p => eodIsToday(p.stamp, b) && !p._emailedEod);
+  const b = eodWeekBounds();
+  let todays = (photos || []).filter(p => eodInWindow(p.stamp, b) && !p._emailedEod);
   if (!todays.length) return false;
   let capped = false;
   if (todays.length > PHOTO_EMAIL_MAX_COUNT) { todays = todays.slice(0, PHOTO_EMAIL_MAX_COUNT); capped = true; }
@@ -11015,17 +11161,18 @@ async function gatherTodayRecap() {
   const jobs = [];
   let firstStart = Infinity, lastEnd = 0, totalMiles = 0;
   const consume = (name, place, jobKind, segs, wo) => {
-    let driveMs = 0, siteMs = 0, miles = 0, any = false;
-    (segs || []).forEach(s => {
-      if (dayKey(s.startedAt) !== tk) return;
-      any = true;
-      const dur = (s.endedAt || Date.now()) - s.startedAt;
+    const today = (segs || []).filter(s => s && dayKey(s.startedAt) === tk);
+    if (!today.length) return;
+    today.forEach(s => {
       firstStart = Math.min(firstStart, s.startedAt);
       lastEnd = Math.max(lastEnd, s.endedAt || Date.now());
-      if (s.type === 'drive') { driveMs += dur; const mi = segDriveMiles(s); miles += mi; totalMiles += mi; }
-      else if (s.type === 'workday') siteMs += dur;
     });
-    if (any) jobs.push({ name, place, jobKind, driveMs, siteMs, miles, wo });
+    // Hours come from segTimeBreakdown, never from raw elapsed time.
+    const t = sumTimeBreakdown(today);
+    totalMiles += t.miles;
+    jobs.push({ name, place, jobKind, driveMs: t.driveMs, siteMs: t.workMs,
+                unaccountedMs: t.unaccountedMs, miles: t.miles,
+                flagged: t.flagged, uncorroborated: t.uncorroborated, wo });
   };
   consume(
     document.getElementById('client').value.trim() || 'Untitled',
@@ -11046,21 +11193,36 @@ async function gatherTodayRecap() {
 }
 
 async function sendDayRecapEmail() {
+  // Weekly cadence: the end-of-day recap + photo contact sheet no longer goes
+  // to the office. Photos and time are still captured and stored locally.
+  if (!DAILY_EMAILS_ENABLED) return false;
   const cfg = emailjsConfig();
   if (!cfg || typeof emailjs === 'undefined') return false;
   const { jobs, spanMs, totalMiles, tk } = await gatherTodayRecap();
   if (!jobs.length) return false;
   const fmt = ms => (ms / 3600000).toFixed(1) + 'h';
   const place = jobs[0].place || document.getElementById('city').value.trim() || 'the field';
+  const dayDrive = jobs.reduce((a, j) => a + j.driveMs, 0);
+  const daySite = jobs.reduce((a, j) => a + j.siteMs, 0);
+  const dayIdle = jobs.reduce((a, j) => a + j.unaccountedMs, 0);
+  const anyFlagged = jobs.some(j => j.flagged);
   const lines = [`Day recap — ${tk}`, ''];
-  lines.push(`Hotel-to-hotel: ${fmt(spanMs)} · Miles: ${totalMiles.toLocaleString()} · Stops: ${jobs.length}`);
+  // The span is the bookend-to-bookend clock, NOT hours worked — it is labeled
+  // that way so it can never be read as a time claim. Hours are stated
+  // separately and always come from segTimeBreakdown.
+  lines.push(`Elapsed span (first start → last stop): ${fmt(spanMs)} — clock time, not hours worked`);
+  lines.push(`Recorded: Site ${fmt(daySite)} · Drive ${fmt(dayDrive)}${dayIdle >= 60000 ? ' · Unaccounted ' + fmt(dayIdle) : ''} · Miles ${totalMiles.toLocaleString()} · Stops ${jobs.length}`);
   lines.push('');
   jobs.forEach(j => {
     lines.push(`• ${j.name}${j.place ? ' (' + j.place + ')' : ''}${j.jobKind ? ' [' + j.jobKind + ']' : ''}`);
-    lines.push(`   Site ${fmt(j.siteMs)} · Drive ${fmt(j.driveMs)}${j.miles ? ' · ' + j.miles.toLocaleString() + ' mi' : ''}`);
+    lines.push(`   Site ${fmt(j.siteMs)} · Drive ${fmt(j.driveMs)}${j.unaccountedMs >= 60000 ? ' · Unaccounted ' + fmt(j.unaccountedMs) : ''}${j.miles ? ' · ' + j.miles.toLocaleString() + ' mi' : ''}`);
     const wo = woSummaryText(j.wo);
     if (wo) lines.push('   ' + wo);
   });
+  if (anyFlagged) {
+    lines.push('');
+    lines.push(`("Unaccounted" = time inside a drive segment that the mileage does not support — stopped, waiting, or parked. It is logged but not counted as drive time or hours worked.)`);
+  }
   lines.push('');
   lines.push(`(Auto-sent by ${APP_NAME} at end of day.)`);
   const message = lines.join('\n');
@@ -11068,8 +11230,8 @@ async function sendDayRecapEmail() {
 
   // Attach today's photos as a contact sheet when a photo template is configured
   const photoTemplateId = localStorage.getItem('emailjsPhotoTemplateId');
-  const b = eodTodayBounds();
-  let todays = (photos || []).filter(p => eodIsToday(p.stamp, b) && !p._emailedEod);
+  const b = eodWeekBounds();
+  let todays = (photos || []).filter(p => eodInWindow(p.stamp, b) && !p._emailedEod);
   let capped = false;
   if (todays.length > PHOTO_EMAIL_MAX_COUNT) { todays = todays.slice(0, PHOTO_EMAIL_MAX_COUNT); capped = true; }
   let montage = null;
@@ -11112,18 +11274,29 @@ async function sendDayRecapEmail() {
 // ═══════════════════════════════
 const EOD_RECIPIENTS = ['robertl@mistamerica.com', 'seann@mistamerica.com'];
 const EOD_TRIGGER_HOUR = 16; // 4pm local
+const EOD_TRIGGER_DAY = 5;   // Friday (0=Sun). Reporting is weekly, not daily.
 
-function eodTodayBounds() {
+// Reporting window: the current calendar week, Monday 00:00 through the
+// following Monday 00:00. Sent once, on Friday. A Friday-evening send captures
+// Mon–Fri; a late weekend send still lands in the same window rather than
+// splitting a week across two reports.
+function eodWeekBounds() {
   const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const dow = now.getDay();                 // 0=Sun … 6=Sat
+  const daysSinceMon = (dow + 6) % 7;       // Mon→0, Sun→6
+  const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceMon);
+  const start = monday.getTime();
+  const end = start + 7 * 86400000;
+  const friday = new Date(start + 4 * 86400000);
+  const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   return {
     start,
-    end: start + 86400000,
-    dateStr: now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    end,
+    dateStr: fmt(monday) + '–' + fmt(friday) + ', ' + friday.getFullYear()
   };
 }
 
-function eodSegOverlapsToday(seg, b) {
+function eodSegOverlapsWindow(seg, b) {
   const segEnd = seg.endedAt || Date.now();
   return seg.startedAt < b.end && segEnd > b.start;
 }
@@ -11133,7 +11306,7 @@ function eodClipMs(seg, b) {
   return Math.max(0, Math.min(segEnd, b.end) - Math.max(seg.startedAt, b.start));
 }
 
-function eodIsToday(stampStr, b) {
+function eodInWindow(stampStr, b) {
   if (!stampStr) return false;
   const t = Date.parse(stampStr);
   if (isNaN(t)) return false;
@@ -11149,8 +11322,8 @@ function eodFmtHM(ms) {
   return h + ' hr ' + m + ' min';
 }
 
-async function buildTodaySummary() {
-  const b = eodTodayBounds();
+async function buildWeekSummary() {
+  const b = eodWeekBounds();
   const out = {
     type: 'empty', dateStr: b.dateStr, clientName: '', city: '',
     driveMs: 0, workMs: 0, miles: 0,
@@ -11164,7 +11337,7 @@ async function buildTodaySummary() {
   // 1) In-memory active state
   const inMemClient = document.getElementById('client').value.trim();
   for (const seg of (segments || [])) {
-    if (!eodSegOverlapsToday(seg, b)) continue;
+    if (!eodSegOverlapsWindow(seg, b)) continue;
     const ms = eodClipMs(seg, b);
     if (seg.type === 'drive') {
       out.driveMs += ms;
@@ -11178,9 +11351,9 @@ async function buildTodaySummary() {
     }
   }
   // In-memory photos/receipts
-  for (const p of (photos || [])) if (eodIsToday(p.stamp, b)) out.photoCount++;
+  for (const p of (photos || [])) if (eodInWindow(p.stamp, b)) out.photoCount++;
   for (const r of (receipts || [])) {
-    if (eodIsToday(r.stamp, b)) {
+    if (eodInWindow(r.stamp, b)) {
       out.receiptCount++;
       out.receiptTotal += (parseFloat(r.amount) || 0);
     }
@@ -11198,7 +11371,7 @@ async function buildTodaySummary() {
       if (d.id === currentDraftId) continue;
       const s = d.state || {};
       for (const seg of (s.segments || [])) {
-        if (!eodSegOverlapsToday(seg, b)) continue;
+        if (!eodSegOverlapsWindow(seg, b)) continue;
         const ms = eodClipMs(seg, b);
         if (seg.type === 'drive') {
           out.driveMs += ms;
@@ -11211,9 +11384,9 @@ async function buildTodaySummary() {
           }
         }
       }
-      for (const p of (s.photos || [])) if (eodIsToday(p.stamp, b)) out.photoCount++;
+      for (const p of (s.photos || [])) if (eodInWindow(p.stamp, b)) out.photoCount++;
       for (const r of (s.receipts || [])) {
-        if (eodIsToday(r.stamp, b)) {
+        if (eodInWindow(r.stamp, b)) {
           out.receiptCount++;
           out.receiptTotal += (parseFloat(r.amount) || 0);
         }
@@ -11228,7 +11401,7 @@ async function buildTodaySummary() {
       const s = j.rawState;
       if (!s || !s.segments) continue;
       for (const seg of s.segments) {
-        if (!eodSegOverlapsToday(seg, b)) continue;
+        if (!eodSegOverlapsWindow(seg, b)) continue;
         const ms = eodClipMs(seg, b);
         if (seg.type === 'drive') {
           out.driveMs += ms;
@@ -11253,33 +11426,33 @@ async function composeEodEmail() {
   hideEodBanner();
   let sum;
   try {
-    sum = await buildTodaySummary();
+    sum = await buildWeekSummary();
   } catch (e) {
-    alert('Could not build EOD summary: ' + (e.message || e));
+    alert('Could not build weekly summary: ' + (e.message || e));
     return;
   }
   if (sum.type === 'empty') {
-    alert('Nothing logged today — no drive or workday segments started after midnight.\n\nIf you have time/miles/photos to send, tap them in first, then hit 📧 EOD again.');
+    alert('Nothing logged this week — no drive or workday segments recorded since Monday.\n\nIf you have time/miles/photos to send, tap them in first, then hit WEEK again.');
     return;
   }
 
   const subject = sum.type === 'job'
-    ? `Lyle EOD — ${sum.clientName || 'Job'} — ${sum.dateStr}`
-    : `Lyle EOD — Drive Day — ${sum.dateStr}`;
+    ? `Lyle — Weekly Summary — ${sum.clientName || 'Job'} — ${sum.dateStr}`
+    : `Lyle — Weekly Summary — ${sum.dateStr}`;
 
   const lines = [];
   if (sum.type === 'job') {
-    lines.push(`End-of-day update for ${sum.clientName || 'job'}${sum.city ? ' (' + sum.city + ')' : ''}.`);
+    lines.push(`Weekly summary for ${sum.clientName || 'job'}${sum.city ? ' (' + sum.city + ')' : ''} — week of ${sum.dateStr}.`);
     lines.push('');
-    lines.push(`Time on site today: ${eodFmtHM(sum.workMs)}`);
-    if (sum.driveMs > 0) lines.push(`Drive time today: ${eodFmtHM(sum.driveMs)}`);
-    if (sum.miles > 0) lines.push(`Miles driven today: ${sum.miles.toLocaleString()}`);
-    if (sum.photoCount > 0) lines.push(`Site photos captured today: ${sum.photoCount}`);
-    if (sum.receiptCount > 0) lines.push(`Expenses today: ${sum.receiptCount} receipt(s), $${sum.receiptTotal.toFixed(2)} total`);
+    lines.push(`Time on site this week: ${eodFmtHM(sum.workMs)}`);
+    if (sum.driveMs > 0) lines.push(`Drive time this week: ${eodFmtHM(sum.driveMs)}`);
+    if (sum.miles > 0) lines.push(`Miles driven this week: ${sum.miles.toLocaleString()}`);
+    if (sum.photoCount > 0) lines.push(`Site photos captured this week: ${sum.photoCount}`);
+    if (sum.receiptCount > 0) lines.push(`Expenses this week: ${sum.receiptCount} receipt(s), $${sum.receiptTotal.toFixed(2)} total`);
     if (sum.workCompleted) { lines.push(''); lines.push('Work completed:'); lines.push(sum.workCompleted); }
     if (sum.blockers) { lines.push(''); lines.push('Blockers / issues:'); lines.push(sum.blockers); }
   } else {
-    lines.push(`Drive day summary for ${sum.dateStr}.`);
+    lines.push(`Weekly summary — week of ${sum.dateStr}.`);
     lines.push('');
     if (sum.driveMs > 0) lines.push(`Total drive time: ${eodFmtHM(sum.driveMs)}`);
     if (sum.miles > 0) lines.push(`Miles driven: ${sum.miles.toLocaleString()}`);
@@ -11295,13 +11468,13 @@ async function composeEodEmail() {
   const to = EOD_RECIPIENTS.join(',');
   const url = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
-  try { localStorage.setItem('eodLastSent', String(eodTodayBounds().start)); } catch (e) {}
+  try { localStorage.setItem('eodLastSent', String(eodWeekBounds().start)); } catch (e) {}
   window.location.href = url;
 }
 
 function dismissEodBanner() {
   hideEodBanner();
-  try { localStorage.setItem('eodDismissed', String(eodTodayBounds().start)); } catch (e) {}
+  try { localStorage.setItem('eodDismissed', String(eodWeekBounds().start)); } catch (e) {}
 }
 
 function hideEodBanner() {
@@ -11312,16 +11485,18 @@ function hideEodBanner() {
 async function maybeShowEodBanner() {
   try {
     const now = new Date();
+    // Weekly cadence: Friday afternoon only. Nothing prompts Mon–Thu.
+    if (now.getDay() !== EOD_TRIGGER_DAY) return;
     if (now.getHours() < EOD_TRIGGER_HOUR) return;
-    const todayStart = eodTodayBounds().start;
-    if (parseInt(localStorage.getItem('eodLastSent') || '0', 10) >= todayStart) return;
-    if (parseInt(localStorage.getItem('eodDismissed') || '0', 10) >= todayStart) return;
-    const sum = await buildTodaySummary();
+    const weekStart = eodWeekBounds().start;
+    if (parseInt(localStorage.getItem('eodLastSent') || '0', 10) >= weekStart) return;
+    if (parseInt(localStorage.getItem('eodDismissed') || '0', 10) >= weekStart) return;
+    const sum = await buildWeekSummary();
     if (sum.type === 'empty') return;
     const banner = document.getElementById('eodBanner');
     if (banner) banner.style.display = 'flex';
   } catch (e) {
-    console.warn('EOD banner check failed:', e);
+    console.warn('Weekly summary banner check failed:', e);
   }
 }
 

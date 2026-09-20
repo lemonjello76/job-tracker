@@ -1,0 +1,11 @@
+# Job Tracker is a private work-record tool, not a public site.
+# Nothing here should appear in search results.
+User-agent: *
+Disallow: /
+
+# NOTE: this file only takes effect at a DOMAIN root. On GitHub Pages this repo
+# is served under a path (lemonjello76.github.io/job-tracker/), so crawlers read
+# lemonjello76.github.io/robots.txt and never see this one. The tags that
+# actually do the work are the <meta name="robots" content="noindex, nofollow">
+# lines in index.html, overview/index.html and help/index.html. This file becomes
+# effective if the app ever moves to its own domain.

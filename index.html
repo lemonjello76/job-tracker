@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Field Log — Lyle Krug</title>
+<meta name="robots" content="noindex, nofollow">
 <!-- PWA — installable, offline-capable -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d0e10">
@@ -637,7 +638,7 @@
     font-weight: 700;
     cursor: pointer;
   }
-  .btn-green { background: var(--green); color: #fff; }
+  .btn-green { background: var(--green); color: var(--bg); }
   .btn-green:hover { background: var(--green-hover); }
   .btn-dim { background: var(--input); color: var(--dim); border: 1px solid var(--border) !important; }
   .btn-dim:hover { color: var(--text); }
@@ -9104,7 +9105,7 @@ async function _buildAndOpenGcReport() {
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   :root{
-    --ink:#0f172a; --ink-soft:#334155; --muted:#64748b;
+    --ink:#0f172a; --ink-soft:#334155; --muted:#5b6b7d;
     --orange:#ea580c; --orange-deep:#7c2d12; --orange-light:#ffedd5; --orange-bg:#fff7ed;
     --green:#15803d; --green-light:#dcfce7; --green-bg:#f0fdf4;
     --blue:#1d4ed8; --blue-deep:#1e3a8a; --blue-light:#dbeafe; --blue-bg:#eff6ff;
@@ -9787,7 +9788,7 @@ async function _buildAndOpenUserGuide() {
 <style>
   *{margin:0;padding:0;box-sizing:border-box}
   :root{
-    --ink:#0f172a; --ink-soft:#334155; --muted:#64748b;
+    --ink:#0f172a; --ink-soft:#334155; --muted:#5b6b7d;
     --blue:#1d4ed8; --blue-deep:#1e3a8a; --blue-light:#dbeafe; --blue-bg:#eff6ff;
     --green:#15803d; --green-deep:#14532d; --green-light:#dcfce7; --green-bg:#f0fdf4;
     --amber:#c2410c; --amber-deep:#7c2d12; --amber-light:#ffedd5; --amber-bg:#fff7ed;
@@ -9919,7 +9920,7 @@ async function _buildAndOpenUserGuide() {
   .hier-row:not(.header){border-top:1px solid #e2e8f0}
   .pill-on{display:inline-block;padding:3px 12px;background:var(--green-light);color:var(--green-deep);border-radius:20px;font-weight:700;font-size:11px;letter-spacing:1px}
   .pill-off{display:inline-block;padding:3px 12px;background:var(--danger-bg);color:#991b1b;border-radius:20px;font-weight:700;font-size:11px;letter-spacing:1px}
-  .pill-any{display:inline-block;padding:3px 10px;background:#f1f5f9;color:#64748b;border-radius:20px;font-weight:600;font-size:11px;font-style:italic}
+  .pill-any{display:inline-block;padding:3px 10px;background:#f1f5f9;color:#5b6b7d;border-radius:20px;font-weight:600;font-size:11px;font-style:italic}
 
   /* TROUBLESHOOTING GRID */
   .ts-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0}

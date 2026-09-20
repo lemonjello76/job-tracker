@@ -3628,7 +3628,7 @@ function updateJobDoneUI() {
   if (jobDone) {
     btn.textContent = '✓ Done — tap to reopen';
     btn.style.background = 'var(--green)';
-    btn.style.color = '#fff';
+    btn.style.color = 'var(--bg)';
     btn.style.borderColor = 'var(--green)';
   } else {
     btn.textContent = '✓ Mark Job Done';
@@ -5581,7 +5581,7 @@ function toggleDictation(elId, onCommit, btn) {
     __activeMicBtn.dataset.idle = __activeMicBtn.innerHTML;
     __activeMicBtn.innerHTML = '<svg class="ic"><use href="#i-stop"/></svg> STOP';
     __activeMicBtn.style.background = 'var(--red)';
-    __activeMicBtn.style.color = '#fff';
+    __activeMicBtn.style.color = 'var(--bg)';
   }
   showToast('🎤 Listening — tap Stop when done', 'good', 3000);
   try { rec.start(); } catch (_) { stopDictationUI(); }
@@ -6349,7 +6349,7 @@ function renderSegments() {
         ${tripToggle}
         <button class="action-btn-sm" style="margin:12px 0 0;width:100%;font-size:12px" onclick="startMoveSegment('${s.id}')">📂 Move this entry to another job / place</button>
         <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="action-btn-sm" style="margin:0;flex:1;background:var(--green);color:#fff;border-color:var(--green)" onclick="saveSegmentEdit('${s.id}')">✓ Save Changes</button>
+          <button class="action-btn-sm" style="margin:0;flex:1;background:var(--green);color:var(--bg);border-color:var(--green)" onclick="saveSegmentEdit('${s.id}')">✓ Save Changes</button>
           <button class="action-btn-sm" style="margin:0;flex:1" onclick="cancelSegmentEdit()">Cancel</button>
         </div>
       </div>`;

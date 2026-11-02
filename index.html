@@ -912,9 +912,52 @@
   @media (max-width: 400px) {
     .actions { grid-template-columns: 1fr; }
   }
+
+  /* SIMPLE VIEW — plain-English face over the same app. body.simple hides the
+     power tools (trips, job pickers, reports, MORE TOOLS); nothing is removed,
+     "Show all tools" at the bottom brings the full board back. */
+  .simple-only { display: none; }
+  body.simple .simple-only { display: block; }
+  body.simple .full-only { display: none !important; }
+  .flow-hint { text-align: center; font-size: 13px; color: var(--dim); margin-top: 6px; }
+  .sv-job { align-items: center; gap: 10px; margin-top: 12px; padding: 12px 14px; background: var(--input); border: 1px solid var(--border); border-radius: var(--radius); }
+  .sv-job-text { flex: 1; min-width: 0; font-size: 16px; }
+  .sv-job-text small { display: block; font-size: 12px; color: var(--dim); letter-spacing: .5px; text-transform: uppercase; }
+  .sv-job-text b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sv-job .action-btn-sm { margin: 0; padding: 10px 14px; }
+  .sv-help { margin-top: 12px; padding: 14px; border: 1px dashed var(--border); border-radius: var(--radius); font-size: 15px; }
+  .sv-help ol { margin: 6px 0 10px 22px; padding: 0; }
+  .sv-help li { margin-bottom: 4px; }
+  .sv-help b { color: var(--accent); }
+  .sv-tools { grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  body.simple .sv-tools.simple-only { display: grid; }
+  body.simple .sv-job.simple-only { display: flex; }
+  body.simple .sv-help.simple-only.dismissed { display: none; }
+  .sv-tool { min-height: 92px; padding: 14px 12px; border: 1px solid var(--border); border-bottom-color: #000; border-radius: var(--radius); background: linear-gradient(180deg, #22242a, #191b1f); color: var(--text); font-family: var(--font-body); text-align: left; cursor: pointer; display: flex; flex-direction: column; gap: 4px; }
+  .sv-tool:hover { border-color: var(--accent); }
+  .sv-tool:active { transform: translateY(1px); }
+  .sv-tool .sv-t { display: flex; align-items: center; gap: 8px; font-family: var(--font-disp); font-size: 19px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; }
+  .sv-tool .sv-t .ic { width: 24px; height: 24px; color: var(--accent); }
+  .sv-tool .sv-d { font-size: 13px; color: var(--dim); line-height: 1.35; }
+  .sv-tool.wide { grid-column: 1 / -1; min-height: 0; }
+  .view-toggle { width: 100%; text-align: center; margin: 4px 0 20px; padding: 14px; }
+  .header-btn, #cloudSyncIndicator { white-space: nowrap; }
+  @media (max-width: 480px) {
+    .header { flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
+    .header > div { flex-wrap: wrap; }
+    .header-btn { padding: 8px 10px; font-size: 13px; }
+    .sv-tool { min-height: 0; padding: 12px 10px; }
+    .sv-tool .sv-t { font-size: 17px; }
+  }
+  @media (max-width: 330px) { .sv-tools { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
+<script>
+// Simple view is the default; "Show all tools" switches to the full board and the choice sticks.
+try { if (localStorage.getItem('fieldlog_view') !== 'full') document.body.classList.add('simple'); }
+catch (e) { document.body.classList.add('simple'); }
+</script>
 
 <!-- Icon sprite — plain stroke tools, no emoji -->
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
@@ -954,11 +997,11 @@
 <div class="header">
   <h1>Field<span>Log</span><small>LYLE KRUG — PERSONAL WORK RECORD</small></h1>
   <div style="display:flex;gap:8px;align-items:center">
-    <span id="appVersion" style="font-size:10px;color:#969aa4;font-weight:600" title="App version — read this to confirm you're on the latest"></span>
-    <span id="cloudSyncIndicator" style="font-size:12px;color:#969aa4;cursor:pointer;font-weight:700;font-family:var(--font-disp);letter-spacing:1px;text-transform:uppercase" onclick="manualSync()" title="Tap to sync now">SYNC …</span>
-    <button id="cloudAuthBtn" class="header-btn" onclick="cloudAuthUser ? signOutOfCloud() : signInToCloud()" title="Cloud sync is off — data is saved on this device only" style="font-size:11px">Sign in to sync</button>
-    <button class="header-btn" onclick="openSettings()" title="Settings"><svg class="ic"><use href="#i-gear"/></svg></button>
-    <button class="header-btn" onclick="openSidebar()">Done (<span id="completedCount">0</span>)</button>
+    <span id="appVersion" class="full-only" style="font-size:10px;color:#969aa4;font-weight:600" title="App version — read this to confirm you're on the latest"></span>
+    <span id="cloudSyncIndicator" style="font-size:12px;color:#969aa4;cursor:pointer;font-weight:700;font-family:var(--font-disp);letter-spacing:1px;text-transform:uppercase" onclick="manualSync()" title="Tap to back up now">BACKUP …</span>
+    <button id="cloudAuthBtn" class="header-btn" onclick="cloudAuthUser ? signOutOfCloud() : signInToCloud()" title="Backup is off — your records are saved on this device only" style="font-size:11px">Turn on backup</button>
+    <button class="header-btn full-only" onclick="openSettings()" title="Settings"><svg class="ic"><use href="#i-gear"/></svg></button>
+    <button class="header-btn" onclick="openSidebar()" title="Jobs you've marked done">Finished (<span id="completedCount">0</span>)</button>
   </div>
 </div>
 
@@ -980,7 +1023,23 @@
   <div id="weekStripWrap" style="display:none;margin-top:10px">
     <div id="weekStrip" style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px"></div>
   </div>
-  <div class="day-utils">
+  <!-- Simple view: which job you're on, in plain words, with one way to change it -->
+  <div class="sv-job simple-only">
+    <div class="sv-job-text"><small>Job you're on</small><b id="svJobName">No job picked yet</b></div>
+    <button class="action-btn-sm" onclick="svChangeJob()">Change</button>
+  </div>
+  <!-- Simple view: the whole app in three steps, until you say you've got it -->
+  <div class="sv-help simple-only" id="svHelp">
+    <b>How it works</b>
+    <ol>
+      <li>Leaving for a job? Tap <b>START DRIVE</b>.</li>
+      <li>Got there? Tap <b>I'VE ARRIVED</b>, then <b>START WORK</b>.</li>
+      <li>Back at the hotel or home? Tap <b>DONE FOR THE DAY</b>.</li>
+    </ol>
+    <div style="font-size:13px;color:var(--dim);margin-bottom:10px">The app keeps the times, places and miles for you. Fix anything later by tapping a day.</div>
+    <button class="action-btn-sm" style="margin:0" onclick="svHideHelp()">Got it</button>
+  </div>
+  <div class="day-utils full-only">
     <button class="action-btn-sm" onclick="quickVoiceNote(this)"><svg class="ic"><use href="#i-mic"/></svg> Voice note</button>
     <button class="action-btn-sm" onclick="logGasStop()"><svg class="ic"><use href="#i-fuel"/></svg> Log gas</button>
     <button class="action-btn-sm" id="weekToggleBtn" onclick="toggleWeekStrip()"><svg class="ic"><use href="#i-week"/></svg> Week</button>
@@ -988,7 +1047,7 @@
 </div>
 
 <!-- TRIP SELECTOR -->
-<div class="section" style="padding:10px 14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--bg);border-color:var(--accent)">
+<div class="section full-only" style="padding:10px 14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;background:var(--bg);border-color:var(--accent)">
   <span style="font-size:11px;color:var(--dim);font-weight:700;letter-spacing:1px">TRIP:</span>
   <select id="tripSelector" onchange="switchToTrip(this.value)" style="flex:1;min-width:120px;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none">
     <option value="">— Solo jobs (no trip) —</option>
@@ -1000,7 +1059,7 @@
 </div>
 
 <!-- DRAFT SELECTOR -->
-<div class="section" style="padding:12px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<div class="section full-only" style="padding:12px 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
   <span style="font-size:12px;color:var(--dim);font-weight:700;letter-spacing:1px">EDITING:</span>
   <select id="draftSelector" onchange="switchToDraft(this.value)" style="flex:1;min-width:140px;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none">
     <option value="">— New Job —</option>
@@ -1019,7 +1078,7 @@
 </div>
 
 <!-- JOB INFO (collapsed by default — the day flow drives the app, details live here) -->
-<div class="section">
+<div class="section full-only">
   <h2 onclick="toggleJobInfo()" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;gap:8px">Job Info
     <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:12px;color:var(--dim);text-align:right"><span id="jobInfoSummary"></span> <span id="jobInfoCaret">▸</span></span>
   </h2>
@@ -1115,8 +1174,40 @@
   <div id="segmentsList"></div>
 </div>
 
+<!-- SIMPLE TOOLS — the same tools, each with one plain line saying what it does -->
+<div class="sv-tools simple-only">
+  <button class="sv-tool" onclick="document.getElementById('photoInput').click()">
+    <span class="sv-t"><svg class="ic"><use href="#i-camera"/></svg> Photo</span>
+    <span class="sv-d">Take a picture. It's saved to the job you're on.</span>
+  </button>
+  <button class="sv-tool" onclick="document.getElementById('receiptInput').click()">
+    <span class="sv-t"><svg class="ic"><use href="#i-receipt"/></svg> Receipt</span>
+    <span class="sv-d">Snap a receipt. It adds to money spent.</span>
+  </button>
+  <button class="sv-tool" onclick="quickVoiceNote(this)">
+    <span class="sv-t"><svg class="ic"><use href="#i-mic"/></svg> Talk</span>
+    <span class="sv-d">Say what happened. It's saved as a note.</span>
+  </button>
+  <button class="sv-tool" onclick="toggleSection('notesSection'); addNoteIfEmpty()">
+    <span class="sv-t"><svg class="ic"><use href="#i-note"/></svg> Write</span>
+    <span class="sv-d">Type a note about this job.</span>
+  </button>
+  <button class="sv-tool" onclick="logGasStop()">
+    <span class="sv-t"><svg class="ic"><use href="#i-fuel"/></svg> Gas</span>
+    <span class="sv-d">Log a fill-up and the miles.</span>
+  </button>
+  <button class="sv-tool" onclick="svShowWeek()">
+    <span class="sv-t"><svg class="ic"><use href="#i-week"/></svg> Past days</span>
+    <span class="sv-d">See this week. Tap a day to check or fix it.</span>
+  </button>
+  <button class="sv-tool wide" onclick="openMasterLog()">
+    <span class="sv-t"><svg class="ic"><use href="#i-search"/></svg> Look up old work</span>
+    <span class="sv-d">Every job, hour, mile and receipt. Download it as a spreadsheet.</span>
+  </button>
+</div>
+
 <!-- TOOL GRID — the four you grab all day, the rest behind MORE -->
-<div class="actions">
+<div class="actions full-only">
   <button class="action-btn" onclick="document.getElementById('photoInput').click()">
     <svg class="ic"><use href="#i-camera"/></svg> PHOTOS
   </button>
@@ -1130,8 +1221,8 @@
     <svg class="ic"><use href="#i-clipboard"/></svg> WORK ORDER
   </button>
 </div>
-<button class="action-btn-sm" id="moreToolsBtn" style="width:100%;text-align:center;margin-bottom:12px" onclick="toggleMoreTools()"><svg class="ic"><use href="#i-more"/></svg> MORE TOOLS</button>
-<div class="actions" id="moreTools" style="display:none">
+<button class="action-btn-sm full-only" id="moreToolsBtn" style="width:100%;text-align:center;margin-bottom:12px" onclick="toggleMoreTools()"><svg class="ic"><use href="#i-more"/></svg> MORE TOOLS</button>
+<div class="actions full-only" id="moreTools" style="display:none">
   <button class="action-btn" onclick="document.getElementById('videoInput').click()">
     <svg class="ic"><use href="#i-video"/></svg> VIDEOS
   </button>
@@ -1382,7 +1473,7 @@ function toggleMoreTools() {
 </div>
 
 <!-- GENERATE -->
-<div class="section" style="padding:14px">
+<div class="section full-only" style="padding:14px">
   <h2 onclick="toggleReportsRack()" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;margin-bottom:0">Reports
     <span id="reportsCaret" style="color:var(--dim)">▸</span>
   </h2>
@@ -1399,8 +1490,42 @@ function toggleMoreTools() {
     <button class="generate-btn" style="display:none" onclick="generateQrSticker()">QR HELP STICKER</button>
   </div>
 </div>
-<button class="send-btn" onclick="sendReport()" style="margin-bottom:16px">SEND REPORT</button>
+<button class="send-btn full-only" onclick="sendReport()" style="margin-bottom:16px">SEND REPORT</button>
+<button class="action-btn-sm view-toggle" id="viewToggleBtn" onclick="toggleSimpleView()">Show all tools</button>
 <script>
+// ---- Simple view helpers ----
+function toggleSimpleView() {
+  const simple = !document.body.classList.contains('simple');
+  document.body.classList.toggle('simple', simple);
+  try { localStorage.setItem('fieldlog_view', simple ? 'simple' : 'full'); } catch (e) {}
+  syncSimpleViewUI();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function syncSimpleViewUI() {
+  const simple = document.body.classList.contains('simple');
+  const b = document.getElementById('viewToggleBtn');
+  if (b) b.textContent = simple ? 'Show all tools' : 'Back to simple view';
+  const h = document.getElementById('svHelp');
+  let seen = false;
+  try { seen = localStorage.getItem('fieldlog_helpSeen') === '1'; } catch (e) {}
+  if (h) h.classList.toggle('dismissed', seen);
+}
+function svHideHelp() {
+  try { localStorage.setItem('fieldlog_helpSeen', '1'); } catch (e) {}
+  syncSimpleViewUI();
+}
+function svShowWeek() {
+  const wrap = document.getElementById('weekStripWrap');
+  if (wrap && wrap.style.display === 'none') toggleWeekStrip();
+  document.getElementById('myDayCard').scrollIntoView({ behavior: 'smooth' });
+}
+async function svChangeJob() {
+  const gps = await getGps();
+  await dayPickJob(gps);
+  updateDashboard();
+}
+syncSimpleViewUI();
+
 function toggleReportsRack() {
   const r = document.getElementById('reportsRack');
   const c = document.getElementById('reportsCaret');
@@ -2168,8 +2293,8 @@ function updateCloudAuthUI() {
   try {
     const btn = document.getElementById('cloudAuthBtn');
     if (!btn) return;
-    btn.textContent = cloudAuthUser ? 'Sync: on' : 'Sign in to sync';
-    btn.title = cloudAuthUser ? ('Signed in as ' + (cloudAuthUser.email || cloudAuthUser.uid)) : 'Cloud sync is off — data is saved on this device only';
+    btn.textContent = cloudAuthUser ? 'Backup: on' : 'Turn on backup';
+    btn.title = cloudAuthUser ? ('Backing up as ' + (cloudAuthUser.email || cloudAuthUser.uid)) : 'Backup is off — your records are saved on this device only';
   } catch (e) {}
 }
 
@@ -2196,10 +2321,10 @@ function setSyncStatus(state, label) {
     pulling: '#f5a300'
   };
   el.style.color = colors[state] || '#969aa4';
-  el.textContent = label || (state === 'synced' ? '● SYNCED' : state === 'syncing' ? '● SYNCING…' : state === 'error' ? '● SYNC ERROR' : state === 'pulling' ? '● PULLING…' : '● OFFLINE');
+  el.textContent = label || (state === 'synced' ? '● BACKED UP' : state === 'syncing' ? '● BACKING UP…' : state === 'error' ? '● BACKUP PROBLEM' : state === 'pulling' ? '● LOADING…' : '● NOT BACKED UP');
   el.title = state === 'error'
-    ? 'Sync error: ' + (lastCloudError || 'unknown') + ' — tap for details'
-    : 'Tap to sync now';
+    ? 'Backup problem: ' + (lastCloudError || 'unknown') + ' — tap for details'
+    : 'Tap to back up now';
 }
 function noteCloudError(e) { lastCloudError = (e && (e.code || e.message)) || 'unknown error'; }
 
@@ -2641,10 +2766,10 @@ function getMasterLogFilteredEvents() {
   const now = new Date();
   if (range === 'thisweek') {
     const ws = getWeekStart(now).getTime();
-    from = ws; to = ws + 7 * 86400000;
+    from = ws; to = addLocalDays(ws, 7);
   } else if (range === 'lastweek') {
     const ws = getWeekStart(now).getTime();
-    from = ws - 7 * 86400000; to = ws;
+    from = addLocalDays(ws, -7); to = ws;
   } else if (range === 'last30') {
     from = now.getTime() - 30 * 86400000;
   } else if (range === 'thismonth') {
@@ -3356,7 +3481,7 @@ function renderDayFlow(force) {
     // First tap of the morning — leaving the hotel IS the start of the workday
     box.innerHTML = `
       <button class="dash-btn dash-btn-drive btn-mega" onclick="dayStartDriving()">${svg('i-truck')} START DRIVE</button>
-      <div style="text-align:center;font-size:12px;color:var(--dim);margin-top:6px">Sends a "started driving" email with your location.</div>
+      <div class="flow-hint">Tap this when you leave. It sends a "started driving" email with where you are.</div>
       <button class="action-btn-sm" style="width:100%;margin:8px 0 0" onclick="dayStartWork()">${svg('i-hat')} Already on site — start work</button>`;
   } else if (state === 'idle') {
     // Mid-day, between stops — next move is either back on the tools or back on the road
@@ -3364,19 +3489,22 @@ function renderDayFlow(force) {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <button class="dash-btn dash-btn-work btn-mega" style="font-size:20px" onclick="dayStartWork()">${svg('i-hat')} START WORK</button>
         <button class="dash-btn dash-btn-drive btn-mega" style="font-size:20px" onclick="dayStartDriving()">${svg('i-truck')} START DRIVE</button>
-      </div>`;
+      </div>
+      <div class="flow-hint">Working here? Tap START WORK. Heading somewhere? Tap START DRIVE.</div>`;
   } else if (state === 'driving') {
     box.innerHTML = `
       <button class="dash-btn dash-btn-work btn-mega" onclick="dayDoneDriving()">${svg('i-pin')} I'VE ARRIVED — STOP DRIVE</button>
-      <div style="text-align:center;font-size:12px;color:var(--dim);margin-top:6px">Sends an "arrived" email with your location, then tap Start Work.</div>`;
+      <div class="flow-hint">Tap this when you get there. It sends an "arrived" email. Then tap START WORK.</div>`;
   } else {
     box.innerHTML = `
-      <button class="dash-btn dash-btn-stop btn-mega" onclick="dayLeaveSite()">${svg('i-stop')} STOP WORK — LEAVING SITE</button>`;
+      <button class="dash-btn dash-btn-stop btn-mega" onclick="dayLeaveSite()">${svg('i-stop')} STOP WORK — LEAVING SITE</button>
+      <div class="flow-hint">Tap this when you pack up and leave this job.</div>`;
   }
   // Evening bookend — show "Done for the day" once the day has activity and the
   // "I'm back" email hasn't gone out yet today.
   if (eodShow === '1') {
-    box.innerHTML += `<button class="btn-endday" onclick="endOfDay()">${svg('i-flag')} DONE FOR THE DAY — SEND "I'M BACK"</button>`;
+    box.innerHTML += `<button class="btn-endday" onclick="endOfDay()">${svg('i-flag')} DONE FOR THE DAY — SEND "I'M BACK"</button>
+      <div class="flow-hint">Tap this at night when you're back. It closes out today.</div>`;
   }
 }
 
@@ -3704,6 +3832,9 @@ async function endOfDay() {
 // ── Week strip (Sun–Sat) ──
 let __weekTotals = null;
 
+// Step by calendar days, not 24-hour blocks: the days clocks change are 23 or 25 hours long.
+function addLocalDays(ms, n) { const d = new Date(ms); d.setDate(d.getDate() + n); return d.getTime(); }
+
 function sundayStart(date) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
@@ -3724,9 +3855,9 @@ async function refreshWeekAgg(force) {
   if (!force && Date.now() - __weekAggAt < 12000) return;
   __weekAggAt = Date.now();
   const ws = sundayStart(new Date()).getTime();
-  const we = ws + 7 * 86400000;
+  const we = addLocalDays(ws, 7);
   const td = new Date(); td.setHours(0, 0, 0, 0);
-  const ta = td.getTime(), tb = ta + 86400000;
+  const ta = td.getTime(), tb = addLocalDays(ta, 1);
   let driveMs = 0, siteMs = 0, miles = 0, spent = 0;
   let todayFirst = Infinity, todayLast = 0;
   const addSegs = segs => (segs || []).forEach(s => {
@@ -3774,7 +3905,7 @@ function renderWeekTiles() {
 // Hotel-to-hotel span for a given day: first segment start → last segment end.
 function hotelToHotelMs(dayDate) {
   const ws = new Date(dayDate); ws.setHours(0, 0, 0, 0);
-  const a = ws.getTime(), b = a + 86400000;
+  const a = ws.getTime(), b = addLocalDays(a, 1);
   let first = Infinity, last = 0;
   const scan = segs => (segs || []).forEach(s => {
     if (s.startedAt >= a && s.startedAt < b) {
@@ -3792,7 +3923,8 @@ async function refreshWeekStrip() {
   const ws = sundayStart(new Date()).getTime();
   const totals = Array.from({ length: 7 }, () => ({ ms: 0, miles: 0 }));
   const addSeg = s => {
-    const di = Math.floor((s.startedAt - ws) / 86400000);
+    const sd = new Date(s.startedAt); sd.setHours(0, 0, 0, 0);
+    const di = Math.round((sd.getTime() - ws) / 86400000); // rounding absorbs 23/25-hour days
     if (di < 0 || di > 6) return;
     totals[di].ms += (s.endedAt || Date.now()) - s.startedAt;
     totals[di].miles += segDriveMiles(s);
@@ -3807,7 +3939,7 @@ async function refreshWeekStrip() {
   __weekTotals = totals;
   const todayIdx = new Date().getDay();
   strip.innerHTML = totals.map((t, i) => {
-    const d = new Date(ws + i * 86400000);
+    const d = new Date(addLocalDays(ws, i));
     const isToday = i === todayIdx;
     const hrs = t.ms / 3600000;
     return `<div onclick="dayStripTap(${i})" style="text-align:center;padding:7px 2px;border-radius:6px;cursor:pointer;font-family:var(--font-disp);border:1px solid ${isToday ? 'var(--accent)' : 'var(--border)'};background:${isToday ? 'rgba(245,163,0,.10)' : 'var(--input)'}">
@@ -3839,8 +3971,8 @@ async function dayStripTap(i, isRefresh) {
   if (typeof autoSave === 'function') await autoSave();
   await loadMasterLogData();
   const ws = sundayStart(new Date()).getTime();
-  const dayStart = ws + i * 86400000;
-  const dayEnd = dayStart + 86400000;
+  const dayStart = addLocalDays(ws, i);
+  const dayEnd = addLocalDays(ws, i + 1);
   const evts = masterLogEvents
     .filter(e => e.startedAt >= dayStart && e.startedAt < dayEnd)
     .sort((a, b) => a.startedAt - b.startedAt);
@@ -5943,7 +6075,7 @@ function getWeekStart(date) {
 
 async function getCurrentWeekHours() {
   const weekStart = getWeekStart(new Date()).getTime();
-  const weekEnd = weekStart + 7 * 86400000;
+  const weekEnd = addLocalDays(weekStart, 7);
   // Sum from current segments
   let totalMs = 0;
   segments.forEach(s => {
@@ -6131,12 +6263,12 @@ function updateDashboard() {
     const k = live.type === 'drive' ? 'i-truck' : 'i-hat';
     if (icon.dataset.k !== k) { icon.innerHTML = iconSvg(k); icon.dataset.k = k; }
     icon.style.color = live.type === 'drive' ? 'var(--accent)' : 'var(--green)';
-    txt.textContent = (live.type === 'drive' ? 'Driving' : 'On site') + (live.note ? ' — ' + live.note : '');
+    txt.textContent = (live.type === 'drive' ? "You're driving" : "You're working") + (live.note ? ' — ' + live.note : '');
     timer.textContent = fmtClock(Date.now() - live.startedAt);
   } else {
     if (icon.dataset.k !== 'i-pause') { icon.innerHTML = iconSvg('i-pause'); icon.dataset.k = 'i-pause'; }
     icon.style.color = 'var(--dim)';
-    txt.textContent = segments.length ? 'Off the clock' : 'Not started';
+    txt.textContent = segments.length ? "You're off the clock" : 'Nothing started yet';
     timer.textContent = '';
   }
   // Big date plate — the board is about TODAY
@@ -6166,6 +6298,15 @@ function updateDashboard() {
     const ci = document.getElementById('city').value.trim();
     const st = document.getElementById('state').value.trim();
     jobSummaryEl.textContent = c ? c + (ci ? ' · ' + ci + (st ? ', ' + st.toUpperCase() : '') : '') : 'no job selected — tap to fill in';
+  }
+  // Simple view: the job you're on, in plain words
+  const svJob = document.getElementById('svJobName');
+  if (svJob) {
+    const c = document.getElementById('client').value.trim();
+    const ci = document.getElementById('city').value.trim();
+    const st = document.getElementById('state').value.trim().toUpperCase();
+    const where = [ci, st].filter(Boolean).join(', ');
+    svJob.textContent = c ? c + (where ? ' · ' + where : '') : 'No job picked yet';
   }
 }
 
@@ -7656,7 +7797,7 @@ function generateDailyReport() {
   const today = new Date();
   const todayStr = today.toLocaleDateString('en-CA');
   const todayStart = new Date(todayStr + 'T00:00:00').getTime();
-  const todayEnd = todayStart + 86400000;
+  const todayEnd = addLocalDays(todayStart, 1);
 
   const client = document.getElementById('client').value.trim() || 'Untitled';
   const city = document.getElementById('city').value.trim();
@@ -7831,7 +7972,7 @@ async function generateWeeklyDigest() {
   await autoSave(); // freeze current draft into DB so its data is in the digest
   const today = new Date();
   const weekStart = getWeekStart(today);
-  const weekEnd = new Date(weekStart.getTime() + 7 * 86400000);
+  const weekEnd = new Date(addLocalDays(weekStart.getTime(), 7));
   const weekStartMs = weekStart.getTime();
   const weekEndMs = weekEnd.getTime();
 
@@ -11287,8 +11428,8 @@ function eodWeekBounds() {
   const daysSinceMon = (dow + 6) % 7;       // Mon→0, Sun→6
   const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysSinceMon);
   const start = monday.getTime();
-  const end = start + 7 * 86400000;
-  const friday = new Date(start + 4 * 86400000);
+  const end = addLocalDays(start, 7);
+  const friday = new Date(addLocalDays(start, 4));
   const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   return {
     start,

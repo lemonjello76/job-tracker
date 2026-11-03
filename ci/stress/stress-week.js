@@ -183,7 +183,7 @@ async function runPersona(browser, P) {
     await ctx.setGeolocation({ latitude: q.lat, longitude: q.lng, accuracy: 10 + R() * 15 });
   };
   const flowBtn = re => page.locator('#dayFlowBox button').filter({ hasText: re }).first();
-  const beat = () => plus(0.02); // ~1.2 s between taps, like a thumb; the app ignores taps inside 0.7 s as double-taps
+  const beat = async () => { await page.waitForFunction(() => !document.body.classList.contains('flow-busy'), null, { timeout: 30000 }).catch(() => {}); await plus(0.02); }; // a person waits for dimmed buttons to light back up; // ~1.2 s between taps, like a thumb; the app ignores taps inside 0.7 s as double-taps
   const step = async (label, fn) => {
     const t0 = Date.now();
     try { await fn(); } catch (e) {
@@ -228,7 +228,14 @@ async function runPersona(browser, P) {
       await beat(); await flowBtn(/START DRIVE/).click();
       const ch = await fc; if (ch) await ch.setFiles(file(1)); else await page.setInputFiles('#segOdoInput', file(1));
       await waitOdo(before + 1);
-      await page.waitForFunction(() => getRunningSegment() && getRunningSegment().type === 'drive', null, { timeout: 8000 });
+      const ok = await page.waitForFunction(() => getRunningSegment() && getRunningSegment().type === 'drive', null, { timeout: 8000 }).catch(() => null);
+      if (!ok) {
+        const dbg = await page.evaluate(() => ({ busy: __flowBusy, quietMs: __flowQuietUntil - Date.now(), cls: document.body.className, running: getRunningSegment() && getRunningSegment().type,
+          job: document.getElementById('client').value, segs: segments.length, btns: [...document.querySelectorAll('#dayFlowBox button')].map(b => b.textContent.trim().slice(0, 24)),
+          stale: !!document.getElementById('stalePrompt'), home: !!document.getElementById('homePrompt'), overlays: document.querySelectorAll('#dayPickOverlay').length }));
+        console.log('  DEBUG start-drive', JSON.stringify(dbg));
+        throw new Error('drive did not start');
+      }
     });
     if (open && open.type === 'workday') closeOpen(now);
     open = { type: 'drive', start: now, miles, job: '(trip)', odoStart: S.odo };
@@ -511,8 +518,40 @@ async function runPersona(browser, P) {
     await page.evaluate(() => document.querySelectorAll('#masterLogModal').forEach(m => m.style.display = 'none')).catch(() => {});
   }
   await page.screenshot({ path: path.join(OUT, `${P.id}-final.png`), fullPage: false }).catch(() => {});
+
+  // ----- new phone: restore the freeze-copy backup and compare (RESTORE=1) -----
+  let restore = null;
+  if (process.env.RESTORE) {
+    const tally = () => (async () => {
+      const drafts = await dbGetAllDrafts(), jobs = await dbGetAll();
+      const st = [...drafts.map(d => d.state || {}), ...jobs.map(j => j.rawState || {})];
+      const segs = st.flatMap(x => x.segments || []);
+      return { drafts: drafts.length, jobs: jobs.length, segments: segs.length,
+        hours: +(segs.reduce((a, x) => a + ((x.endedAt || x.startedAt) - x.startedAt), 0) / 3600000).toFixed(2),
+        photos: st.reduce((a, x) => a + (x.photos || []).length, 0), receipts: st.reduce((a, x) => a + (x.receipts || []).length, 0) };
+    })();
+    const before = await page.evaluate(tally);
+    // the same payload freezeCopy() writes
+    const backup = await page.evaluate(async () => JSON.stringify({ app: 'Field Log (Lyle Krug)', version: 2, exportedAt: new Date().toISOString(), jobs: await dbGetAll(), drafts: await dbGetAllDrafts(), trips: await dbGetAllTrips() }));
+    const bpath = path.join(OUT, `${P.id}-backup.json`);
+    fs.writeFileSync(bpath, backup);
+    const ctx2 = await browser.newContext({ timezoneId: tz, viewport: { width: 390, height: 844 } });
+    await ctx2.route(u => !u.href.startsWith(URL_APP), r => r.abort());
+    await ctx2.addInitScript(() => { try { localStorage.setItem('fieldlog_helpSeen', '1'); } catch (e) {} });
+    const p2 = await ctx2.newPage();
+    const alerts = [];
+    p2.on('dialog', d => { alerts.push(d.message().slice(0, 160)); d.accept(); });
+    await p2.goto(URL_APP);
+    await p2.waitForFunction(() => typeof db !== 'undefined' && db, null, { timeout: 20000 });
+    await p2.setInputFiles('#importInput', bpath);
+    await p2.waitForTimeout(6000);
+    const after = await p2.evaluate(tally);
+    const recordsMB = await page.evaluate(async () => +(JSON.stringify({ jobs: (await dbGetAll()).map(j => Object.assign({}, j, { rawState: stripBinaryForCloud(j.rawState) })), drafts: (await dbGetAllDrafts()).map(d => Object.assign({}, d, { state: stripBinaryForCloud(d.state) })) }).length / 1048576).toFixed(2));
+    restore = { before, after, alerts, backupMB: +(backup.length / 1048576).toFixed(1), recordsMB };
+    await ctx2.close();
+  }
   await ctx.close();
-  return { P, tz, log, app, issues, timings, consoleErrs, dialogs, outputs, photoBytes };
+  return { P, tz, log, app, issues, timings, consoleErrs, dialogs, outputs, photoBytes, restore };
 }
 
 // ---------- compare truth vs app ----------
@@ -561,6 +600,11 @@ function audit(r) {
   });
   r.timings.filter(t => t.ms > 8000 && !/^photos/.test(t.label) && !/^end of day/.test(t.label)).forEach(t => found.push({ sev: 'SLOW', msg: `${t.label} took ${(t.ms / 1000).toFixed(1)}s` }));
   r.timings.filter(t => /^end of day/.test(t.label)).forEach(t => { if (t.ms > 1500) found.push({ sev: 'SLOW', msg: `save at ${t.label}: ${(t.ms / 1000).toFixed(1)}s, storage ${t.mb} MB` }); });
+  if (r.restore) {
+    const { before: b, after: a } = r.restore;
+    const lost = Object.keys(b).filter(k => a[k] !== b[k] && !(k === 'drafts' || k === 'jobs')).map(k => `${k} ${b[k]} -> ${a[k]}`);
+    found.push({ sev: lost.length ? 'BREAK' : 'INFO', msg: `new-phone restore (full ${r.restore.backupMB} MB, records-only ${r.restore.recordsMB} MB): ` + (lost.length ? 'LOST ' + lost.join(', ') : 'everything came back') + ` | ${JSON.stringify(b)} -> ${JSON.stringify(a)} | ${r.restore.alerts.join(' / ').split(String.fromCharCode(10)).join(' ')}` });
+  }
   r.issues.forEach(i => found.push({ sev: i.kind === 'step-failed' ? 'BREAK' : 'ODD', msg: `${i.kind}: ${i.msg}` }));
   [...new Set(r.consoleErrs)].forEach(e => found.push({ sev: 'ERROR', msg: e }));
   return found.concat([{ sev: 'INFO', msg: 'days: ' + JSON.stringify(Object.fromEntries(Object.entries(days).sort().map(([k, d]) => [k, { work: H(d.aWork), drive: H(d.aDrive), unacc: H(d.aUnacc), mi: d.aMiles, $: +d.aSpent.toFixed(2) }]))) }]);

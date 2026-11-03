@@ -248,7 +248,7 @@ async function runPersona(browser, P) {
   let curPos = home, curJob = '';
   const seen = new Set();
 
-  const beat = () => plus(0.02); // ~1.2 s between taps, like a thumb; the app ignores taps inside 0.7 s as double-taps
+  const beat = async () => { await page.waitForFunction(() => !document.body.classList.contains('flow-busy'), null, { timeout: 30000 }).catch(() => {}); await plus(0.02); }; // a person waits for dimmed buttons to light back up; // ~1.2 s between taps, like a thumb; the app ignores taps inside 0.7 s as double-taps
   const tap = async (loc, dbl) => { await beat(); return dbl ? loc.dblclick() : loc.click(); }; // a gloved double-tap lands twice on the same spot
   const tapStartDrive = async (label, dbl) => step('start drive ' + label + (dbl ? ' (double-tap)' : ''), async () => {
     if (await page.locator('#dayFlowBox button').filter({ hasText: /STOP WORK/ }).count()) { // a stale work entry blocks it

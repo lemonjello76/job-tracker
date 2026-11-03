@@ -3,14 +3,15 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Field Log — Lyle Krug</title>
+<title>Drive &amp; Work Log — Lyle Krug</title>
+<meta name="description" content="Logs every drive, work hour, mile, photo and receipt, stamped with the time and GPS location.">
 <meta name="robots" content="noindex, nofollow">
 <!-- PWA — installable, offline-capable -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0d0e10">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Field Log">
+<meta name="apple-mobile-web-app-title" content="Drive &amp; Work">
 <link rel="icon" type="image/svg+xml" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <!-- Type: DIN-flavored condensed grotesque — jobsite signage, not app-store gloss -->
@@ -980,6 +981,7 @@
   .action-btn:active, .action-btn-sm:active, .header-btn:active, .sv-tool:active { transform: translateY(2px); }
   .btn-endday { background: #0a0b0d; }
   .sv-job, .sv-help { border: 2px solid var(--line); background: #1a1b20; }
+  .header h1 small { font-family: var(--font-body); font-size: 12px; font-weight: 500; letter-spacing: 0; text-transform: none; margin-top: 4px; }
 
   /* Step bar — the day as a job status: Drive, Arrive, Work, Done */
   .stepbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 12px; }
@@ -1049,7 +1051,7 @@ catch (e) { document.body.classList.add('simple'); }
 
 <!-- Header -->
 <div class="header">
-  <h1>Field<span>Log</span><small>LYLE KRUG — PERSONAL WORK RECORD</small></h1>
+  <h1>Drive &amp; Work <span>Log</span><small>Lyle Krug's record of every drive, work hour, mile and receipt</small></h1>
   <div style="display:flex;gap:8px;align-items:center">
     <span id="appVersion" class="full-only" style="font-size:10px;color:#969aa4;font-weight:600" title="App version — read this to confirm you're on the latest"></span>
     <span id="cloudSyncIndicator" style="font-size:12px;color:#969aa4;cursor:pointer;font-weight:700;font-family:var(--font-disp);letter-spacing:1px;text-transform:uppercase" onclick="manualSync()" title="Tap to back up now">BACKUP …</span>

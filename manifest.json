@@ -1,7 +1,7 @@
 {
-  "name": "Field Log — Lyle Krug",
-  "short_name": "Field Log",
-  "description": "Personal work-documentation app: GPS-stamped time, mileage, photo, and expense records. Built and owned by Lyle Krug.",
+  "name": "Drive & Work Log — Lyle Krug",
+  "short_name": "Drive & Work",
+  "description": "Logs every drive, work hour, mile, photo and receipt, stamped with the time and GPS location. Built and owned by Lyle Krug.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

@@ -65,8 +65,8 @@ const PERSONAS = [
     await A.work(J, 'install', 4.5); await A.drive(hotel); await A.done();
     await A.day(1, 6, 30); await A.drive(clinic); await A.work(J, 'install', 3); await A.rain(90); await A.work(J, 'install', 3.5); await A.drive(hotel); await A.done();
     await A.day(2, 6, 30); await A.drive(clinic); await A.work(J, 'install', 5);
-    await A.drive(den);       // turns in the rental, taps ARRIVED at the airport
-    await A.flyStopStart({ gateMin: 90, flightMin: 140, destCity: 'Nashville', destAirport: bna, car: 'truck' });
+    await A.drive(den);       // turns in the rental, taps ARRIVED at the airport, then FLYING
+    await A.flyButton({ gateMin: 90, flightMin: 140, destCity: 'Nashville', destAirport: bna, car: 'truck' });
     await A.drive(home); await A.done();
     await A.day(3, 13, 50); await A.drive(P_('Nashville', -6, -4)); await A.work('Belle Meade res - "no heat" on Thanksgiving', 'service', 1.5); await A.drive(home); await A.done();
     await A.day(4, 7, 0); await A.drive(P_('Nashville', 5, 8)); await A.work('Nashville Yards office - RTU startup', 'install', 1.5); await A.rainout(); await A.done();
@@ -114,8 +114,8 @@ const PERSONAS = [
     await A.flyThrough({ airport: sea, truckMiles: 16, truckMins: 30, gateMin: 80, flightMin: 240, destCity: 'Chicago', destAirport: ord, rentalOdo: 3051, rentalMiles: 18, rentalMins: 45, to: site });
     await A.work(F, 'install', 3.5); await A.drive(hotel); await A.done();
     await A.day(1, 6, 45); await A.drive(site); await A.work(F, 'install', 9); await A.drive(hotel); await A.done();
-    await A.day(2, 6, 45); await A.drive(site); await A.work(F, 'install', 6); await A.drive(ord);
-    await A.flyStopStart({ gateMin: 75, flightMin: 270, destCity: 'Seattle', destAirport: sea, car: 'truck' });
+    await A.day(2, 6, 45); await A.drive(site); await A.work(F, 'install', 6);
+    await A.driveThenFly(ord, { gateMin: 75, flightMin: 270, destCity: 'Seattle', destAirport: sea, car: 'truck' });
     await A.drive(home); await A.done();
     await A.day(4, 8, 0); await A.drive(P_('Seattle', -3, 6)); await A.work('Ballard res - panel', 'service', 2.5); await A.drive(home); await A.done();
     await A.day(5, 23, 10); await A.drive(P_('Seattle', 1, 1)); await A.work('Capitol Hill bar - power out', 'service', 2); await A.drive(home); await A.done();
@@ -144,7 +144,7 @@ async function runPersona(browser, P) {
   const home = Object.assign(offset(homeC, (R() - .5) * 16, (R() - .5) * 16), { city: P.city });
 
   const ctx = await browser.newContext({
-    timezoneId: tz, viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, // time zone is set per page below so it can change in flight
     geolocation: { latitude: home.lat, longitude: home.lng, accuracy: 12 }, permissions: ['geolocation'], acceptDownloads: true,
   });
   let gpsNow = home;
@@ -168,6 +168,7 @@ async function runPersona(browser, P) {
   });
   const page = await ctx.newPage();
   const cdp = await ctx.newCDPSession(page);
+  await cdp.send('Emulation.setTimezoneOverride', { timezoneId: tz });
   const consoleErrs = [];
   page.on('pageerror', e => consoleErrs.push('PAGEERROR ' + String(e.message).slice(0, 200)));
   page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource|ERR_FAILED|net::|bad HTTP response code/.test(m.text())) consoleErrs.push(m.text().slice(0, 200)); });
@@ -182,8 +183,10 @@ async function runPersona(browser, P) {
       if (d.type() === 'confirm' && /odometer/i.test(m)) return d.accept();
       if (d.type() === 'confirm' && /Start work here/i.test(m)) return (S.intended && m.includes(S.intended.slice(0, 20))) ? d.accept() : d.dismiss();
       if (d.type() === 'confirm' && /Reopen this saved job/i.test(m)) return d.accept();
+      if (d.type() === 'confirm' && /Did you fly during it|Looks like you flew/i.test(m)) { note('flight-question', m.split(String.fromCharCode(10))[0].slice(0, 120)); return d.accept(); }
       if (d.type() === 'prompt' && /odometer reading/i.test(m)) { S.odoPrompts++; await d.accept(String(S.odo[S.car])); S.odoWaiters.splice(0).forEach(f => f()); return; }
       if (d.type() === 'prompt' && /Job name/i.test(m)) return d.accept(S.jobName);
+      if (d.type() === 'prompt' && /How many miles did you drive/i.test(m)) { note('two-vehicle-question', m.slice(0, 120)); return d.accept(String(S.answerMiles || '')); }
       if (d.type() === 'alert' && /Freeze copy saved/.test(m)) return d.accept();
       if (d.type() === 'alert') { note('alert', m.slice(0, 160)); return d.accept(); }
       if (d.type() === 'confirm') { note('unexpected-confirm', m.slice(0, 160)); return d.accept(); }
@@ -219,7 +222,7 @@ async function runPersona(browser, P) {
   const setTime = async ms => { if (ms < now) ms = now + 60000; now = ms; await page.clock.setSystemTime(now); };
   const plus = async min => setTime(now + min * 60000);
   const setGps = async p => { gpsNow = p; await ctx.setGeolocation({ latitude: p.lat, longitude: p.lng, accuracy: 10 + R() * 15 }); };
-  const setTz = async t => { tz = t; await cdp.send('Emulation.setTimezoneOverride', { timezoneId: t }); };
+  const setTz = async t => { tz = t; await cdp.send('Emulation.setTimezoneOverride', { timezoneId: '' }); await cdp.send('Emulation.setTimezoneOverride', { timezoneId: t }); };
   const flowBtn = re => page.locator('#dayFlowBox button').filter({ hasText: re }).first();
   const step = async (label, fn) => {
     const t0 = Date.now();
@@ -376,12 +379,42 @@ async function runPersona(browser, P) {
       closeOpen(now);
       await setTz(CITIES[o.destCity].tz); await setGps(o.destAirport);
       S.car = o.carAfter || 'rental'; if (o.rentalOdo) S.odo.rental = o.rentalOdo;
+      S.answerMiles = o.truckMiles + o.rentalMiles;
       open = { type: 'drive', start: now, miles: o.rentalMiles, car: S.car };
       await plus(o.rentalMins); S.odo[S.car] += o.rentalMiles;
       curPos = o.to; await setGps(o.to);
       closeOpen(now);
       await tapArrive('after flight (different car, different odometer)');
       log.push({ type: 'event', start: now, what: 'one drive entry spans truck + flight + rental' });
+    },
+    // Uses the FLYING button: tap it at the airport (from a running drive or idle), LANDED on arrival
+    async flyButton(o) {
+      await step('tap FLYING', async () => {
+        const before = S.odoPrompts;
+        const wasDriving = await page.evaluate(() => !!(getRunningSegment() && getRunningSegment().type === 'drive'));
+        const fc = wasDriving ? page.waitForEvent('filechooser', { timeout: 4000 }).catch(() => null) : null;
+        await page.locator('#dayFlowBox button').filter({ hasText: /flying/i }).first().click();
+        if (wasDriving) { const ch = await fc; if (ch) await ch.setFiles(file(0)); else await page.setInputFiles('#segOdoInput', file(0)); await waitOdo(before + 1); }
+        await page.waitForFunction(() => getRunningSegment() && getRunningSegment().mode === 'flight', null, { timeout: 8000 });
+      });
+      open = { type: 'flight', start: now, what: 'flying (button)' };
+      await plus(o.gateMin + (o.delayMin || 0) + o.flightMin);
+      await setTz(CITIES[o.destCity].tz); curPos = o.destAirport; await setGps(o.destAirport);
+      await step('tap LANDED', async () => {
+        await flowBtn(/LANDED/).click();
+        await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 });
+      });
+      closeOpen(now);
+      S.car = o.car; if (o.rentalOdo) S.odo.rental = o.rentalOdo;
+    },
+    async driveThenFly(airport, o) {   // drives toward the airport and taps FLYING from the running drive
+      const miles = Math.max(1, Math.round(distMi(curPos, airport) * 1.3)), mins = Math.max(10, Math.round(miles / 28 * 60));
+      if (open && open.type === 'workday') closeOpen(now);
+      await tapStartDrive('-> airport');
+      open = { type: 'drive', start: now, miles, car: S.car };
+      await plus(mins); S.odo[S.car] += miles; curPos = airport; await setGps(airport);
+      closeOpen(now);
+      await A.flyButton(o);
     },
     // Drive stopped at the airport; next tap is START DRIVE in the next car after landing
     async flyStopStart(o) {
@@ -462,7 +495,7 @@ function audit(r) {
   // odometer sanity: an entry whose end reading is below its start, or a jump no truck makes
   app.ev.filter(e => e.type === 'drive' && e.odo && e.odo[0] && e.odo[1]).forEach(e => {
     const diff = e.odo[1] - e.odo[0];
-    if (diff < 0 || diff > 1500) out.push({ sev: 'WRONG', msg: `drive ${localTime(tz, e.start)}: odometer ${e.odo[0]} → ${e.odo[1]} (${diff} mi) — two different vehicles in one entry; app counted ${e.miles} mi` });
+    if ((diff < 0 || diff > 1500) && !/two vehicles/.test(e.note || '')) out.push({ sev: 'WRONG', msg: `drive ${localTime(tz, e.start)}: odometer ${e.odo[0]} → ${e.odo[1]} (${diff} mi) — two different vehicles in one entry; app counted ${e.miles} mi` });
   });
   const tJobs = [...new Set(log.filter(x => x.type === 'workday').map(x => x.job))];
   tJobs.forEach(j => { const n = app.jobs.filter(a => a.name === j).length; if (n !== 1) out.push({ sev: n ? 'WRONG' : 'BREAK', msg: `job "${j}" appears ${n} times` }); });

@@ -1064,6 +1064,7 @@ catch (e) { document.body.classList.add('simple'); }
   <symbol id="i-road" viewBox="0 0 24 24"><path d="M5 21L10 3M19 21L14 3"/><path d="M12 7v2M12 13v2M12 19v2"/></symbol>
   <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.5-7-11a7 7 0 0 1 14 0c0 4.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-plane" viewBox="0 0 24 24"><path d="M10.5 21l1.5-1.5V15l7 2.5v-2L12 11V5a1.5 1.5 0 0 0-3 0v6l-7 4.5v2L9 15v4.5L10.5 21z"/></symbol>
   <symbol id="i-more" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
 </svg>
 
@@ -3621,7 +3622,7 @@ function renderDayFlow(force) {
   const running = getRunningSegment();
   const clientEl = document.getElementById('client');
   const client = clientEl ? clientEl.value.trim() : '';
-  const state = !running ? 'idle' : (running.type === 'drive' ? 'driving' : 'working');
+  const state = !running ? 'idle' : (running.type === 'drive' ? (running.mode === 'flight' ? 'flying' : 'driving') : 'working');
   const todayK = dayKey();
   const sentToday = localStorage.getItem('dayEndEmailDate') === todayK;
   const activeToday = segments.some(s => dayKey(s.startedAt) === todayK);
@@ -3638,7 +3639,7 @@ function renderDayFlow(force) {
   // Step bar: where the day stands, DRIVE → ARRIVE → WORK → DONE
   let done = -1, cur = -1, next = 0;
   if (closedOut && state === 'idle') { done = 3; next = -1; }
-  else if (state === 'driving') { cur = 0; next = 1; }
+  else if (state === 'driving' || state === 'flying') { cur = 0; next = 1; }
   else if (state === 'working') { done = 1; cur = 2; next = 3; }
   else if (activeToday) {
     const last = segments.filter(s => dayKey(s.startedAt) === todayK).sort((a, b) => a.startedAt - b.startedAt).pop();
@@ -3651,7 +3652,8 @@ function renderDayFlow(force) {
     box.innerHTML = `
       <button class="dash-btn dash-btn-drive btn-mega" onclick="dayStartDriving()">${svg('i-truck')} START DRIVE</button>
       <div class="flow-hint">Tap this when you leave. It sends a "started driving" email with where you are.</div>
-      <button class="action-btn-sm" style="width:100%;margin:8px 0 0" onclick="dayStartWork()">${svg('i-hat')} Already on site — start work</button>`;
+      <button class="action-btn-sm" style="width:100%;margin:8px 0 0" onclick="dayStartWork()">${svg('i-hat')} Already on site — start work</button>
+      <button class="action-btn-sm" style="width:100%;margin:8px 0 0" onclick="dayStartFlight()">${svg('i-plane')} At the airport — flying</button>`;
   } else if (state === 'idle') {
     // Mid-day, between stops — next move is either back on the tools or back on the road
     box.innerHTML = `
@@ -3659,11 +3661,17 @@ function renderDayFlow(force) {
         <button class="dash-btn dash-btn-work btn-mega" style="font-size:20px" onclick="dayStartWork()">${svg('i-hat')} START WORK</button>
         <button class="dash-btn dash-btn-drive btn-mega" style="font-size:20px" onclick="dayStartDriving()">${svg('i-truck')} START DRIVE</button>
       </div>
-      <div class="flow-hint">Working here? Tap START WORK. Heading somewhere? Tap START DRIVE.</div>`;
+      <div class="flow-hint">Working here? Tap START WORK. Heading somewhere? Tap START DRIVE.</div>
+      <button class="action-btn-sm" style="width:100%;margin:8px 0 0" onclick="dayStartFlight()">${svg('i-plane')} At the airport — flying</button>`;
   } else if (state === 'driving') {
     box.innerHTML = `
       <button class="dash-btn dash-btn-work btn-mega" onclick="dayDoneDriving()">${svg('i-pin')} I'VE ARRIVED — STOP DRIVE</button>
-      <div class="flow-hint">Tap this when you get there. It sends an "arrived" email. Then tap START WORK.</div>`;
+      <div class="flow-hint">Tap this when you get there. It sends an "arrived" email. Then tap START WORK.</div>
+      <button class="action-btn-sm" style="width:100%;margin:8px 0 0" onclick="dayStartFlight()">${svg('i-plane')} At the airport — flying</button>`;
+  } else if (state === 'flying') {
+    box.innerHTML = `
+      <button class="dash-btn dash-btn-work btn-mega" onclick="dayLanded()">${svg('i-plane')} LANDED</button>
+      <div class="flow-hint">Tap this when you're off the plane. Airport and flight time count as travel. Then START DRIVE in the next car.</div>`;
   } else {
     box.innerHTML = `
       <button class="dash-btn dash-btn-stop btn-mega" onclick="dayLeaveSite()">${svg('i-stop')} STOP WORK — LEAVING SITE</button>
@@ -3698,6 +3706,7 @@ async function dayStartDriving() {
   const running = getRunningSegment();
   if (running) { running.endedAt = Date.now(); running.endGps = await getGps(); if (running.type === 'workday') onWorkEnded(running); }
   const gps = await getGps();
+  maybeAddMissedFlight(gps);
   noteDayStart(gps);
   const seg = {
     id: newSegId(), type: 'drive', startedAt: Date.now(), endedAt: null,
@@ -3720,7 +3729,7 @@ function startStopWatcher() {
 
 async function checkDriveStopped() {
   const running = getRunningSegment();
-  if (!running || running.type !== 'drive') {
+  if (!running || running.type !== 'drive' || running.mode === 'flight') {
     if (stopWatchInterval) { clearInterval(stopWatchInterval); stopWatchInterval = null; }
     return;
   }
@@ -3891,6 +3900,7 @@ async function dayBeginWorkSegment(gps) {
   if (!gps) gps = await getGps();
   // Back at a job already marked done (a return visit) → it's open again until this visit closes
   if (jobDone) { jobDone = false; jobDoneAt = ''; updateJobDoneUI(); }
+  maybeAddMissedFlight(gps);
   noteDayStart(gps);
   segments.push({
     id: newSegId(), type: 'workday', startedAt: Date.now(), endedAt: null,
@@ -3984,7 +3994,7 @@ const nearBase = (g, base) => !!(g && base && distanceMeters(g, base) <= BASE_RA
 // Close a running entry at a set time and say on the entry how it was closed
 function closeSegmentAt(seg, endAt, endGps, why) {
   seg.endedAt = endAt;
-  if (endGps) seg.endGps = endGps;
+  if (endGps) { seg.endGps = endGps; rememberLastFix(endGps, endAt); }
   seg.note = (seg.note ? seg.note + ' · ' : '') + why;
   seg.autoStop = { why, decidedAt: Date.now() };
   if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
@@ -6587,6 +6597,9 @@ function segTimeBreakdown(s) {
   const elapsedMs = Math.max(0, (s.endedAt || Date.now()) - s.startedAt);
   if (s.type === 'workday') return Object.assign({}, base, { elapsedMs, workMs: elapsedMs, corroborated: true });
   if (s.type !== 'drive') return Object.assign({}, base, { elapsedMs });
+  // Flights (FLYING button, or a drive the tech confirmed included a flight) are travel time;
+  // airplane speed says nothing about whether the time was real, so no cut.
+  if (s.mode === 'flight' || s.includesFlight) return Object.assign({}, base, { elapsedMs, driveMs: elapsedMs, miles: segDriveMiles(s), corroborated: true });
 
   const miles = segDriveMiles(s);
   const hours = elapsedMs / 3600000;
@@ -6659,7 +6672,7 @@ function updateDashboard() {
     const k = live.type === 'drive' ? 'i-truck' : 'i-hat';
     if (icon.dataset.k !== k) { icon.innerHTML = iconSvg(k); icon.dataset.k = k; }
     icon.style.color = live.type === 'drive' ? 'var(--accent)' : 'var(--green)';
-    txt.textContent = (live.type === 'drive' ? "You're driving" : "You're working") + (live.note ? ' — ' + live.note : '');
+    txt.textContent = (live.type === 'drive' ? (live.mode === 'flight' ? "You're flying" : "You're driving") : "You're working") + (live.note && live.mode !== 'flight' ? ' — ' + live.note : '');
     timer.textContent = fmtClock(Date.now() - live.startedAt);
   } else {
     if (icon.dataset.k !== 'i-pause') { icon.innerHTML = iconSvg('i-pause'); icon.dataset.k = 'i-pause'; }
@@ -7165,6 +7178,7 @@ async function stopCurrentSegment() {
   const gps = await getGps();
   running.endedAt = Date.now();
   running.endGps = gps;
+  rememberLastFix(gps, running.endedAt);
   if (running.type === 'drive') await deriveDriveScope(running); // auto-label between-sites vs at-site
   if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
   if (driftCheckInterval) { clearInterval(driftCheckInterval); driftCheckInterval = null; }
@@ -7184,10 +7198,63 @@ async function stopCurrentSegment() {
   updateDashboard();
   refreshWeekAgg(true); // segment just closed — recompute the week now
   autoSave(); // clock taps are the record: save now, not after the debounce
-  // Drive segment → prompt for end odometer
-  if (running.type === 'drive') {
+  if (running.type === 'drive' && running.mode !== 'flight') {
+    // A car drive whose GPS moved hundreds of miles almost certainly includes a flight — say so on the entry
+    if (running.startGps && running.endGps) {
+      const mi = distanceMeters(running.startGps, running.endGps) / 1609.34;
+      if (mi > 200) {
+        const flew = confirm(`GPS moved ${Math.round(mi).toLocaleString()} miles during this drive. Did you fly during it?
+
+OK = yes, it includes a flight · Cancel = no`);
+        if (flew) running.includesFlight = true;
+        running.note = (running.note ? running.note + ' · ' : '') + `GPS moved ${Math.round(mi).toLocaleString()} mi during this entry` + (flew ? ' — includes a flight (you confirmed)' : ' — you said no flight');
+      }
+    }
+    // Drive segment → prompt for end odometer
     setTimeout(() => promptOdometerPhoto(running.id, 'end'), 200);
   }
+}
+
+// Where the last entry ended (any job) — so a tap hundreds of miles away can spot a missed flight
+function rememberLastFix(gps, t) { if (gps) lsSet('fieldlog_lastFix', { lat: gps.lat, lng: gps.lng, t: t || Date.now() }); }
+function maybeAddMissedFlight(gps) {
+  const last = lsGet('fieldlog_lastFix');
+  if (!gps || !last || getRunningSegment()) return;
+  const mi = distanceMeters(gps, last) / 1609.34, gap = Date.now() - last.t;
+  if (mi < 200 || gap < 30 * 60000 || gap > 24 * 3600000) return;
+  const from = fmtClockTime(last.t);
+  if (!confirm(`Looks like you flew since your last entry (${Math.round(mi).toLocaleString()} miles away, since ${from}).
+
+OK = add the flight (${from} to now) · Cancel = no`)) return;
+  segments.push({
+    id: newSegId(), type: 'drive', mode: 'flight', startedAt: last.t, endedAt: Date.now(),
+    startGps: { lat: last.lat, lng: last.lng }, endGps: gps, startOdoPhoto: null, startOdoMiles: null, endOdoPhoto: null, endOdoMiles: null,
+    note: `Flight added afterward from GPS: ${from} to ${fmtClockTime(Date.now())} (no tap at the airport)`, tripLevel: true,
+    autoStop: { why: 'flight added from GPS gap', decidedAt: Date.now() }
+  });
+  renderSegments();
+}
+
+// ── FLYING ── airport + flight time is travel: its own entry, no odometer, counted with drive time
+async function dayStartFlight() {
+  const running = getRunningSegment();
+  if (running) await stopCurrentSegment(); // the car drive ends at the airport (end odometer follows)
+  const gps = await getGps();
+  noteDayStart(gps);
+  segments.push({
+    id: newSegId(), type: 'drive', mode: 'flight', startedAt: Date.now(), endedAt: null,
+    startGps: gps, endGps: null, startOdoPhoto: null, startOdoMiles: null, endOdoPhoto: null, endOdoMiles: null,
+    note: 'Flight (airport and flying time)', tripLevel: true
+  });
+  renderSegments(); updateDashboard(); startSegmentTicker(); autoSave();
+  renderDayFlow(true);
+  showToast('Flying — tap LANDED when you get off the plane', 'good', 3500);
+}
+async function dayLanded() {
+  await stopCurrentSegment();
+  renderDayFlow(true);
+  refreshWeekStrip();
+  showToast('Landed. Tap START DRIVE when you get in the next car', 'info', 4000);
 }
 
 function promptOdometerPhoto(segId, which) {
@@ -7248,6 +7315,15 @@ document.getElementById('segOdoInput').addEventListener('change', async function
       const num = parseInt(m.replace(/[^0-9]/g,''), 10) || null;
       if (target.which === 'start') seg.startOdoMiles = num;
       else seg.endOdoMiles = num;
+      // Readings from two different vehicles (truck out, rental back) can't make a mileage
+      if (target.which === 'end' && seg.startOdoMiles && seg.endOdoMiles &&
+          (seg.endOdoMiles < seg.startOdoMiles || seg.endOdoMiles - seg.startOdoMiles > 1500)) {
+        const a = seg.startOdoMiles.toLocaleString(), b = seg.endOdoMiles.toLocaleString();
+        const mm = prompt(`Those two readings can't be from one vehicle (${a} → ${b}). How many miles did you drive? Leave blank if you're not sure.`);
+        const v = mm ? parseFloat(mm.replace(/[^0-9.]/g, '')) : NaN;
+        if (!isNaN(v)) seg.manualMiles = v;
+        seg.note = (seg.note ? seg.note + ' · ' : '') + `Odometer readings from two vehicles (${a} → ${b})` + (!isNaN(v) ? `; ${v} mi entered by hand` : '; miles need fixing');
+      }
       renderSegments();
       updateDashboard();
       scheduleAutoSave();

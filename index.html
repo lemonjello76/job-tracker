@@ -2086,7 +2086,7 @@ const CHECKLIST_TEMPLATES = {
 // ═══════════════════════════════
 function openDB() {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open('MistAmericaJobs', 4);
+    const req = indexedDB.open('MistAmericaJobs', 5);
     req.onupgradeneeded = e => {
       const d = e.target.result;
       if (!d.objectStoreNames.contains('jobs')) d.createObjectStore('jobs', { keyPath: 'id' });
@@ -2095,6 +2095,9 @@ function openDB() {
       // v4: untouched camera originals for photos shot straight through the app
       // (those never land in the phone's gallery — this is their only copy)
       if (!d.objectStoreNames.contains('originals')) d.createObjectStore('originals', { keyPath: 'id' });
+      // v5: each new photo/receipt lands here the instant it's stamped, so the phone killing
+      // the app before the (big) job save finishes can't lose it. Cleared once the job save lands.
+      if (!d.objectStoreNames.contains('photoJournal')) d.createObjectStore('photoJournal', { keyPath: 'id' });
     };
     req.onsuccess = e => resolve(e.target.result);
     req.onerror = e => reject(e.target.error);
@@ -2124,6 +2127,70 @@ function keepCameraOriginal(file, kind) {
     tx.objectStore('originals').put(rec);
   } catch (e) { console.warn('Could not keep camera original:', e); }
 }
+// ── PHOTO JOURNAL ──
+function newPid() { return 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8); }
+function journalReady() { return !!(db && db.objectStoreNames.contains('photoJournal')); }
+const journalPending = new Set(); // pids written to the journal whose job save hasn't landed yet
+function journalAdd(list, item) {
+  try {
+    if (!journalReady()) return;
+    if (!currentDraftId) { // brand-new job: give it its id now so the journal and the save agree
+      currentDraftId = 'draft_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+      localStorage.setItem('currentDraftId', currentDraftId);
+    }
+    if (!item.pid) item.pid = newPid();
+    journalPending.add(item.pid);
+    const tx = db.transaction('photoJournal', 'readwrite');
+    tx.objectStore('photoJournal').put({ id: item.pid, draftId: currentDraftId, list, item, savedAt: Date.now() });
+  } catch (e) { console.warn('photo journal write failed:', e); }
+}
+function journalGetAll() {
+  return new Promise(resolve => {
+    try {
+      if (!journalReady()) return resolve([]);
+      const req = db.transaction('photoJournal', 'readonly').objectStore('photoJournal').getAll();
+      req.onsuccess = () => resolve(req.result || []);
+      req.onerror = () => resolve([]);
+    } catch (e) { resolve([]); }
+  });
+}
+// After a job save lands, everything journaled for it before that save started is in the
+// save (or was deliberately deleted) — drop those so deleted photos never come back.
+async function journalClearSaved(draftId, savedBefore) {
+  try {
+    const ids = (await journalGetAll()).filter(r => r.draftId === draftId && r.savedAt <= savedBefore).map(r => r.id);
+    ids.forEach(id => journalPending.delete(id));
+    if (!ids.length) return;
+    const st = db.transaction('photoJournal', 'readwrite').objectStore('photoJournal');
+    ids.forEach(id => st.delete(id));
+  } catch (e) {}
+}
+// A receipt amount or photo note typed before the job save lands: refresh its journal copy too
+function journalRefreshPending() {
+  if (!journalPending.size) return;
+  photos.filter(x => journalPending.has(x.pid)).forEach(x => journalAdd('photos', x));
+  receipts.filter(x => journalPending.has(x.pid)).forEach(x => journalAdd('receipts', x));
+}
+
+// Put back anything the journal holds for this job that the job's own save never got.
+async function recoverJournal() {
+  if (!journalReady() || !currentDraftId) return;
+  const mine = (await journalGetAll()).filter(r => r.draftId === currentDraftId).sort((a, b) => a.savedAt - b.savedAt);
+  if (!mine.length) return;
+  let back = 0;
+  mine.forEach(r => {
+    const arr = r.list === 'receipts' ? receipts : photos;
+    if (!arr.some(x => x.pid === r.item.pid)) { arr.push(r.item); back++; }
+  });
+  if (back) {
+    renderPhotos(); renderReceipts(); updateDashboard();
+    showToast(`Recovered ${back} photo${back === 1 ? '' : 's'} that hadn't finished saving`, 'good', 5000);
+    await autoSave();
+  } else {
+    journalClearSaved(currentDraftId, Date.now());
+  }
+}
+
 function dbGetAllOriginals() {
   return new Promise((resolve, reject) => {
     try {
@@ -3639,7 +3706,7 @@ async function dayStartDriving() {
   };
   segments.push(seg);
   dayFlowPromptShown = false;
-  renderSegments(); updateDashboard(); startSegmentTicker(); scheduleAutoSave();
+  renderSegments(); updateDashboard(); startSegmentTicker(); autoSave(); // clock taps are the record: save now, not after the debounce
   showToast('Driving — tap STOP DRIVE when you arrive', 'good', 3000);
   onDriveStarted(seg); // email Robert + Sean that the drive started
   setTimeout(() => promptOdometerPhoto(seg.id, 'start'), 250);
@@ -3844,12 +3911,12 @@ async function dayBeginWorkSegment(gps) {
         document.getElementById('city').value = geo.city;
         if (!document.getElementById('state').value.trim()) document.getElementById('state').value = geo.state;
         updateDashboard();
-        scheduleAutoSave();
+        autoSave(); // clock taps are the record: save now, not after the debounce
         showToast(`City filled in: ${geo.city}, ${geo.state}`, 'info', 3000);
       }
     });
   }
-  renderSegments(); updateDashboard(); startSegmentTicker(); startDriftMonitor(); scheduleAutoSave();
+  renderSegments(); updateDashboard(); startSegmentTicker(); startDriftMonitor(); autoSave(); // clock taps are the record: save now, not after the debounce
   onWorkStarted(segments[segments.length - 1]); // email Robert + Sean that work started
   renderDayFlow();
   refreshWeekStrip();
@@ -4912,18 +4979,23 @@ function showToast(msg, kind = 'info', ms = 3500) {
 }
 
 // Burn timestamp + optional GPS onto image
+const STAMP_MAX_EDGE = 2048;
 function stampImage(dataURL, gps) {
   return new Promise(resolve => {
     const img = new Image();
     img.onload = () => {
+      // The job keeps a phone-sized stamped copy (long edge 2048 px, still sharp in a report);
+      // the untouched full-size camera original is kept separately in 'originals'.
+      const k = Math.min(1, STAMP_MAX_EDGE / Math.max(img.width, img.height));
+      const W = Math.round(img.width * k), H = Math.round(img.height * k);
       const c = document.createElement('canvas');
-      c.width = img.width;
-      c.height = img.height;
+      c.width = W;
+      c.height = H;
       const ctx = c.getContext('2d');
-      ctx.drawImage(img, 0, 0);
+      ctx.drawImage(img, 0, 0, W, H);
       const stamp = nowStamp();
       const gpsLine = fmtGps(gps);
-      const fs = Math.max(18, Math.floor(img.width / 22));
+      const fs = Math.max(18, Math.floor(W / 22));
       ctx.font = `bold ${fs}px sans-serif`;
       const w1 = ctx.measureText(stamp).width;
       const w2 = gpsLine ? ctx.measureText(gpsLine).width : 0;
@@ -4931,13 +5003,13 @@ function stampImage(dataURL, gps) {
       const boxH = fs * lines + 8 * lines + 10;
       const boxW = Math.max(w1, w2) + 28;
       ctx.fillStyle = 'rgba(0,0,0,0.65)';
-      ctx.fillRect(0, img.height - boxH, boxW, boxH);
+      ctx.fillRect(0, H - boxH, boxW, boxH);
       ctx.fillStyle = '#fff';
       if (gpsLine) {
-        ctx.fillText(stamp, 14, img.height - fs - 14);
-        ctx.fillText(gpsLine, 14, img.height - 10);
+        ctx.fillText(stamp, 14, H - fs - 14);
+        ctx.fillText(gpsLine, 14, H - 10);
       } else {
-        ctx.fillText(stamp, 14, img.height - 12);
+        ctx.fillText(stamp, 14, H - 12);
       }
       resolve({ dataURL: c.toDataURL('image/jpeg', 0.85), stamp });
     };
@@ -4960,10 +5032,12 @@ document.getElementById('photoInput').addEventListener('change', async function(
     reader.onload = async ev => {
       const stamped = await stampImage(ev.target.result, gps);
       const idx = photos.length;
-      photos.push({
+      const ph = {
         dataURL: stamped.dataURL, notes: '', gps, stamp: stamped.stamp,
-        area: '', phase: '', component: ''
-      });
+        area: '', phase: '', component: '', pid: newPid()
+      };
+      photos.push(ph);
+      journalAdd('photos', ph);
       newPhotoIndices.push(idx);
       loaded++;
       if (loaded === files.length) {
@@ -5867,7 +5941,9 @@ document.getElementById('receiptInput').addEventListener('change', async functio
     reader.onload = async ev => {
       const stamped = await stampImage(ev.target.result, gps);
       const idx = receipts.length;
-      receipts.push({ dataURL: stamped.dataURL, amount: '', vendor: '', category: 'gas', gps, stamp: stamped.stamp });
+      const rc = { dataURL: stamped.dataURL, amount: '', vendor: '', category: 'gas', gps, stamp: stamped.stamp, pid: newPid() };
+      receipts.push(rc);
+      journalAdd('receipts', rc);
       addedIndices.push(idx);
       loaded++;
       if (loaded === files.length) {
@@ -7107,7 +7183,7 @@ async function stopCurrentSegment() {
   renderSegments();
   updateDashboard();
   refreshWeekAgg(true); // segment just closed — recompute the week now
-  scheduleAutoSave();
+  autoSave(); // clock taps are the record: save now, not after the debounce
   // Drive segment → prompt for end odometer
   if (running.type === 'drive') {
     setTimeout(() => promptOdometerPhoto(running.id, 'end'), 200);
@@ -7198,14 +7274,17 @@ document.getElementById('gasInput').addEventListener('change', async function(e)
     const stamped = await stampImage(ev.target.result, gps);
     const amountStr = prompt('Gas amount ($):');
     const amount = amountStr ? parseFloat(amountStr.replace(/[^0-9.]/g, '')) || 0 : 0;
-    receipts.push({
+    const gasRc = {
       dataURL: stamped.dataURL,
       amount: amount.toString(),
       vendor: '',
       category: 'gas',
       gps: gps,
-      stamp: stamped.stamp
-    });
+      stamp: stamped.stamp,
+      pid: newPid()
+    };
+    receipts.push(gasRc);
+    journalAdd('receipts', gasRc);
     renderReceipts();
     document.getElementById('receiptsSection').classList.remove('hidden');
     updateDashboard();
@@ -11204,6 +11283,7 @@ async function writeDraftNow() {
   if (!hasAnyContent()) return;
   try {
     if (!currentDraftId) currentDraftId = 'draft_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+    const savedId = currentDraftId, startedAt = Date.now();
     const state = serializeCurrentState();
     const name = state.client.trim() || 'Untitled Job';
     const meta = [state.city, state.state].filter(Boolean).join(', ');
@@ -11216,6 +11296,7 @@ async function writeDraftNow() {
       state
     });
     localStorage.setItem('currentDraftId', currentDraftId);
+    journalClearSaved(savedId, startedAt);
     flashAutoSaved();
     refreshDraftSelector();
   } catch (e) {
@@ -11322,6 +11403,7 @@ async function switchToDraft(id) {
   currentDraftId = id;
   localStorage.setItem('currentDraftId', id);
   applyDraftState(draft.state);
+  recoverJournal();
   await refreshDraftSelector();
   window.scrollTo(0, 0);
 }
@@ -12015,6 +12097,10 @@ async function maybeShowEodBanner() {
         }
         applyDraftState(draft.state);
         restored = true;
+      } else if ((await journalGetAll()).some(r => r.draftId === savedId)) {
+        // A brand-new job whose first save never landed — its photos are still in the journal
+        currentDraftId = savedId;
+        restored = true;
       }
     }
     if (!restored) {
@@ -12028,6 +12114,7 @@ async function maybeShowEodBanner() {
     }
     await refreshTripSelector();
     await refreshDraftSelector();
+    await recoverJournal();
   } catch(e) {
     console.warn('IndexedDB unavailable:', e);
   }
@@ -12080,6 +12167,7 @@ async function maybeShowEodBanner() {
       if (e.target.id === 'apiKeyInput') return;
       // A finished field (receipt amount, note, odometer) saves right away — the app can be
       // killed seconds after you tap out of it. Typing itself stays on the short debounce.
+      journalRefreshPending();
       autoSave();
     }
   });

@@ -73,7 +73,7 @@ const PERSONAS = [
   { id: 'bos-elec', who: 'Electrician, Boston', city: 'Boston', seed: 44, mph: 10, week: [2026, 11, 9],
     installs: [{ name: 'Seaport tenant fit-out 5th floor', kind: 'install', cls: 'commercial', at: [2, -1.5] }],
     services: [['Back Bay brownstone - knob and tube', 'res'], ['Southie triple-decker - service upgrade', 'res'], ['Newbury St retail - lighting', 'commercial']],
-    plan: ['install', 'install', 'install', 'install', 'svc', 'off'], quirks: { photosPerDay: 40 } },
+    plan: ['install', 'install', 'install', 'install', 'svc', 'off'], quirks: { photosPerDay: 40, reloadNewJob: 4 } },
   { id: 'boi-handy', who: 'Handyman (solo), Boise', city: 'Boise', seed: 55, mph: 30, week: [2026, 10, 26],
     installs: [{ name: 'Harris Ranch bathroom remodel', kind: 'install', cls: 'res', at: [8, -4] }],
     services: [['North End - door rehang', 'res'], ['Bench - drywall patch', 'res'], ['Garden City cafe - shelving', 'commercial'], ['Meridian rental - turnover punch list', 'res'], ['East End - gutter clean', 'res'], ['Downtown dental office - door closer', 'commercial'], ['Collister - fence repair', 'res'], ['Warm Springs - faucet', 'res']],
@@ -356,7 +356,8 @@ async function runPersona(browser, P) {
     const pos = sites[name] || offset(C, (R() - .5) * 20, (R() - .5) * 20);
     if (!opts.noDrive) await drive(pos, '-> ' + name);
     if (opts.lingerMin) await plus(opts.lingerMin);
-    await startWork(name, kind, !seenJobs.has(name));
+    const wasNew = !seenJobs.has(name);
+    await startWork(name, kind, wasNew);
     seenJobs.add(name);
     const n = P.quirks.photosPerDay ? Math.round(P.quirks.photosPerDay * hours / 8) : 2 + Math.floor(R() * 6);
     const chunks = Math.max(1, Math.round(hours / 2.5));
@@ -367,10 +368,11 @@ async function runPersona(browser, P) {
         const v = P.quirks.receiptsHeavy ? ['Home Depot', 'Lowe\'s', 'Ace Hardware'][Math.floor(R() * 3)] : ['Ferguson', 'Johnstone Supply', 'Graybar', 'Platt'][Math.floor(R() * 4)];
         await receipt(+(15 + R() * 220).toFixed(2), v, 'parts');
       }
-      if (P.quirks.reloadMidWork === dayIdx && c === 0) {
+      if (c === 0 && (P.quirks.reloadMidWork === dayIdx || (P.quirks.reloadNewJob === dayIdx && wasNew && !reloadedNew && (reloadedNew = true)))) {
         if (process.env.RELOAD_WAIT) await page.waitForTimeout(+process.env.RELOAD_WAIT);
         const pBefore = await page.evaluate(() => photos.length);
         await step('app reload mid-work', async () => { await page.reload(); await page.waitForFunction(() => typeof db !== 'undefined' && db && getRunningSegment && getRunningSegment(), null, { timeout: 20000 }); });
+        await page.waitForFunction(b => photos.length >= b, pBefore, { timeout: 8000 }).catch(() => {}); // give the journal recovery its moment
         const pAfter = await page.evaluate(() => photos.length).catch(() => -1);
         if (pAfter !== pBefore) note('lost-on-reload', `photos on this job before reload ${pBefore}, after ${pAfter}`);
         log.push({ type: 'event', start: now, what: 'reload' });
@@ -383,6 +385,7 @@ async function runPersona(browser, P) {
 
   let dayIdx = 0;
   let appClosed = false;
+  let reloadedNew = false;
   for (dayIdx = 0; dayIdx < P.plan.length; dayIdx++) {
     const plan = P.plan[dayIdx];
     if (plan === 'off') continue;

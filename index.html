@@ -950,6 +950,60 @@
     .sv-tool .sv-t { font-size: 17px; }
   }
   @media (max-width: 330px) { .sv-tools { grid-template-columns: 1fr; } }
+
+  /* BLOCK SKIN — square, flat, heavy. Every control is a solid block sitting on a
+     darker base edge, like a key on a machine panel. No gradients, no glow. */
+  :root { --radius: 0px; --base: rgba(0,0,0,0.45); --line: #34373f; }
+  body { background: var(--bg); }
+  ::selection { background: var(--accent); color: #101114; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .section, .dashboard { border: 2px solid #26282e; box-shadow: none; }
+  .dash-status, .dash-stat { border: 2px solid var(--line); box-shadow: none; background: #0a0b0d; }
+  .today-plate { border-bottom: 2px solid var(--line); }
+  .field input, .field select, .field textarea, select { border-width: 2px; }
+
+  .dash-btn { box-shadow: none; border: none; border-bottom: 6px solid var(--base); transition: filter .15s, transform .15s; }
+  .dash-btn:active { transform: translateY(2px); box-shadow: none; filter: brightness(.92); }
+  .dash-btn-drive { background: var(--accent); }
+  .dash-btn-drive:hover { background: #ffb61e; }
+  .dash-btn-work { background: var(--green); }
+  .dash-btn-work:hover { background: #45cf74; }
+  .dash-btn-stop { background: var(--red); }
+  .dash-btn-stop:hover { background: #ec5f63; }
+  .dash-btn-gas { background: var(--yellow); }
+
+  .action-btn, .action-btn-sm, .header-btn, .sv-tool, .btn-endday, .generate-btn, .send-btn {
+    border: 2px solid var(--line); border-bottom: 4px solid #000; border-radius: 0; box-shadow: none;
+  }
+  .action-btn, .sv-tool { background: #1f2127; }
+  .action-btn:hover, .action-btn-sm:hover, .header-btn:hover, .sv-tool:hover, .btn-endday:hover { border-color: var(--accent); border-bottom-color: #000; }
+  .action-btn:active, .action-btn-sm:active, .header-btn:active, .sv-tool:active { transform: translateY(2px); }
+  .btn-endday { background: #0a0b0d; }
+  .sv-job, .sv-help { border: 2px solid var(--line); background: #1a1b20; }
+
+  /* Step bar — the day as a job status: Drive, Arrive, Work, Done */
+  .stepbar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 12px; }
+  .step { display: flex; flex-direction: column; align-items: center; gap: 5px; padding: 9px 2px 8px; background: #0a0b0d; border: 2px solid var(--line); color: var(--dim); font-family: var(--font-disp); font-size: 14px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; }
+  .step-n { width: 24px; height: 24px; display: grid; place-items: center; border: 2px solid currentColor; font-size: 13px; line-height: 1; }
+  .step-n .ic { width: 15px; height: 15px; stroke-width: 3; }
+  .step.is-done { color: var(--text); background: #1f2127; }
+  .step.is-done .step-n { background: var(--green); border-color: var(--green); color: #101114; }
+  .step.is-now { background: var(--accent); border-color: var(--accent); color: #101114; }
+  .step.is-next { border-color: var(--accent); color: var(--accent); }
+
+  /* Bottom bar — capture always under the thumb */
+  .bottombar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 60; grid-template-columns: 2fr 1fr 1fr; gap: 8px; padding: 12px 10px calc(10px + env(safe-area-inset-bottom)); background: #121316; border-top: 2px solid #000; }
+  .bottombar::before { content: ''; position: absolute; left: 0; right: 0; top: -6px; height: 4px; background: var(--hazard); }
+  body.simple .bottombar.simple-only { display: grid; }
+  body.simple .main { padding-bottom: 112px; }
+  body.simple #eodBanner { bottom: 104px !important; }
+  .bb-btn { min-height: 62px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: #1f2127; color: var(--text); border: 2px solid var(--line); border-bottom: 5px solid #000; font-family: var(--font-disp); font-size: 15px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; }
+  .bb-btn .ic { width: 24px; height: 24px; color: var(--accent); }
+  .bb-btn:active { transform: translateY(2px); }
+  .bb-photo { flex-direction: row; gap: 10px; font-size: 22px; background: var(--accent); color: #101114; border-color: var(--accent); border-bottom-color: #a86f00; }
+  .bb-photo .ic { width: 30px; height: 30px; color: #101114; }
+  .bb-photo:hover { background: #ffb61e; }
+  @media (min-width: 700px) { .bottombar { max-width: 900px; margin: 0 auto; } }
 </style>
 </head>
 <body>
@@ -1001,7 +1055,7 @@ catch (e) { document.body.classList.add('simple'); }
     <span id="cloudSyncIndicator" style="font-size:12px;color:#969aa4;cursor:pointer;font-weight:700;font-family:var(--font-disp);letter-spacing:1px;text-transform:uppercase" onclick="manualSync()" title="Tap to back up now">BACKUP …</span>
     <button id="cloudAuthBtn" class="header-btn" onclick="cloudAuthUser ? signOutOfCloud() : signInToCloud()" title="Backup is off — your records are saved on this device only" style="font-size:11px">Turn on backup</button>
     <button class="header-btn full-only" onclick="openSettings()" title="Settings"><svg class="ic"><use href="#i-gear"/></svg></button>
-    <button class="header-btn" onclick="openSidebar()" title="Jobs you've marked done">Finished (<span id="completedCount">0</span>)</button>
+    <button class="header-btn" onclick="openSidebar()" title="Jobs you've marked done"><span>Finished (<span id="completedCount">0</span>)</span></button>
   </div>
 </div>
 
@@ -1101,8 +1155,8 @@ catch (e) { document.body.classList.add('simple'); }
     <div class="field"><label>Job Type</label>
       <select id="jobKind" onchange="scheduleAutoSave();refreshDraftSelector()" style="padding:10px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:15px;font-family:inherit;outline:none">
         <option value="">— Pick type —</option>
-        <option value="install">🔧 Install (may span days)</option>
-        <option value="service">🛠️ Service (one day)</option>
+        <option value="install">Install (may span days)</option>
+        <option value="service">Service (one day)</option>
       </select>
     </div>
     <div class="field"><label>Status</label>
@@ -1174,20 +1228,9 @@ catch (e) { document.body.classList.add('simple'); }
   <div id="segmentsList"></div>
 </div>
 
-<!-- SIMPLE TOOLS — the same tools, each with one plain line saying what it does -->
+<!-- SIMPLE TOOLS — the less-frequent tools, each with one plain line saying what it does.
+     Photo, Receipt and Talk live in the bottom bar so they're always under your thumb. -->
 <div class="sv-tools simple-only">
-  <button class="sv-tool" onclick="document.getElementById('photoInput').click()">
-    <span class="sv-t"><svg class="ic"><use href="#i-camera"/></svg> Photo</span>
-    <span class="sv-d">Take a picture. It's saved to the job you're on.</span>
-  </button>
-  <button class="sv-tool" onclick="document.getElementById('receiptInput').click()">
-    <span class="sv-t"><svg class="ic"><use href="#i-receipt"/></svg> Receipt</span>
-    <span class="sv-d">Snap a receipt. It adds to money spent.</span>
-  </button>
-  <button class="sv-tool" onclick="quickVoiceNote(this)">
-    <span class="sv-t"><svg class="ic"><use href="#i-mic"/></svg> Talk</span>
-    <span class="sv-d">Say what happened. It's saved as a note.</span>
-  </button>
   <button class="sv-tool" onclick="toggleSection('notesSection'); addNoteIfEmpty()">
     <span class="sv-t"><svg class="ic"><use href="#i-note"/></svg> Write</span>
     <span class="sv-d">Type a note about this job.</span>
@@ -1200,11 +1243,18 @@ catch (e) { document.body.classList.add('simple'); }
     <span class="sv-t"><svg class="ic"><use href="#i-week"/></svg> Past days</span>
     <span class="sv-d">See this week. Tap a day to check or fix it.</span>
   </button>
-  <button class="sv-tool wide" onclick="openMasterLog()">
-    <span class="sv-t"><svg class="ic"><use href="#i-search"/></svg> Look up old work</span>
-    <span class="sv-d">Every job, hour, mile and receipt. Download it as a spreadsheet.</span>
+  <button class="sv-tool" onclick="openMasterLog()">
+    <span class="sv-t"><svg class="ic"><use href="#i-search"/></svg> Old work</span>
+    <span class="sv-d">Every job, hour, mile and receipt.</span>
   </button>
 </div>
+
+<!-- BOTTOM BAR — the camera is the hero; one thumb, any screen -->
+<nav class="bottombar simple-only" aria-label="Quick capture">
+  <button class="bb-btn bb-photo" onclick="document.getElementById('photoInput').click()"><svg class="ic"><use href="#i-camera"/></svg>Photo</button>
+  <button class="bb-btn" onclick="document.getElementById('receiptInput').click()"><svg class="ic"><use href="#i-receipt"/></svg>Receipt</button>
+  <button class="bb-btn" onclick="quickVoiceNote(this)"><svg class="ic"><use href="#i-mic"/></svg>Talk</button>
+</nav>
 
 <!-- TOOL GRID — the four you grab all day, the rest behind MORE -->
 <div class="actions full-only">
@@ -1307,7 +1357,7 @@ function toggleMoreTools() {
 <div id="videosSection" class="section hidden">
   <h2>Job Videos (<span id="videoCount">0</span>)</h2>
   <button class="action-btn-sm" onclick="document.getElementById('videoInput').click()">+ Add More Videos</button>
-  <div style="font-size:12px;color:var(--dim);margin-top:6px;margin-bottom:8px">💡 Tip: trim clips in the Insta360 app FIRST (target 30-90 sec, &lt; 50MB) before uploading. Big files slow the app and bloat reports.</div>
+  <div style="font-size:12px;color:var(--dim);margin-top:6px;margin-bottom:8px">Tip: trim clips in the Insta360 app FIRST (target 30-90 sec, &lt; 50MB) before uploading. Big files slow the app and bloat reports.</div>
   <div id="videoGrid" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));gap:12px;margin-top:10px"></div>
 </div>
 
@@ -1378,7 +1428,7 @@ function toggleMoreTools() {
      fields stay in the page so old jobs that saved these values still load. -->
 <div class="section" style="display:none">
   <h2 style="cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="document.getElementById('userGuideFields').classList.toggle('hidden');this.querySelector('.ug-caret').textContent=document.getElementById('userGuideFields').classList.contains('hidden')?'▸':'▾'">
-    📘 User Guide Site Details <span style="font-weight:400;color:var(--dim);font-size:12px;text-transform:none;letter-spacing:0">— fill these in for the customer-facing one-pager</span>
+    User Guide Site Details <span style="font-weight:400;color:var(--dim);font-size:12px;text-transform:none;letter-spacing:0">— fill these in for the customer-facing one-pager</span>
     <span class="ug-caret" style="color:var(--dim);font-size:14px">▸</span>
   </h2>
   <div id="userGuideFields" class="hidden" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
@@ -1413,22 +1463,22 @@ function toggleMoreTools() {
      Report (me-only tool). Hidden fields stay for old-job compat. -->
 <div class="section" style="display:none">
   <h2 style="cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="document.getElementById('gcFields').classList.toggle('hidden');this.querySelector('.gc-caret').textContent=document.getElementById('gcFields').classList.contains('hidden')?'▸':'▾'">
-    🏗️ GC Closeout Details <span style="font-weight:400;color:var(--dim);font-size:12px;text-transform:none;letter-spacing:0">— fill these for the GC completion report</span>
+    GC Closeout Details <span style="font-weight:400;color:var(--dim);font-size:12px;text-transform:none;letter-spacing:0">— fill these for the GC completion report</span>
     <span class="gc-caret" style="color:var(--dim);font-size:14px">▸</span>
   </h2>
   <div id="gcFields" class="hidden" style="display:flex;flex-direction:column;gap:10px;margin-top:10px">
-    <div class="field"><label style="font-size:12px">✅ Scope completed (what was installed per spec)</label>
+    <div class="field"><label style="font-size:12px">Scope completed (what was installed per spec)</label>
       <textarea id="gcScope" placeholder="e.g. (3) Cyclone fans on OP canopy + (2) Cyclone fans on OMD canopy. (1) high-pressure pump with RO filter, mounted in equipment closet. All electrical to existing J-boxes per drawings. Pressure tested to 1000 PSI." oninput="gcDetails.scope=this.value;scheduleAutoSave()" style="min-height:70px"></textarea>
     </div>
-    <div class="field"><label style="font-size:12px">📐 As-built notes (deviations from spec, field modifications)</label>
+    <div class="field"><label style="font-size:12px">As-built notes (deviations from spec, field modifications)</label>
       <textarea id="gcAsBuilt" placeholder="e.g. OP canopy column 3 had CMU wrap not shown on drawings — used longer mounting brackets. RO drain re-routed 4 ft west of spec to avoid existing condensate line. All other items as drawn." oninput="gcDetails.asBuilt=this.value;scheduleAutoSave()" style="min-height:70px"></textarea>
-      <div style="font-size:11px;color:var(--dim);margin-top:4px;font-style:italic">💡 Also upload the office's drawings as photos, tag Component = "📐 Drawing / As-Built", then tap ✏ Markup → freehand pen to sketch your actual install lines. They'll auto-embed in this section of the GC report.</div>
+      <div style="font-size:11px;color:var(--dim);margin-top:4px;font-style:italic">Also upload the office's drawings as photos, tag Component = "Drawing / As-Built", then tap Markup → freehand pen to sketch your actual install lines. They'll auto-embed in this section of the GC report.</div>
     </div>
-    <div class="field"><label style="font-size:12px">🚫 Not included in this scope (outside MistAmerica)</label>
+    <div class="field"><label style="font-size:12px">Not included in this scope (outside MistAmerica)</label>
       <textarea id="gcNotIncluded" placeholder="e.g. Electrical breaker installation at panel — by EC. Building water supply rough-in — by plumber. Patio canopy electrical — not in MistAmerica scope." oninput="gcDetails.notIncluded=this.value;scheduleAutoSave()" style="min-height:60px"></textarea>
     </div>
     <div class="form-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-      <div class="field"><label style="font-size:12px">✍️ GC rep who signed off</label>
+      <div class="field"><label style="font-size:12px">GC rep who signed off</label>
         <input type="text" id="gcRepName" placeholder="e.g. Mike Henderson, KDC Construction" oninput="gcDetails.gcRepName=this.value;scheduleAutoSave()">
       </div>
       <div class="field"><label style="font-size:12px">Sign-off date</label>
@@ -1448,7 +1498,7 @@ function toggleMoreTools() {
 
 <!-- SERVICE WORK ORDER (MistAmerica fillable form) -->
 <div id="workOrderSection" class="section hidden">
-  <h2 onclick="toggleWorkOrder()" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;gap:8px">🧾 Service Work Order
+  <h2 onclick="toggleWorkOrder()" style="cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;gap:8px">Service Work Order
     <span style="font-weight:400;text-transform:none;letter-spacing:0;font-size:12px;color:var(--dim);text-align:right"><span id="workOrderSummary"></span> <span id="workOrderCaret">▾</span></span>
   </h2>
   <div id="workOrderBody"></div>
@@ -1459,15 +1509,15 @@ function toggleMoreTools() {
 <div id="dailyNotesSection" class="section" style="display:none">
   <h2>Today's Self-Notes <span style="font-weight:400;color:var(--dim);font-size:12px;text-transform:none;letter-spacing:0">— for daily report</span></h2>
   <div class="field" style="margin-bottom:10px">
-    <label>🔧 What got done today</label>
+    <label>What got done today</label>
     <textarea id="dnWorkCompleted" oninput="dailyNotes.workCompleted=this.value;scheduleAutoSave()" placeholder="Pump installed, 8 nozzles set, leak test passed..." style="width:100%;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none;resize:vertical;min-height:60px"></textarea>
   </div>
   <div class="field" style="margin-bottom:10px">
-    <label>⚠️ Blockers / decisions needed from office</label>
+    <label>Blockers / decisions needed from office</label>
     <textarea id="dnBlockers" oninput="dailyNotes.blockers=this.value;scheduleAutoSave()" placeholder="Spec says 12 nozzles, only 8 in materials. Need decision on ordering more or revising plan..." style="width:100%;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none;resize:vertical;min-height:60px"></textarea>
   </div>
   <div class="field">
-    <label>🤦 What I'd do differently / honest self-notes</label>
+    <label>What I'd do differently / honest self-notes</label>
     <textarea id="dnSelfNotes" oninput="dailyNotes.selfNotes=this.value;scheduleAutoSave()" placeholder="Should have caught nozzle count before leaving Vegas. Forgot the impact driver bit set..." style="width:100%;padding:8px 10px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;font-family:inherit;outline:none;resize:vertical;min-height:60px"></textarea>
   </div>
 </div>
@@ -1556,15 +1606,15 @@ function toggleReportsRack() {
 <div id="photoSearchModal" style="display:none;position:fixed;inset:0;background:#111318;color:#e8eaf0;z-index:300;overflow-y:auto">
   <div style="max-width:1200px;margin:0 auto;padding:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);padding-bottom:12px;margin-bottom:16px;gap:10px">
-      <h1 style="font-size:20px;font-weight:700">🔍 Search Every Photo, Every Job</h1>
+      <h1 style="font-size:20px;font-weight:700">Search Every Photo, Every Job</h1>
       <button onclick="closePhotoSearch()" style="padding:8px 16px;background:var(--input);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;font-weight:600">✕ Close</button>
     </div>
     <input id="photoSearchInput" type="text" placeholder="Type to search: nozzle, pump, Phoenix, before, pump room..." oninput="renderPhotoSearch()" style="width:100%;padding:14px 16px;background:var(--input);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:16px;outline:none;margin-bottom:14px">
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">
       <button class="action-btn-sm" style="margin:0;padding:6px 12px;font-size:12px" onclick="setPhotoSearchPhase('')">All</button>
-      <button class="action-btn-sm" style="margin:0;padding:6px 12px;font-size:12px" onclick="setPhotoSearchPhase('before')">📷 Before</button>
-      <button class="action-btn-sm" style="margin:0;padding:6px 12px;font-size:12px" onclick="setPhotoSearchPhase('during')">🔧 During</button>
-      <button class="action-btn-sm" style="margin:0;padding:6px 12px;font-size:12px" onclick="setPhotoSearchPhase('after')">✅ After</button>
+      <button class="action-btn-sm" style="margin:0;padding:6px 12px;font-size:12px" onclick="setPhotoSearchPhase('before')">Before</button>
+      <button class="action-btn-sm" style="margin:0;padding:6px 12px;font-size:12px" onclick="setPhotoSearchPhase('during')">During</button>
+      <button class="action-btn-sm" style="margin:0;padding:6px 12px;font-size:12px" onclick="setPhotoSearchPhase('after')">After</button>
     </div>
     <div id="photoSearchCount" style="font-size:13px;color:var(--dim);margin-bottom:10px"></div>
     <div id="photoSearchResults" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:12px"></div>
@@ -1620,15 +1670,15 @@ function toggleReportsRack() {
         <label style="display:block;font-size:11px;color:#555;font-weight:600;margin-bottom:3px">TYPE</label>
         <select id="mlTypeFilter" onchange="renderMasterLog()" style="padding:7px 10px;font-size:13px;border:1px solid #ccc;border-radius:4px;background:#fff">
           <option value="all">All activity</option>
-          <option value="drive">🚗 Drives only</option>
-          <option value="workday">🏗️ Workdays only</option>
-          <option value="receipt">💰 Receipts only</option>
-          <option value="video">📹 Videos only</option>
+          <option value="drive">Drives only</option>
+          <option value="workday">Workdays only</option>
+          <option value="receipt">Receipts only</option>
+          <option value="video">Videos only</option>
         </select>
       </div>
       <div style="flex:1;text-align:right">
-        <button onclick="exportMasterLogCSV()" style="padding:8px 14px;background:#22c55e;color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer">📥 Download CSV (Excel)</button>
-        <button onclick="exportMasterLogPDF()" style="padding:8px 14px;background:#4f8cff;color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;margin-left:6px">📄 Print / PDF</button>
+        <button onclick="exportMasterLogCSV()" style="padding:8px 14px;background:#22c55e;color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer">Download CSV (Excel)</button>
+        <button onclick="exportMasterLogPDF()" style="padding:8px 14px;background:#4f8cff;color:#fff;border:none;border-radius:4px;font-size:13px;font-weight:600;cursor:pointer;margin-left:6px">Print / PDF</button>
       </div>
     </div>
 
@@ -1680,11 +1730,11 @@ function toggleReportsRack() {
 <!-- Send GC Completion Report dialog -->
 <div class="dialog-overlay" id="sendGcReportDialog">
   <div class="dialog" style="max-width:480px;text-align:left">
-    <h3 style="text-align:center;margin-bottom:6px">🏗️ Send GC Completion Report</h3>
+    <h3 style="text-align:center;margin-bottom:6px">Send GC Completion Report</h3>
     <p style="text-align:center;color:var(--dim);font-size:13px;margin-bottom:14px">Pick the GC superintendent or rep to send to:</p>
     <div id="sendGcBody" style="max-height:55vh;overflow-y:auto;margin-bottom:14px"></div>
     <div class="dialog-btns" style="flex-direction:column;gap:8px">
-      <button class="btn-dim" style="width:100%" onclick="previewGcReport()">👁️ Just preview the report (don't send)</button>
+      <button class="btn-dim" style="width:100%" onclick="previewGcReport()">Just preview the report (don't send)</button>
       <button class="btn-dim" style="width:100%" onclick="closeSendGcReportDialog()">Cancel</button>
     </div>
     <p style="font-size:11px;color:var(--dim);margin-top:10px;text-align:center;font-style:italic">Auto BCCs service@mistamerica.com (the office) and you. Comm log entry added automatically.</p>
@@ -1694,15 +1744,15 @@ function toggleReportsRack() {
 <!-- QR sticker dialog -->
 <div class="dialog-overlay" id="qrStickerDialog">
   <div class="dialog" style="max-width:520px;text-align:center">
-    <h3 style="margin-bottom:6px">📱 QR Help Sticker</h3>
+    <h3 style="margin-bottom:6px">QR Help Sticker</h3>
     <p style="color:var(--dim);font-size:13px;margin-bottom:14px">Print this and stick it on the equipment. When anyone scans it, they get troubleshooting AND you get notified.</p>
     <div id="qrCodeContainer" style="background:#fff;padding:20px;border-radius:8px;display:inline-block;margin-bottom:14px"></div>
     <div id="qrStoreInfo" style="font-size:13px;color:var(--text);font-weight:600;margin-bottom:14px"></div>
     <div id="qrUrl" style="font-size:10px;color:var(--dim);word-break:break-all;background:var(--input);padding:8px;border-radius:4px;margin-bottom:14px;font-family:monospace"></div>
     <div class="dialog-btns" style="flex-direction:column;gap:8px">
-      <button class="btn-green" style="width:100%" onclick="printQrSticker()">🖨️ Print sticker</button>
-      <button class="btn-green" style="width:100%;background:#3b82f6" onclick="downloadQrPng()">💾 Download PNG</button>
-      <button class="btn-dim" style="width:100%" onclick="copyQrUrl()">📋 Copy URL</button>
+      <button class="btn-green" style="width:100%" onclick="printQrSticker()">Print sticker</button>
+      <button class="btn-green" style="width:100%;background:#3b82f6" onclick="downloadQrPng()">Download PNG</button>
+      <button class="btn-dim" style="width:100%" onclick="copyQrUrl()">Copy URL</button>
       <button class="btn-dim" style="width:100%" onclick="closeQrStickerDialog()">Close</button>
     </div>
     <p style="font-size:11px;color:var(--dim);margin-top:10px;font-style:italic">Every scan is silently logged to your Firebase scan log. Tap "Notify" on the help page also emails service@mistamerica.com + you.</p>
@@ -1712,11 +1762,11 @@ function toggleReportsRack() {
 <!-- Send User Guide dialog -->
 <div class="dialog-overlay" id="sendUserGuideDialog">
   <div class="dialog" style="max-width:480px;text-align:left">
-    <h3 style="text-align:center;margin-bottom:6px">📘 Send User Guide</h3>
+    <h3 style="text-align:center;margin-bottom:6px">Send User Guide</h3>
     <p style="text-align:center;color:var(--dim);font-size:13px;margin-bottom:14px">Who do you want to send this to?</p>
     <div id="sendUserGuideBody" style="max-height:55vh;overflow-y:auto;margin-bottom:14px"></div>
     <div class="dialog-btns" style="flex-direction:column;gap:8px">
-      <button class="btn-dim" style="width:100%" onclick="previewUserGuide()">👁️ Just preview the guide (don't send)</button>
+      <button class="btn-dim" style="width:100%" onclick="previewUserGuide()">Just preview the guide (don't send)</button>
       <button class="btn-dim" style="width:100%" onclick="closeSendUserGuideDialog()">Cancel</button>
     </div>
     <p style="font-size:11px;color:var(--dim);margin-top:10px;text-align:center;font-style:italic">A copy of every send action is logged to this job's Comm Log + emailed to you as a receipt.</p>
@@ -1736,7 +1786,7 @@ function toggleReportsRack() {
       </p>
     </div>
     <div style="margin:16px 0;border-top:1px solid var(--border);padding-top:16px">
-      <label style="display:block;font-size:13px;font-weight:600;color:var(--dim);margin-bottom:6px">📧 Drive Notification Emails (EmailJS)</label>
+      <label style="display:block;font-size:13px;font-weight:600;color:var(--dim);margin-bottom:6px">Drive Notification Emails (EmailJS)</label>
       <p style="font-size:12px;color:var(--dim);margin:0 0 10px;line-height:1.5">
         Auto-emails Robert + Sean (CC you) when you start driving before 6 AM and when you finish that drive — with the time and city. Paste your 3 EmailJS IDs below. They're stored on this device only, never in the app code.
         <br>Set up free at <a href="https://www.emailjs.com" target="_blank" style="color:var(--accent)">emailjs.com</a> — see the steps I gave you.
@@ -1746,7 +1796,7 @@ function toggleReportsRack() {
       <input type="text" id="ejsPhotoTemplateId" placeholder="Photo Template ID (optional — for end-of-day photos)" style="width:100%;padding:9px 12px;margin-bottom:8px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:monospace;outline:none">
       <input type="text" id="ejsPublicKey" placeholder="Public Key (e.g. aB1cD2eF3gH4iJ5)" style="width:100%;padding:9px 12px;background:var(--input);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:monospace;outline:none">
       <div style="font-size:11px;color:var(--dim);margin-top:8px;line-height:1.5">Photo emails need an EmailJS <strong>paid</strong> plan (attachments). The Photo Template is a 2nd template with one Variable Attachment named <code>photos_image</code>. Leave it blank to skip photo emails — the text emails work on the free plan.</div>
-      <button class="btn-dim" onclick="testDriveEmail()" style="width:100%;margin-top:10px">📧 Send Test Email Now</button>
+      <button class="btn-dim" onclick="testDriveEmail()" style="width:100%;margin-top:10px">Send Test Email Now</button>
     </div>
     <div class="dialog-btns" style="margin-top:20px">
       <button class="btn-green" onclick="saveSettings()">Save</button>
@@ -1767,7 +1817,7 @@ function toggleReportsRack() {
       <button class="markup-btn" data-tool="arrow" onclick="setMarkupTool('arrow')" title="Arrow">↗</button>
       <button class="markup-btn" data-tool="circle" onclick="setMarkupTool('circle')" title="Circle">○</button>
       <button class="markup-btn" data-tool="rect" onclick="setMarkupTool('rect')" title="Rectangle">□</button>
-      <button class="markup-btn" data-tool="draw" onclick="setMarkupTool('draw')" title="Freehand">✏</button>
+      <button class="markup-btn" data-tool="draw" onclick="setMarkupTool('draw')" title="Freehand"><svg class="ic"><use href="#i-note"/></svg></button>
       <button class="markup-btn" data-tool="text" onclick="setMarkupTool('text')" title="Text">T</button>
     </div>
     <div class="markup-toolbar-group">
@@ -1784,7 +1834,7 @@ function toggleReportsRack() {
     </div>
     <div class="markup-toolbar-group">
       <button class="markup-btn" onclick="undoMarkup()" title="Undo last">↶ Undo</button>
-      <button class="markup-btn markup-clear" onclick="clearMarkup()" title="Clear all">🗑</button>
+      <button class="markup-btn markup-clear" onclick="clearMarkup()" title="Clear all"><svg class="ic"><use href="#i-trash"/></svg></button>
       <button class="markup-btn markup-save" onclick="saveMarkup()" title="Save markup">✓ Save</button>
     </div>
   </div>
@@ -1831,10 +1881,10 @@ const COMPONENT_TO_SYSTEM = {
   other: ''
 };
 const SYSTEM_LABELS = {
-  equipment: '🛠️ Equipment',
-  fans: '🌀 Fans',
-  switching: '🎛️ Switching',
-  site: '📐 Site / Overall'
+  equipment: 'Equipment',
+  fans: 'Fans',
+  switching: 'Switching',
+  site: 'Site / Overall'
 };
 const SYSTEM_ORDER = ['equipment', 'fans', 'switching', 'site'];
 // Markup state
@@ -1867,7 +1917,7 @@ let gcDetails = {}; // { scope, asBuilt, notIncluded, gcRepName, gcRepDate }
 // editor form and the printed form stay in sync. Declared here (above the
 // workOrder initializer) so newWorkOrder() can reference them at load.
 const WO_GROUPS = {
-  summerStart: { title: '☀️ Summer Start Service', items: [
+  summerStart: { title: 'Summer Start Service', items: [
     ['changedOil', 'Changed Oil'],
     ['changedFilters', 'Changed Filters'],
     ['inspectNozzles', 'Inspect Nozzles'],
@@ -1875,7 +1925,7 @@ const WO_GROUPS = {
     ['nppNozzles', 'NPP – Clean & Replace Nozzles'],
     ['roService', 'RO Service']
   ]},
-  winterShutdown: { title: '❄️ Winter Shut Down Service', items: [
+  winterShutdown: { title: 'Winter Shut Down Service', items: [
     ['isolationValve', 'Turn Off Isolation Valve'],
     ['purgeWater', 'Purge Water From System'],
     ['removeFilters', 'Remove Filters / Empty Cannisters'],
@@ -1883,14 +1933,14 @@ const WO_GROUPS = {
     ['flushLines', 'Flush Lines'],
     ['roService', 'RO Service']
   ]},
-  misc: { title: '🔧 Miscellaneous Service', items: [
+  misc: { title: 'Miscellaneous Service', items: [
     ['lpSolenoid', 'Check LP Solenoid'],
     ['pressureRegulator', 'Check Pressure Regulator'],
     ['oilLevel', 'Check Oil Level'],
     ['remote', 'Check Remote'],
     ['breaker', 'Check for 20 Amp Dedicated Breaker']
   ]},
-  suggested: { title: '💡 Suggested Service', items: [
+  suggested: { title: 'Suggested Service', items: [
     ['rubyNozzle', 'Ruby Nozzle Upgrade'],
     ['addSwivels', 'Add Swivels'],
     ['replaceFilterCannister', 'Replace Filter Cannister'],
@@ -2693,7 +2743,7 @@ function extractEvents(state, jobName, status, tripId, out, src) {
       endedAt: s.endedAt,
       type: s.type, // 'drive' | 'workday'
       jobName, status, tripId,
-      detail: (s.note || '') + (s.tripLevel ? ' 🚗 Travel' : ''),
+      detail: (s.note || '') + (s.tripLevel ? ' Travel' : ''),
       hours, miles, amount: 0,
       gps: s.startGps || s.endGps || null,
       _raw: s,
@@ -2830,10 +2880,10 @@ function renderMasterLog() {
     const endTimeStr = e.endedAt ? new Date(e.endedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
     const fullTime = e.type === 'receipt' ? timeStr : (endTimeStr ? `${timeStr} → ${endTimeStr}` : timeStr);
     const typeLabel = {
-      drive: '🚗 Drive',
-      workday: '🏗️ Workday',
-      receipt: '💰 Receipt',
-      video: '📹 Video'
+      drive: 'Drive',
+      workday: 'Workday',
+      receipt: 'Receipt',
+      video: 'Video'
     }[e.type] || e.type;
 
     // Clickable job name → Google search for the place
@@ -2851,9 +2901,9 @@ function renderMasterLog() {
     let gpsLink = '';
     if (e.type === 'drive' && e._raw && e._raw.startGps && e._raw.endGps) {
       const s = e._raw.startGps, ee = e._raw.endGps;
-      gpsLink = `<a href="https://www.google.com/maps/dir/${s.lat},${s.lng}/${ee.lat},${ee.lng}" target="_blank" style="color:#4f8cff;text-decoration:none;font-size:11px;font-weight:600" title="View driving route on Google Maps">🗺️ Route</a>`;
+      gpsLink = `<a href="https://www.google.com/maps/dir/${s.lat},${s.lng}/${ee.lat},${ee.lng}" target="_blank" style="color:#4f8cff;text-decoration:none;font-size:11px;font-weight:600" title="View driving route on Google Maps">Route</a>`;
     } else if (e.gps) {
-      gpsLink = `<a href="https://www.google.com/maps?q=${e.gps.lat},${e.gps.lng}" target="_blank" style="color:#4f8cff;text-decoration:none;font-size:11px;font-weight:600" title="View location on Google Maps">📍 Map</a>`;
+      gpsLink = `<a href="https://www.google.com/maps?q=${e.gps.lat},${e.gps.lng}" target="_blank" style="color:#4f8cff;text-decoration:none;font-size:11px;font-weight:600" title="View location on Google Maps">Map</a>`;
     }
 
     const stripe = i % 2 === 0 ? '#fff' : '#fafafa';
@@ -2867,7 +2917,7 @@ function renderMasterLog() {
       <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">${e.miles > 0 ? e.miles.toLocaleString() : ''}</td>
       <td style="padding:7px 10px;text-align:right;font-variant-numeric:tabular-nums">${e.amount > 0 ? '$' + e.amount.toFixed(2) : ''}</td>
       <td style="padding:7px 10px;text-align:center">${gpsLink}</td>
-      <td style="padding:7px 6px;text-align:center">${(e._src && e.type !== 'video') ? `<button onclick="mlOpenEdit(${e._idx})" title="Edit times / miles / amount" style="background:none;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-size:12px;padding:3px 7px;line-height:1">✏️</button>` : ''}</td>
+      <td style="padding:7px 6px;text-align:center">${(e._src && e.type !== 'video') ? `<button onclick="mlOpenEdit(${e._idx})" title="Edit times / miles / amount" style="background:none;border:1px solid #ddd;border-radius:4px;cursor:pointer;font-size:12px;padding:3px 7px;line-height:1">Edit</button>` : ''}</td>
     </tr>`;
   }).join('');
 
@@ -2906,7 +2956,7 @@ function mlOpenEdit(idx) {
       <label style="${labelStyle}">MILES</label>
       <input type="number" min="0" step="0.1" id="mlEditMiles" value="${e.miles || ''}" style="${inputStyle}">` : ''}`;
   }
-  const typeLabel = { drive: '🚗 Drive', workday: '🏗️ Workday', receipt: '💰 Receipt' }[e.type] || e.type;
+  const typeLabel = { drive: 'Drive', workday: 'Workday', receipt: 'Receipt' }[e.type] || e.type;
   const completedNote = e._src.kind === 'job'
     ? `<div style="margin-top:10px;padding:8px 10px;background:#fff8e1;border-left:3px solid #f59e0b;font-size:12px;color:#7c5800;border-radius:4px">This job is already closed. The fix saves to the job's data and shows here in the Master Log — but the frozen report PDF keeps the old numbers until you reopen &amp; re-save the job.</div>`
     : '';
@@ -2915,7 +2965,7 @@ function mlOpenEdit(idx) {
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px';
   overlay.innerHTML = `
     <div style="background:#fff;color:#111;border-radius:10px;max-width:420px;width:100%;padding:18px;max-height:90vh;overflow:auto" onclick="event.stopPropagation()">
-      <div style="font-weight:700;font-size:16px">✏️ ${typeLabel} — ${esc(e.jobName)}</div>
+      <div style="font-weight:700;font-size:16px">${typeLabel} — ${esc(e.jobName)}</div>
       ${fields}
       ${completedNote}
       <div style="display:flex;gap:8px;margin-top:16px">
@@ -3094,7 +3144,7 @@ function renderHoursHeatmap(events) {
     <div style="border:1px solid #e5e7eb;border-radius:6px;padding:14px;background:#fafbfc">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div>
-          <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;color:#111;margin:0">🔥 Hours-Worked Heat Map</h3>
+          <h3 style="font-size:14px;text-transform:uppercase;letter-spacing:1px;color:#111;margin:0">Hours-Worked Heat Map</h3>
           <div style="font-size:11px;color:#666;margin-top:2px">Each cell = one hour of one day. Color intensity = how much of that hour was on the clock.</div>
         </div>
         <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:#666">
@@ -3192,7 +3242,7 @@ async function manualSync() {
     alert('Cloud sync not available right now (offline or Firebase failed to load). Try refreshing the page.');
     return;
   }
-  showToast('☁️ Syncing...', 'info', 2000);
+  showToast('Syncing...', 'info', 2000);
   setSyncStatus('syncing');
   try {
     // Probe write — surfaces permission/config errors directly instead of hiding them
@@ -3201,7 +3251,7 @@ async function manualSync() {
     await pushAllToCloud(); // phone → cloud first (phone is freshest after the outage)
     await pullFromCloud();  // cloud → phone, but newest-wins keeps your local work
     setSyncStatus('synced');
-    showToast('☁️ Sync complete', 'good', 2500);
+    showToast('Sync complete', 'good', 2500);
   } catch (e) {
     noteCloudError(e);
     setSyncStatus('error');
@@ -3321,9 +3371,9 @@ function suggestJobName(gps, geo) {
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10060;display:flex;align-items:center;justify-content:center;padding:16px';
     const shell = names => `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;max-width:420px;width:100%;padding:18px;max-height:80vh;overflow:auto">
       <div style="font-weight:700;font-size:16px;margin-bottom:4px;color:var(--text)">Name this job</div>
-      ${where ? `<div style="font-size:12px;color:var(--accent);margin-bottom:10px">📍 ${where}</div>` : '<div style="margin-bottom:10px"></div>'}
+      ${where ? `<div style="font-size:12px;color:var(--accent);margin-bottom:10px">${where}</div>` : '<div style="margin-bottom:10px"></div>'}
       ${names}
-      <button class="action-btn-sm" style="width:100%;margin:6px 0 0;padding:12px;background:var(--accent);color:#fff;border-color:var(--accent)" data-type="1">⌨️ Type the name</button>
+      <button class="action-btn-sm" style="width:100%;margin:6px 0 0;padding:12px;background:var(--accent);color:#fff;border-color:var(--accent)" data-type="1">⌨ Type the name</button>
     </div>`;
     ov.innerHTML = shell('<div style="font-size:12px;color:var(--dim);margin-bottom:6px">Checking what\'s nearby…</div>');
     document.body.appendChild(ov);
@@ -3338,7 +3388,7 @@ function suggestJobName(gps, geo) {
       if (!document.body.contains(ov)) return; // already dismissed
       const list = places.length
         ? '<div style="font-size:12px;color:var(--dim);margin-bottom:6px">Nearby — tap one:</div>' +
-          places.map(p => `<button class="action-btn-sm" style="width:100%;margin:0 0 8px;text-align:left;padding:12px" data-nm="${esc(p.name)}">📍 ${esc(p.name)} <span style="float:right;color:var(--dim);font-size:11px">${metersToMilesStr(p.dist)}</span></button>`).join('')
+          places.map(p => `<button class="action-btn-sm" style="width:100%;margin:0 0 8px;text-align:left;padding:12px" data-nm="${esc(p.name)}">${esc(p.name)} <span style="float:right;color:var(--dim);font-size:11px">${metersToMilesStr(p.dist)}</span></button>`).join('')
         : '<div style="font-size:12px;color:var(--dim);margin-bottom:6px">Nothing mapped nearby — just type the name.</div>';
       ov.innerHTML = shell(list);
     });
@@ -3392,7 +3442,7 @@ async function findNearestPinnedJob(gps) {
 // PIN SITE LOCATION + DRIFT
 // ═══════════════════════════════
 async function pinSiteLocation() {
-  showToast('📍 Getting GPS...', 'info', 2000);
+  showToast('Getting GPS...', 'info', 2000);
   const gps = await getGps();
   if (!gps) {
     alert('Could not get GPS. Make sure location is enabled on your phone, then try again.');
@@ -3401,7 +3451,7 @@ async function pinSiteLocation() {
   pinnedLocation = { lat: gps.lat, lng: gps.lng, acc: gps.acc, pinnedAt: Date.now() };
   refreshPinDisplay();
   scheduleAutoSave();
-  showToast('📍 Site pinned!', 'good', 2500);
+  showToast('Site pinned!', 'good', 2500);
 }
 
 function unpinSiteLocation() {
@@ -3418,11 +3468,11 @@ function refreshPinDisplay() {
   if (!text) return;
   if (pinnedLocation) {
     const when = new Date(pinnedLocation.pinnedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
-    text.innerHTML = `📍 <strong>Pinned:</strong> <a href="${gpsMapsLink(pinnedLocation)}" target="_blank" style="color:var(--accent);text-decoration:underline">${fmtGps(pinnedLocation)}</a> · ±${Math.round(pinnedLocation.acc || 0)}m · ${when}`;
+    text.innerHTML = `<strong>Pinned:</strong> <a href="${gpsMapsLink(pinnedLocation)}" target="_blank" style="color:var(--accent);text-decoration:underline">${fmtGps(pinnedLocation)}</a> · ±${Math.round(pinnedLocation.acc || 0)}m · ${when}`;
     text.style.color = 'var(--text)';
     if (unpinBtn) unpinBtn.style.display = '';
   } else {
-    text.innerHTML = '📍 No site location pinned — tap "Pin Spot" when you\'re on site';
+    text.innerHTML = 'No site location pinned — tap "Pin Spot" when you\'re on site';
     text.style.color = 'var(--dim)';
     if (unpinBtn) unpinBtn.style.display = 'none';
   }
@@ -3443,7 +3493,7 @@ function startDriftMonitor() {
     if (!gps) return;
     const dist = distanceMeters(gps, pinnedLocation);
     if (dist > GEOFENCE_RADIUS_M) {
-      showToast(`📍 Drifted ${metersToMilesStr(dist)} from pinned site. Still on site, or moved on?`, 'warn', 8000);
+      showToast(`Drifted ${metersToMilesStr(dist)} from pinned site. Still on site, or moved on?`, 'warn', 8000);
     }
   }, DRIFT_CHECK_MS);
 }
@@ -3477,6 +3527,17 @@ function renderDayFlow(force) {
   if (!force && key === __lastDayFlowKey) return;
   __lastDayFlowKey = key;
   const svg = k => `<svg class="ic"><use href="#${k}"/></svg>`;
+  // Step bar: where the day stands, DRIVE → ARRIVE → WORK → DONE
+  let done = -1, cur = -1, next = 0;
+  if (sentToday && state === 'idle') { done = 3; next = -1; }
+  else if (state === 'driving') { cur = 0; next = 1; }
+  else if (state === 'working') { done = 1; cur = 2; next = 3; }
+  else if (activeToday) {
+    const last = segments.filter(s => dayKey(s.startedAt) === todayK).sort((a, b) => a.startedAt - b.startedAt).pop();
+    if (last && last.type === 'drive') { done = 1; next = 2; } else { done = 2; next = 3; }
+  }
+  const stepBar = '<div class="stepbar">' + ['Drive', 'Arrive', 'Work', 'Done'].map((t, i) =>
+    `<div class="step${i <= done ? ' is-done' : i === cur ? ' is-now' : i === next ? ' is-next' : ''}"><span class="step-n">${i <= done ? svg('i-check') : i + 1}</span>${t}</div>`).join('') + '</div>';
   if (state === 'idle' && !activeToday) {
     // First tap of the morning — leaving the hotel IS the start of the workday
     box.innerHTML = `
@@ -3506,6 +3567,7 @@ function renderDayFlow(force) {
     box.innerHTML += `<button class="btn-endday" onclick="endOfDay()">${svg('i-flag')} DONE FOR THE DAY — SEND "I'M BACK"</button>
       <div class="flow-hint">Tap this at night when you're back. It closes out today.</div>`;
   }
+  box.innerHTML = stepBar + box.innerHTML;
 }
 
 // Week strip stays out of the way until asked for — the board is about TODAY
@@ -3531,7 +3593,7 @@ async function dayStartDriving() {
   segments.push(seg);
   dayFlowPromptShown = false;
   renderSegments(); updateDashboard(); startSegmentTicker(); scheduleAutoSave();
-  showToast('🚗 Driving — tap STOP DRIVE when you arrive', 'good', 3000);
+  showToast('Driving — tap STOP DRIVE when you arrive', 'good', 3000);
   onDriveStarted(seg); // email Robert + Sean that the drive started
   setTimeout(() => promptOdometerPhoto(seg.id, 'start'), 250);
 }
@@ -3562,7 +3624,7 @@ async function checkDriveStopped() {
     dayFlowPromptShown = true;
     if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
     renderDayFlow();
-    showToast('📍 Looks like you stopped — are you doing a job?', 'info', 6000);
+    showToast('Looks like you stopped — are you doing a job?', 'info', 6000);
   }
 }
 
@@ -3622,7 +3684,7 @@ async function dayResolveJob(gps) {
   if (near && near.inside) {
     const nm = near.draft.name || 'this site';
     const meta = near.draft.meta ? ` (${near.draft.meta})` : '';
-    if (confirm(`📍 You're at ${nm}${meta}.\n\nStart work here?\n\nOK = yes, start work  ·  Cancel = pick a different job`)) {
+    if (confirm(`You're at ${nm}${meta}.\n\nStart work here?\n\nOK = yes, start work  ·  Cancel = pick a different job`)) {
       if (near.draft.id !== currentDraftId) await switchToDraft(near.draft.id);
       return true;
     }
@@ -3662,10 +3724,10 @@ function dayPickJob(gps) {
     ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:10050;display:flex;align-items:center;justify-content:center;padding:16px';
     ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;max-width:420px;width:100%;padding:18px;max-height:80vh;overflow:auto">
       <div style="font-weight:700;font-size:16px;margin-bottom:4px;color:var(--text)">Which job are you at?</div>
-      ${geo ? `<div style="font-size:12px;color:var(--accent);margin-bottom:10px">📍 You're in ${esc(geo.city)}${geo.state ? ', ' + esc(geo.state) : ''}</div>` : '<div style="margin-bottom:10px"></div>'}
-      <button class="action-btn-sm" style="width:100%;margin:0 0 10px;padding:12px;background:var(--accent);color:#fff;border-color:var(--accent)" data-pick="__new">➕ New job${geo ? ' here in ' + esc(geo.city) : ''}</button>
+      ${geo ? `<div style="font-size:12px;color:var(--accent);margin-bottom:10px">You're in ${esc(geo.city)}${geo.state ? ', ' + esc(geo.state) : ''}</div>` : '<div style="margin-bottom:10px"></div>'}
+      <button class="action-btn-sm" style="width:100%;margin:0 0 10px;padding:12px;background:var(--accent);color:#fff;border-color:var(--accent)" data-pick="__new">New job${geo ? ' here in ' + esc(geo.city) : ''}</button>
       ${items.map(it => `<button class="action-btn-sm" style="width:100%;margin:0 0 8px;text-align:left;padding:12px${it.kind === 'job' ? ';opacity:.85' : ''}" data-pick="${it.kind}:${it.id}">
-        ${it.kind === 'draft' ? '📂' : '✅'} ${esc(it.name)}${it.meta ? ` <span style="color:var(--dim);font-size:12px">(${esc(it.meta)})</span>` : ''}
+        ${it.kind === 'draft' ? '' : ''} ${esc(it.name)}${it.meta ? ` <span style="color:var(--dim);font-size:12px">(${esc(it.meta)})</span>` : ''}
         <span style="float:right;color:var(--dim);font-size:11px">${isFinite(it.dist) ? metersToMilesStr(it.dist) : ''}${it.kind === 'job' ? (isFinite(it.dist) ? ' · ' : '') + 'finished — reopens' : ''}</span>
       </button>`).join('')}
     </div>`;
@@ -3722,7 +3784,7 @@ async function dayBeginWorkSegment(gps) {
   if (!pinnedLocation && gps) {
     pinnedLocation = { lat: gps.lat, lng: gps.lng, acc: gps.acc, pinnedAt: Date.now(), auto: true };
     refreshPinDisplay();
-    showToast('📍 Site auto-pinned — next visit gets recognized automatically', 'info', 4000);
+    showToast('Site auto-pinned — next visit gets recognized automatically', 'info', 4000);
   }
   // Job doesn't know its city yet → GPS does. Fill it in quietly.
   if (gps && !document.getElementById('city').value.trim()) {
@@ -3733,7 +3795,7 @@ async function dayBeginWorkSegment(gps) {
         if (!document.getElementById('state').value.trim()) document.getElementById('state').value = geo.state;
         updateDashboard();
         scheduleAutoSave();
-        showToast(`📍 City filled in: ${geo.city}, ${geo.state}`, 'info', 3000);
+        showToast(`City filled in: ${geo.city}, ${geo.state}`, 'info', 3000);
       }
     });
   }
@@ -4097,7 +4159,7 @@ function renderWorkOrder() {
 
   // — Auto-fill from an attached work order / sales order —
   html += `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--input);border:1px dashed var(--accent);border-radius:var(--radius);padding:12px 14px;margin-bottom:16px">
-    <button class="action-btn-sm" style="margin:0;background:var(--accent);color:#fff;border-style:solid;border-color:var(--accent)" onclick="importWorkOrderDoc()">📄 Auto-fill from a Work / Sales Order</button>
+    <button class="action-btn-sm" style="margin:0;background:var(--accent);color:#fff;border-style:solid;border-color:var(--accent)" onclick="importWorkOrderDoc()">Auto-fill from a Work / Sales Order</button>
     <span style="font-size:12px;color:var(--dim);flex:1;min-width:160px">Snap or upload the order you were sent (photo or PDF). It reads the customer info and parts and fills the blocks below — you just add the notes.</span>
   </div>`;
 
@@ -4192,9 +4254,9 @@ function renderWorkOrder() {
 
   // — Notes & recommendations —
   html += `<div class="wo-sub">Notes & Recommendations</div>`;
-  html += `<div class="field" style="margin-bottom:12px"><label>Notes</label><textarea id="woNotes" oninput="workOrder.notes=this.value;scheduleAutoSave()" placeholder="e.g. Summer Start Up for Rental — or tap 🎤 and say it">${esc(w.notes || '')}</textarea><button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px;align-self:flex-start" onclick="toggleDictation('woNotes', v=>{workOrder.notes=v;}, this)">🎤 Dictate</button></div>`;
-  html += `<div class="field" style="margin-bottom:12px"><label>Additional Recommendations</label><textarea id="woAddRecs" oninput="workOrder.additionalRecs=this.value;scheduleAutoSave()"></textarea><button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px;align-self:flex-start" onclick="toggleDictation('woAddRecs', v=>{workOrder.additionalRecs=v;}, this)">🎤 Dictate</button></div>`;
-  html += `<div class="field" style="margin-bottom:12px"><label>Reason for Return Trip</label><textarea id="woReturn" oninput="workOrder.returnReason=this.value;scheduleAutoSave()"></textarea><button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px;align-self:flex-start" onclick="toggleDictation('woReturn', v=>{workOrder.returnReason=v;}, this)">🎤 Dictate</button></div>`;
+  html += `<div class="field" style="margin-bottom:12px"><label>Notes</label><textarea id="woNotes" oninput="workOrder.notes=this.value;scheduleAutoSave()" placeholder="e.g. Summer Start Up for Rental — or tap and say it">${esc(w.notes || '')}</textarea><button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px;align-self:flex-start" onclick="toggleDictation('woNotes', v=>{workOrder.notes=v;}, this)">Dictate</button></div>`;
+  html += `<div class="field" style="margin-bottom:12px"><label>Additional Recommendations</label><textarea id="woAddRecs" oninput="workOrder.additionalRecs=this.value;scheduleAutoSave()"></textarea><button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px;align-self:flex-start" onclick="toggleDictation('woAddRecs', v=>{workOrder.additionalRecs=v;}, this)">Dictate</button></div>`;
+  html += `<div class="field" style="margin-bottom:12px"><label>Reason for Return Trip</label><textarea id="woReturn" oninput="workOrder.returnReason=this.value;scheduleAutoSave()"></textarea><button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px;align-self:flex-start" onclick="toggleDictation('woReturn', v=>{workOrder.returnReason=v;}, this)">Dictate</button></div>`;
   html += `<div style="font-size:11px;color:var(--dim);font-style:italic;background:var(--input);padding:10px 12px;border-radius:var(--radius);margin-bottom:14px">Parts Warranty: All parts as recorded are warrantied for one year, with the exception of nozzles and filters. We do not warranty parts purchased from others even if we install them. If repairs become necessary later due to other defective parts, they will be charged separately.</div>`;
 
   // — Signatures —
@@ -4349,7 +4411,7 @@ document.getElementById('woImportInput').addEventListener('change', async functi
   // Make sure the form is rendered and visible so filled values land somewhere
   if (!document.getElementById('workOrderBody').innerHTML) renderWorkOrder();
   document.getElementById('workOrderSection').classList.remove('hidden');
-  showToast('📄 Reading the order…', 'info', 60000);
+  showToast('Reading the order…', 'info', 60000);
   try {
     const images = await _woFileToImages(file);
     if (!images.length) { showToast('Could not read that file', 'warn'); return; }
@@ -4733,7 +4795,7 @@ document.getElementById('videoInput').addEventListener('change', async function(
     if (!ok) { e.target.value = ''; return; }
   }
 
-  showToast(`📹 Uploading ${files.length} video${files.length === 1 ? '' : 's'}...`, 'info', 3000);
+  showToast(`Uploading ${files.length} video${files.length === 1 ? '' : 's'}...`, 'info', 3000);
 
   for (const file of files) {
     const id = 'vid_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
@@ -4755,7 +4817,7 @@ document.getElementById('videoInput').addEventListener('change', async function(
   renderVideos();
   scheduleAutoSave();
   e.target.value = '';
-  showToast(`📹 ${files.length} video${files.length === 1 ? '' : 's'} ready`, 'good', 2500);
+  showToast(`${files.length} video${files.length === 1 ? '' : 's'} ready`, 'good', 2500);
 });
 
 function renderVideos() {
@@ -4778,9 +4840,9 @@ function renderVideos() {
           <div style="font-size:12px;color:var(--dim);margin-bottom:6px">${esc(v.fileName)} · ${sz}${v.stamp ? ' · ' + esc(v.stamp) : ''}</div>
           <select onchange="videos[${i}].phase=this.value;scheduleAutoSave()" style="margin-bottom:6px">
             <option value=""${!v.phase?' selected':''}>— Phase —</option>
-            <option value="before"${v.phase==='before'?' selected':''}>📷 Before</option>
-            <option value="during"${v.phase==='during'?' selected':''}>🔧 During</option>
-            <option value="after"${v.phase==='after'?' selected':''}>✅ After</option>
+            <option value="before"${v.phase==='before'?' selected':''}>Before</option>
+            <option value="during"${v.phase==='during'?' selected':''}>During</option>
+            <option value="after"${v.phase==='after'?' selected':''}>After</option>
           </select>
           <input type="text" placeholder="Area (Patio, Roof, Pump room...)" value="${esc(v.area || '')}" onchange="videos[${i}].area=this.value;scheduleAutoSave()" style="margin-bottom:6px">
           <textarea placeholder="Notes — what does this video show?" onchange="videos[${i}].notes=this.value;scheduleAutoSave()" style="width:100%;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;font-family:inherit;outline:none;resize:vertical;min-height:50px">${esc(v.notes || '')}</textarea>
@@ -4862,7 +4924,7 @@ document.getElementById('photoReplaceInput').addEventListener('change', async fu
     delete photos[idx].annotations;
     renderPhotos();
     scheduleAutoSave();
-    showToast('🔄 Photo replaced', 'good', 2000);
+    showToast('Photo replaced', 'good', 2000);
   };
   reader.readAsDataURL(file);
 });
@@ -4886,10 +4948,10 @@ function renderPhotos() {
     const isActive = v => photoFilter.phase === v ? ';background:var(--accent);color:#fff;border-color:var(--accent)' : '';
     filterBar.innerHTML = `
       <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('')}" onclick="setPhotoFilter('phase','')">All (${counts.all})</button>
-      <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('before')}" onclick="setPhotoFilter('phase','before')">📷 Before (${counts.before})</button>
-      <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('during')}" onclick="setPhotoFilter('phase','during')">🔧 During (${counts.during})</button>
-      <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('after')}" onclick="setPhotoFilter('phase','after')">✅ After (${counts.after})</button>
-      ${counts.untagged > 0 ? `<button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('untagged')}" onclick="setPhotoFilter('phase','untagged')">📁 Untagged (${counts.untagged})</button>` : ''}
+      <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('before')}" onclick="setPhotoFilter('phase','before')">Before (${counts.before})</button>
+      <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('during')}" onclick="setPhotoFilter('phase','during')">During (${counts.during})</button>
+      <button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('after')}" onclick="setPhotoFilter('phase','after')">After (${counts.after})</button>
+      ${counts.untagged > 0 ? `<button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px${isActive('untagged')}" onclick="setPhotoFilter('phase','untagged')">Untagged (${counts.untagged})</button>` : ''}
     `;
   }
 
@@ -4903,15 +4965,15 @@ function renderPhotos() {
 
   document.getElementById('photoGrid').innerHTML = visible.map(({p, i}) => {
     const displayURL = photoDisplayURL(p);
-    const annotatedBadge = p.annotatedURL ? `<div style="position:absolute;top:6px;left:6px;background:rgba(239,68,68,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.5px">✏ MARKED</div>` : '';
-    const discrepancyBadge = p.isDiscrepancy ? `<div style="position:absolute;top:6px;left:${p.annotatedURL?'70px':'6px'};background:rgba(220,38,38,0.95);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.5px">🚩 ISSUE</div>` : '';
+    const annotatedBadge = p.annotatedURL ? `<div style="position:absolute;top:6px;left:6px;background:rgba(239,68,68,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.5px">MARKED</div>` : '';
+    const discrepancyBadge = p.isDiscrepancy ? `<div style="position:absolute;top:6px;left:${p.annotatedURL?'70px':'6px'};background:rgba(220,38,38,0.95);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;letter-spacing:.5px">ISSUE</div>` : '';
     const aiBadge = p._describing
-      ? `<div style="position:absolute;bottom:6px;left:6px;background:rgba(79,140,255,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">🤖 Describing...</div>`
-      : (p._aiDescribed ? `<div style="position:absolute;bottom:6px;left:6px;background:rgba(34,197,94,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">🤖 Auto-described</div>` : '');
+      ? `<div style="position:absolute;bottom:6px;left:6px;background:rgba(79,140,255,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">Describing...</div>`
+      : (p._aiDescribed ? `<div style="position:absolute;bottom:6px;left:6px;background:rgba(34,197,94,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">Auto-described</div>` : '');
     const cardBorder = p.isDiscrepancy ? 'border:2px solid #dc2626' : '';
     const discrepancyPanel = p.isDiscrepancy ? `
       <div style="padding:10px;background:#fef2f2;border-top:2px solid #dc2626">
-        <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">🚩 Discrepancy</div>
+        <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Discrepancy</div>
         <textarea placeholder="What's wrong? (required)" onchange="photos[${i}].discrepancyReason=this.value;scheduleAutoSave()" style="width:100%;padding:6px 8px;background:#fff;border:1px solid #fca5a5;border-radius:4px;color:#111;font-size:12px;font-family:inherit;outline:none;resize:vertical;min-height:40px;margin-bottom:6px">${esc(p.discrepancyReason || '')}</textarea>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#991b1b;cursor:pointer">
           <input type="checkbox" ${p.solutionAvailable?'checked':''} onchange="photos[${i}].solutionAvailable=this.checked;renderPhotos();scheduleAutoSave()" style="width:auto;margin:0">
@@ -4928,40 +4990,40 @@ function renderPhotos() {
       ${discrepancyBadge}
       ${aiBadge}
       <button class="remove-btn" onclick="photos.splice(${i},1);renderPhotos()">×</button>
-      <button class="action-btn-sm" style="position:absolute;bottom:auto;top:6px;right:38px;margin:0;padding:4px 8px;font-size:11px" onclick="openMarkup(${i})">✏ Markup</button>
-      <button class="action-btn-sm" style="position:absolute;bottom:auto;top:6px;right:108px;margin:0;padding:4px 8px;font-size:11px" onclick="replacePhoto(${i})">🔄 Replace</button>
+      <button class="action-btn-sm" style="position:absolute;bottom:auto;top:6px;right:38px;margin:0;padding:4px 8px;font-size:11px" onclick="openMarkup(${i})">Markup</button>
+      <button class="action-btn-sm" style="position:absolute;bottom:auto;top:6px;right:108px;margin:0;padding:4px 8px;font-size:11px" onclick="replacePhoto(${i})">Replace</button>
       <div style="padding:8px 10px;display:flex;flex-direction:column;gap:5px;border-top:1px solid var(--border)">
         <select onchange="photos[${i}].system=this.value;renderPhotos();scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
           <option value="">— System (which part?) —</option>
-          <option value="equipment"${p.system==='equipment'?' selected':''}>🛠️ Equipment (pump, RO, lines, drain)</option>
-          <option value="fans"${p.system==='fans'?' selected':''}>🌀 Fans (nozzles, mounting)</option>
-          <option value="switching"${p.system==='switching'?' selected':''}>🎛️ Switching (switches, electrical)</option>
-          <option value="site"${p.system==='site'?' selected':''}>📐 Site / Overall</option>
+          <option value="equipment"${p.system==='equipment'?' selected':''}>Equipment (pump, RO, lines, drain)</option>
+          <option value="fans"${p.system==='fans'?' selected':''}>Fans (nozzles, mounting)</option>
+          <option value="switching"${p.system==='switching'?' selected':''}>Switching (switches, electrical)</option>
+          <option value="site"${p.system==='site'?' selected':''}>Site / Overall</option>
         </select>
         <select onchange="photos[${i}].phase=this.value;renderPhotos();scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
           <option value="">— Phase —</option>
-          <option value="before"${p.phase==='before'?' selected':''}>📷 Before</option>
-          <option value="during"${p.phase==='during'?' selected':''}>🔧 During</option>
-          <option value="after"${p.phase==='after'?' selected':''}>✅ After</option>
+          <option value="before"${p.phase==='before'?' selected':''}>Before</option>
+          <option value="during"${p.phase==='during'?' selected':''}>During</option>
+          <option value="after"${p.phase==='after'?' selected':''}>After</option>
         </select>
         <input list="photoAreaList" type="text" placeholder="Area (Patio, Roof, Pump room...)" value="${esc(p.area||'')}" onchange="photos[${i}].area=this.value;renderPhotos();scheduleAutoSave()" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
         <select onchange="onPhotoComponentChange(${i}, this.value)" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:12px;outline:none">
           <option value="">— Component (optional) —</option>
-          <option value="pump"${p.component==='pump'?' selected':''}>🔧 Pump</option>
-          <option value="line"${p.component==='line'?' selected':''}>⚡ Line / tubing</option>
-          <option value="nozzle"${p.component==='nozzle'?' selected':''}>💧 Nozzle</option>
-          <option value="switch"${p.component==='switch'?' selected':''}>🎛 Switch / control</option>
-          <option value="ro"${p.component==='ro'?' selected':''}>🧪 RO membrane</option>
-          <option value="drain"${p.component==='drain'?' selected':''}>🚰 Drain</option>
-          <option value="electrical"${p.component==='electrical'?' selected':''}>🔌 Electrical</option>
-          <option value="mounting"${p.component==='mounting'?' selected':''}>🧱 Mounting / bracket</option>
-          <option value="overall"${p.component==='overall'?' selected':''}>📐 Overall view</option>
-          <option value="drawing"${p.component==='drawing'?' selected':''}>📐 Drawing / As-Built (markup on this)</option>
-          <option value="other"${p.component==='other'?' selected':''}>❔ Other</option>
+          <option value="pump"${p.component==='pump'?' selected':''}>Pump</option>
+          <option value="line"${p.component==='line'?' selected':''}>Line / tubing</option>
+          <option value="nozzle"${p.component==='nozzle'?' selected':''}>Nozzle</option>
+          <option value="switch"${p.component==='switch'?' selected':''}>Switch / control</option>
+          <option value="ro"${p.component==='ro'?' selected':''}>RO membrane</option>
+          <option value="drain"${p.component==='drain'?' selected':''}>Drain</option>
+          <option value="electrical"${p.component==='electrical'?' selected':''}>Electrical</option>
+          <option value="mounting"${p.component==='mounting'?' selected':''}>Mounting / bracket</option>
+          <option value="overall"${p.component==='overall'?' selected':''}>Overall view</option>
+          <option value="drawing"${p.component==='drawing'?' selected':''}>Drawing / As-Built (markup on this)</option>
+          <option value="other"${p.component==='other'?' selected':''}>Other</option>
         </select>
       </div>
       <textarea placeholder="Notes — what does this photo show?" onchange="photos[${i}].notes=this.value;scheduleAutoSave()">${esc(p.notes)}</textarea>
-      ${p.isDiscrepancy ? '' : `<button onclick="flagDiscrepancy(${i})" style="margin:6px 10px 0;padding:6px 10px;font-size:11px;background:transparent;border:1px solid #dc2626;color:#dc2626;border-radius:4px;cursor:pointer;font-weight:600">🚩 Flag Discrepancy</button>`}
+      ${p.isDiscrepancy ? '' : `<button onclick="flagDiscrepancy(${i})" style="margin:6px 10px 0;padding:6px 10px;font-size:11px;background:transparent;border:1px solid #dc2626;color:#dc2626;border-radius:4px;cursor:pointer;font-weight:600">Flag Discrepancy</button>`}
       ${discrepancyPanel}
     </div>
   `;}).join('');
@@ -5327,9 +5389,9 @@ function renderJobFiles() {
   document.getElementById('jobFileList').innerHTML = jobFiles.map((f, i) => {
     const sz = f.size < 1048576 ? (f.size/1024).toFixed(0)+' KB' : (f.size/1048576).toFixed(1)+' MB';
     const isPdf = f.fileName.toLowerCase().endsWith('.pdf');
-    const icon = f.isImage ? '' : (isPdf ? '📕' : '📄');
-    const aiBtn = isPdf ? `<button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px" onclick="extractContactsFromFile(${i})" title="Extract contacts using AI">🤖 Extract</button>` : '';
-    const drawBtn = (isPdf || f.isImage) ? `<button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="markUpJobFile(${i})" title="Convert to drawable image + open Markup tool">📐 Mark Up Drawing</button>` : '';
+    const icon = f.isImage ? '' : (isPdf ? '' : '');
+    const aiBtn = isPdf ? `<button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px" onclick="extractContactsFromFile(${i})" title="Extract contacts using AI">Extract</button>` : '';
+    const drawBtn = (isPdf || f.isImage) ? `<button class="action-btn-sm" style="margin:0;padding:6px 10px;font-size:12px;background:var(--accent);color:#fff;border-color:var(--accent)" onclick="markUpJobFile(${i})" title="Convert to drawable image + open Markup tool">Mark Up Drawing</button>` : '';
     return `<div class="file-row" style="flex-wrap:wrap;gap:6px">
       ${f.isImage ? `<img src="${f.dataURL}" onclick="window.open(this.src,'_blank')">` : `<span class="file-icon">${icon}</span>`}
       <span class="file-name">${esc(f.fileName)}</span>
@@ -5366,7 +5428,7 @@ async function markUpJobFile(fileIndex) {
         }
         pageNum = parsed;
       }
-      showToast(`📐 Rendering page ${pageNum} of ${total}...`, 'info', 3000);
+      showToast(`Rendering page ${pageNum} of ${total}...`, 'info', 3000);
       const dataURL = await _pdfPageToImage(pdf, pageNum, 1.8);
       _pushAsBuiltPhotoAndMarkup(dataURL, f.fileName, pageNum, total);
     } catch (err) {
@@ -5414,13 +5476,13 @@ function _pushAsBuiltPhotoAndMarkup(dataURL, sourceFileName, pageNum, totalPages
   photos.push(newPhoto);
   renderPhotos();
   scheduleAutoSave();
-  showToast('📐 Drawing ready — opening Markup tool', 'good', 2500);
+  showToast('Drawing ready — opening Markup tool', 'good', 2500);
   // Open the existing markup tool on this new photo
   setTimeout(() => {
     if (typeof openMarkup === 'function') {
       openMarkup(newIdx);
     } else {
-      alert('Drawing added to Photos. Scroll to the Photos section and tap "✏ Markup" on it.');
+      alert('Drawing added to Photos. Scroll to the Photos section and tap "Markup" on it.');
     }
   }, 400);
 }
@@ -5581,7 +5643,7 @@ async function autoExtractReceipt(idx) {
   }
   renderReceipts();
   scheduleAutoSave();
-  if (result) showToast(`🤖 Receipt: $${result.amount} ${result.vendor || ''}`, 'good', 3000);
+  if (result) showToast(`Receipt: $${result.amount} ${result.vendor || ''}`, 'good', 3000);
 }
 
 function renderReceipts() {
@@ -5591,8 +5653,8 @@ function renderReceipts() {
   sec.classList.remove('hidden');
   document.getElementById('receiptGrid').innerHTML = receipts.map((r, i) => {
     const aiBadge = r._extracting
-      ? `<div style="position:absolute;top:6px;left:6px;background:rgba(79,140,255,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">🤖 Reading...</div>`
-      : (r._aiExtracted ? `<div style="position:absolute;top:6px;left:6px;background:rgba(34,197,94,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">🤖 Auto</div>` : '');
+      ? `<div style="position:absolute;top:6px;left:6px;background:rgba(79,140,255,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">Reading...</div>`
+      : (r._aiExtracted ? `<div style="position:absolute;top:6px;left:6px;background:rgba(34,197,94,0.9);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px">Auto</div>` : '');
     return `
     <div class="receipt-card">
       <img src="${r.dataURL}" alt="Receipt" onclick="window.open(this.src,'_blank')">
@@ -5608,7 +5670,7 @@ function renderReceipts() {
           <option value="parts"${r.category==='parts'?' selected':''}>Parts</option>
           <option value="other"${r.category==='other'?' selected':''}>Other</option>
         </select>
-        <button class="action-btn-sm" style="margin:4px 0 0;padding:6px 8px;font-size:11px;width:100%" onclick="reExtractReceipt(${i})">🤖 Re-extract from photo</button>
+        <button class="action-btn-sm" style="margin:4px 0 0;padding:6px 8px;font-size:11px;width:100%" onclick="reExtractReceipt(${i})">Re-extract from photo</button>
       </div>
     </div>
   `;}).join('');
@@ -5715,7 +5777,7 @@ function toggleDictation(elId, onCommit, btn) {
     __activeMicBtn.style.background = 'var(--red)';
     __activeMicBtn.style.color = 'var(--bg)';
   }
-  showToast('🎤 Listening — tap Stop when done', 'good', 3000);
+  showToast('Listening — tap Stop when done', 'good', 3000);
   try { rec.start(); } catch (_) { stopDictationUI(); }
 }
 function renderNotes() {
@@ -5723,8 +5785,8 @@ function renderNotes() {
     <div class="note-card">
       <button class="remove-btn" onclick="notes.splice(${i},1);renderNotes()">×</button>
       <input type="text" placeholder="Topic — e.g. Water Quality, Switch Locations, Ladder Needed..." value="${esc(n.title)}" onchange="notes[${i}].title=this.value">
-      <textarea id="noteText_${i}" placeholder="Details… or tap 🎤 and just say what you did" oninput="notes[${i}].text=this.value" onchange="notes[${i}].text=this.value">${esc(n.text)}</textarea>
-      <button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px" onclick="dictateNote(${i}, this)">🎤 Dictate</button>
+      <textarea id="noteText_${i}" placeholder="Details… or tap and just say what you did" oninput="notes[${i}].text=this.value" onchange="notes[${i}].text=this.value">${esc(n.text)}</textarea>
+      <button class="action-btn-sm" style="margin:6px 0 0;padding:6px 12px;font-size:12px" onclick="dictateNote(${i}, this)">Dictate</button>
     </div>
   `).join('');
 }
@@ -5953,10 +6015,10 @@ function renderCommunications() {
       <div class="form-row">
         <div class="field">
           <select onchange="communications[${i}].kind=this.value;updateCommStats()" style="padding:8px 10px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:14px;outline:none;width:100%">
-            <option value="email"${c.kind==='email'?' selected':''}>📧 Email</option>
-            <option value="text"${c.kind==='text'?' selected':''}>💬 Text</option>
-            <option value="call"${c.kind==='call'?' selected':''}>📞 Call</option>
-            <option value="in-person"${c.kind==='in-person'?' selected':''}>🤝 In Person</option>
+            <option value="email"${c.kind==='email'?' selected':''}>Email</option>
+            <option value="text"${c.kind==='text'?' selected':''}>Text</option>
+            <option value="call"${c.kind==='call'?' selected':''}>Call</option>
+            <option value="in-person"${c.kind==='in-person'?' selected':''}>In Person</option>
           </select>
         </div>
         <div class="field"><input type="date" value="${esc(c.sentAt)}" onchange="communications[${i}].sentAt=this.value;renderCommunications();updateCommStats()"></div>
@@ -6362,8 +6424,8 @@ async function startMoveSegment(segId) {
   ov.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;max-width:420px;width:100%;padding:18px;max-height:80vh;overflow:auto">
     <div style="font-weight:700;font-size:16px;margin-bottom:4px;color:var(--text)">Move this entry to which job?</div>
     <div style="font-size:12px;color:var(--dim);margin-bottom:10px">Its hours/miles stay exactly the same — only the job it's filed under changes.</div>
-    <button class="action-btn-sm" style="width:100%;margin:0 0 10px;padding:12px;background:var(--accent);color:#fff;border-color:var(--accent)" data-move="__new">➕ New job / place…</button>
-    ${drafts.map(d => `<button class="action-btn-sm" style="width:100%;margin:0 0 8px;text-align:left;padding:12px" data-move="${d.id}">📂 ${esc(d.name || 'Untitled')}${d.id === currentDraftId ? ' (current)' : ''}</button>`).join('')}
+    <button class="action-btn-sm" style="width:100%;margin:0 0 10px;padding:12px;background:var(--accent);color:#fff;border-color:var(--accent)" data-move="__new">New job / place…</button>
+    ${drafts.map(d => `<button class="action-btn-sm" style="width:100%;margin:0 0 8px;text-align:left;padding:12px" data-move="${d.id}">${esc(d.name || 'Untitled')}${d.id === currentDraftId ? ' (current)' : ''}</button>`).join('')}
   </div>`;
   ov.addEventListener('click', async ev => {
     if (ev.target === ov) { ov.remove(); return; }
@@ -6414,7 +6476,7 @@ function renderSegments() {
   }
   // Card builder for one segment (edit mode or display mode)
   const segCard = s => {
-    const ico = s.type === 'drive' ? '🚗' : '🏗️';
+    const ico = s.type === 'drive' ? '' : '';
     const label = s.type === 'drive' ? 'Drive' : 'Workday';
     const start = new Date(s.startedAt);
     const end = s.endedAt ? new Date(s.endedAt) : null;
@@ -6422,13 +6484,13 @@ function renderSegments() {
     const isLive = !s.endedAt;
     const segMi = segDriveMiles(s);
     const milesText = (s.type === 'drive' && segMi)
-      ? ` · ${segMi.toLocaleString()} mi${segHasManualMiles(s) ? ' ✏️' : ''}` : '';
+      ? ` · ${segMi.toLocaleString()} mi${segHasManualMiles(s) ? ' ' : ''}` : '';
     const dateStr = start.toLocaleString('en-US', { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
     const endStr = end ? end.toLocaleString('en-US', { hour:'numeric', minute:'2-digit' }) : 'now';
     const odoStart = s.startOdoPhoto ? `<div style="text-align:center"><img src="${s.startOdoPhoto}" style="width:90px;height:65px;object-fit:cover;border-radius:4px;cursor:zoom-in" onclick="window.open(this.src,'_blank')"><div style="font-size:10px;color:var(--dim);margin-top:2px">Start: ${s.startOdoMiles ? s.startOdoMiles.toLocaleString()+' mi' : '—'}</div></div>` : '';
     const odoEnd = s.endOdoPhoto ? `<div style="text-align:center"><img src="${s.endOdoPhoto}" style="width:90px;height:65px;object-fit:cover;border-radius:4px;cursor:zoom-in" onclick="window.open(this.src,'_blank')"><div style="font-size:10px;color:var(--dim);margin-top:2px">End: ${s.endOdoMiles ? s.endOdoMiles.toLocaleString()+' mi' : '—'}</div></div>` : '';
     const odoBlock = (odoStart || odoEnd) ? `<div style="display:flex;gap:10px;margin-top:8px;flex-wrap:wrap">${odoStart}${odoEnd}</div>` : '';
-    const tripBadge = s.tripLevel ? ' <span style="background:#fbbf24;color:#111;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:700">🚗 TRAVEL</span>' : '';
+    const tripBadge = s.tripLevel ? ' <span style="background:#fbbf24;color:#111;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:700">TRAVEL</span>' : '';
     const tripToggle = s.type === 'drive'
       ? `<label style="display:flex;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:var(--dim);cursor:pointer">
            <input type="checkbox" ${s.tripLevel?'checked':''} onchange="toggleSegmentTripLevel('${s.id}', this.checked)" style="width:auto;margin:0">
@@ -6439,7 +6501,7 @@ function renderSegments() {
     const bd = segTimeBreakdown(s);
     const flagNote = bd.implausible
       ? `<div style="margin-top:8px;padding:7px 9px;background:rgba(251,191,36,0.14);border:1px solid #fbbf24;border-radius:var(--radius);font-size:12px;line-height:1.45">
-           ⏸️ <b>${bd.impliedMph.toFixed(1)} mph implied</b> — ${bd.miles.toLocaleString()} mi over ${fmtClock(bd.elapsedMs)}.
+           <b>${bd.impliedMph.toFixed(1)} mph implied</b> — ${bd.miles.toLocaleString()} mi over ${fmtClock(bd.elapsedMs)}.
            Counting <b>${(bd.driveMs / 3600000).toFixed(1)}h</b> as drive, ${(bd.unaccountedMs / 3600000).toFixed(1)}h unaccounted.
            If you really were driving that whole time, fix the miles or times below.
          </div>` : '';
@@ -6481,14 +6543,14 @@ function renderSegments() {
           <input type="number" id="editManualMi_${s.id}" value="${segHasManualMiles(s) ? s.manualMiles : ''}" placeholder="${(s.startOdoMiles && s.endOdoMiles) ? Math.max(0, s.endOdoMiles - s.startOdoMiles) : 'e.g. 247'}" style="width:100%;padding:7px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px">
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-          <button class="action-btn-sm" style="margin:0;font-size:12px" onclick="retakeOdoPhoto('${s.id}','start')">📷 Retake START odo</button>
-          <button class="action-btn-sm" style="margin:0;font-size:12px" onclick="retakeOdoPhoto('${s.id}','end')">📷 Retake END odo</button>
+          <button class="action-btn-sm" style="margin:0;font-size:12px" onclick="retakeOdoPhoto('${s.id}','start')">Retake START odo</button>
+          <button class="action-btn-sm" style="margin:0;font-size:12px" onclick="retakeOdoPhoto('${s.id}','end')">Retake END odo</button>
         </div>
         ` : ''}
         ${odoBlock}
         <input type="text" placeholder="Note" value="${esc(s.note||'')}" onchange="updateSegmentNote('${s.id}', this.value)" style="width:100%;margin-top:4px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none">
         ${tripToggle}
-        <button class="action-btn-sm" style="margin:12px 0 0;width:100%;font-size:12px" onclick="startMoveSegment('${s.id}')">📂 Move this entry to another job / place</button>
+        <button class="action-btn-sm" style="margin:12px 0 0;width:100%;font-size:12px" onclick="startMoveSegment('${s.id}')">Move this entry to another job / place</button>
         <div style="display:flex;gap:8px;margin-top:8px">
           <button class="action-btn-sm" style="margin:0;flex:1;background:var(--green);color:var(--bg);border-color:var(--green)" onclick="saveSegmentEdit('${s.id}')">✓ Save Changes</button>
           <button class="action-btn-sm" style="margin:0;flex:1" onclick="cancelSegmentEdit()">Cancel</button>
@@ -6505,7 +6567,7 @@ function renderSegments() {
       ${odoBlock}
       <input type="text" placeholder="Note (e.g. Vegas → SF, or 'Day 2 site work')" value="${esc(s.note||'')}" onchange="updateSegmentNote('${s.id}', this.value)" style="width:100%;margin-top:8px;padding:6px 8px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:13px;outline:none">
       ${tripToggle}
-      <button class="action-btn-sm" style="margin:8px 0 0;font-size:12px;width:100%" onclick="startSegmentEdit('${s.id}')">✏️ Edit times / miles</button>
+      <button class="action-btn-sm" style="margin:8px 0 0;font-size:12px;width:100%" onclick="startSegmentEdit('${s.id}')">Edit times / miles</button>
     </div>`;
   };
 
@@ -6531,15 +6593,15 @@ function renderSegments() {
     const d = new Date(k + 'T00:00:00');
     const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     const bits = [];
-    if (driveMs) bits.push('🚗 ' + (driveMs / 3600000).toFixed(1) + 'h');
-    if (workMs) bits.push('🏗️ ' + (workMs / 3600000).toFixed(1) + 'h');
+    if (driveMs) bits.push('' + (driveMs / 3600000).toFixed(1) + 'h');
+    if (workMs) bits.push('' + (workMs / 3600000).toFixed(1) + 'h');
     // Time inside a drive that the mileage doesn't support — shown so it can be
     // corrected in the field, never folded into drive hours.
-    if (idleMs >= 60000) bits.push('⏸️ ' + (idleMs / 3600000).toFixed(1) + 'h unaccounted');
+    if (idleMs >= 60000) bits.push('' + (idleMs / 3600000).toFixed(1) + 'h unaccounted');
     if (mi) bits.push(Math.round(mi).toLocaleString() + ' mi');
     return `<div style="margin-bottom:8px">
       <div onclick="toggleSegDay('${k}')" style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:10px 12px;background:var(--input);border:1px solid ${k === todayKey ? 'var(--accent)' : 'var(--border)'};border-radius:var(--radius);cursor:pointer;user-select:none">
-        <span style="font-weight:700;font-size:14px">📅 ${label}${hasLive ? ' <span style="color:var(--red);font-size:11px">● LIVE</span>' : ''}</span>
+        <span style="font-weight:700;font-size:14px">${label}${hasLive ? ' <span style="color:var(--red);font-size:11px">● LIVE</span>' : ''}</span>
         <span style="font-size:12px;color:var(--dim)">${bits.join(' · ') || 'no time'} · ${segs.length} ${segs.length === 1 ? 'entry' : 'entries'} ${open ? '▾' : '▸'}</span>
       </div>
       ${open ? `<div style="margin-top:6px">${segs.map(segCard).join('')}</div>` : ''}
@@ -6680,17 +6742,17 @@ async function startDriveSegment() {
     const nearest = await findNearestPinnedJob(gps);
     if (nearest && !nearest.inside && nearest.draft.id !== currentDraftId) {
       // We're closer to a DIFFERENT pinned job than the active one
-      if (confirm(`📍 You're ${metersToMilesStr(nearest.distanceM)} from "${nearest.draft.name}". Switch to that job before starting this drive?\n\nOK = switch jobs, Cancel = keep current job`)) {
+      if (confirm(`You're ${metersToMilesStr(nearest.distanceM)} from "${nearest.draft.name}". Switch to that job before starting this drive?\n\nOK = switch jobs, Cancel = keep current job`)) {
         await switchToDraft(nearest.draft.id);
         // After switch, segments[] is reloaded — fall through with new draft active
       }
     }
     // If active job has a pin and we're outside its fence, ask if this is trip-level
     if (pinnedLocation && distanceMeters(gps, pinnedLocation) > GEOFENCE_RADIUS_M) {
-      tripLevel = confirm(`📍 You're ${metersToMilesStr(distanceMeters(gps, pinnedLocation))} from this job's pinned site.\n\nIs this drive trip-level (bookend drive between cities, not tied to one job)?\n\nOK = mark trip-level, Cancel = keep on this job`);
+      tripLevel = confirm(`You're ${metersToMilesStr(distanceMeters(gps, pinnedLocation))} from this job's pinned site.\n\nIs this drive trip-level (bookend drive between cities, not tied to one job)?\n\nOK = mark trip-level, Cancel = keep on this job`);
     } else if (!pinnedLocation) {
       // No pin set on active job at all — quick offer
-      tripLevel = confirm('📍 This job has no pinned site yet.\n\nIs this drive trip-level (not tied to one specific job)?\n\nOK = mark trip-level, Cancel = keep on this job');
+      tripLevel = confirm('This job has no pinned site yet.\n\nIs this drive trip-level (not tied to one specific job)?\n\nOK = mark trip-level, Cancel = keep on this job');
     }
   }
   const seg = {
@@ -6713,7 +6775,7 @@ async function startDriveSegment() {
   startSegmentTicker();
   scheduleAutoSave();
   onDriveStarted(seg); // email Robert + Sean that the drive started
-  if (tripLevel) showToast('🚗 Travel drive started', 'info', 2500);
+  if (tripLevel) showToast('Travel drive started', 'info', 2500);
   // Auto-prompt for start odometer photo
   setTimeout(() => promptOdometerPhoto(seg.id, 'start'), 200);
 }
@@ -6732,17 +6794,17 @@ async function startWorkdaySegment() {
     const nearest = await findNearestPinnedJob(gps);
     if (nearest && nearest.inside && nearest.draft.id !== currentDraftId) {
       // Inside a DIFFERENT pinned job's fence
-      if (confirm(`📍 You're at "${nearest.draft.name}" (${metersToMilesStr(nearest.distanceM)} away). Switch to that job before starting workday?\n\nOK = switch, Cancel = stay on current`)) {
+      if (confirm(`You're at "${nearest.draft.name}" (${metersToMilesStr(nearest.distanceM)} away). Switch to that job before starting workday?\n\nOK = switch, Cancel = stay on current`)) {
         await switchToDraft(nearest.draft.id);
       }
     } else if (pinnedLocation) {
       const dist = distanceMeters(gps, pinnedLocation);
       if (dist > GEOFENCE_RADIUS_M) {
-        if (!confirm(`📍 You're ${metersToMilesStr(dist)} from this job's pinned site. Start workday anyway?\n\nOK = start, Cancel = stop and pin a new location first`)) return;
+        if (!confirm(`You're ${metersToMilesStr(dist)} from this job's pinned site. Start workday anyway?\n\nOK = start, Cancel = stop and pin a new location first`)) return;
       }
     } else {
       // No pin on this job — soft nudge
-      showToast('📍 Tip: Pin this site to enable auto-tagging next time', 'info', 4000);
+      showToast('Tip: Pin this site to enable auto-tagging next time', 'info', 4000);
     }
   }
   segments.push({
@@ -6781,7 +6843,7 @@ async function stopCurrentSegment() {
   if (running.type === 'workday' && pinnedLocation && gps) {
     const dist = distanceMeters(gps, pinnedLocation);
     if (dist > GEOFENCE_RADIUS_M) {
-      showToast(`📍 Ended workday ${metersToMilesStr(dist)} from pinned site. (No problem — just noting it.)`, 'info', 5000);
+      showToast(`Ended workday ${metersToMilesStr(dist)} from pinned site. (No problem — just noting it.)`, 'info', 5000);
     }
   }
   renderSegments();
@@ -6796,7 +6858,7 @@ async function stopCurrentSegment() {
 
 function promptOdometerPhoto(segId, which) {
   pendingOdoTarget = { segId, which };
-  const msg = which === 'start' ? '📷 Snap a pic of the START odometer now?' : '📷 Snap a pic of the END odometer?';
+  const msg = which === 'start' ? 'Snap a pic of the START odometer now?' : 'Snap a pic of the END odometer?';
   if (confirm(msg + '\n\nOK = open camera now, Cancel = skip')) {
     document.getElementById('segOdoInput').click();
   } else {
@@ -6828,7 +6890,7 @@ document.getElementById('segOdoInput').addEventListener('change', async function
     // Try AI extraction first (if API key set), then fall back to manual prompt
     let aiValue = null;
     if (localStorage.getItem('anthropicApiKey')) {
-      showToast('🤖 Reading odometer...', 'info', 4000);
+      showToast('Reading odometer...', 'info', 4000);
       const result = await extractOdometer(stamped.dataURL);
       if (result && typeof result.miles === 'number') {
         aiValue = result.miles;
@@ -6840,10 +6902,10 @@ document.getElementById('segOdoInput').addEventListener('change', async function
         scheduleAutoSave();
         const conf = result.confidence || 'medium';
         const verb = conf === 'high' ? 'Got' : 'Best guess';
-        showToast(`🤖 ${verb}: ${aiValue.toLocaleString()} mi · tap segment Edit to fix`, conf === 'high' ? 'good' : 'warn', 4500);
+        showToast(`${verb}: ${aiValue.toLocaleString()} mi · tap segment Edit to fix`, conf === 'high' ? 'good' : 'warn', 4500);
         return;
       } else {
-        showToast('🤖 Couldn\'t read odometer — type it in', 'warn', 3000);
+        showToast('Couldn\'t read odometer — type it in', 'warn', 3000);
       }
     }
     // Fallback: ask manually
@@ -7005,9 +7067,9 @@ async function generateReport() {
   }
 </style></head><body>
 <div class="action-bar" id="__actionBar">
-  <button class="btn-share" onclick="__shareReport()">📤 Share</button>
-  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
-  <button class="btn-dl" onclick="__downloadReport()">💾 Download</button>
+  <button class="btn-share" onclick="__shareReport()">Share</button>
+  <button class="btn-print" onclick="window.print()">Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadReport()">Download</button>
 </div>
 <div class="__lb" id="__lightbox" onclick="__closeLB(event)">
   <button class="__lb-close" onclick="__closeLB(event)" aria-label="Close">✕</button>
@@ -7064,14 +7126,14 @@ async function generateReport() {
   const mapsLink = mapsQuery ? `https://www.google.com/maps/search/${mapsQuery}` : '';
   html += `<h1>Field Log — Job Report</h1>
     <p class="meta" style="font-size:11px;color:#666">Personal work record of Lyle Krug · auto-captured GPS/time data · generated by his own documentation app</p>
-    <p class="meta"><strong>Client:</strong> ${mapsLink ? `<a href="${mapsLink}" target="_blank" style="color:#1a56db;text-decoration:none">${esc(client)} 📍</a>` : esc(client)}</p>
+    <p class="meta"><strong>Client:</strong> ${mapsLink ? `<a href="${mapsLink}" target="_blank" style="color:#1a56db;text-decoration:none">${esc(client)} </a>` : esc(client)}</p>
     <p class="meta"><strong>Location:</strong> ${esc(location)}</p>
     <p class="meta"><strong>Dates:</strong> ${fmtDate(dateStart) || 'N/A'}${dateEnd ? ' — ' + fmtDate(dateEnd) : ''}</p>`;
 
   // DISCREPANCIES FOUND — surfaces flagged photos at the very top of the report
   const flaggedPhotos = photos.filter(p => p.isDiscrepancy && p.dataURL);
   if (flaggedPhotos.length > 0) {
-    html += `<h2 style="color:#991b1b;border-color:#dc2626">🚩 Discrepancies Found (${flaggedPhotos.length})</h2>`;
+    html += `<h2 style="color:#991b1b;border-color:#dc2626">Discrepancies Found (${flaggedPhotos.length})</h2>`;
     html += `<p style="font-size:12px;color:#666;margin-bottom:10px;font-style:italic">Each issue is shown here at the top of the report and tied to its photo evidence below. Click any photo to view full size.</p>`;
     html += `<div style="border:1px solid #fca5a5;border-radius:6px;overflow:hidden;margin:10px 0">`;
     flaggedPhotos.forEach((p, idx) => {
@@ -7081,9 +7143,9 @@ async function generateReport() {
       html += `<div style="display:grid;grid-template-columns:200px 1fr;gap:14px;padding:14px;${idx > 0 ? 'border-top:1px solid #fca5a5;' : ''}background:${idx % 2 ? '#fef2f2' : '#fff'}">
         <a href="${url}" target="_blank" style="display:block"><img src="${url}" style="width:100%;height:auto;border:1px solid #fca5a5;border-radius:4px;display:block"></a>
         <div>
-          <div style="font-size:11px;color:#991b1b;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">🚩 ${tagLine || 'Issue'}</div>
+          <div style="font-size:11px;color:#991b1b;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">${tagLine || 'Issue'}</div>
           <div style="font-size:14px;color:#111;margin-bottom:8px"><strong>What's wrong:</strong> ${esc(p.discrepancyReason || '(not described)')}</div>
-          ${p.solutionAvailable && p.solutionDetail ? `<div style="font-size:14px;color:#064e3b;background:#d1fae5;padding:8px 10px;border-radius:4px;border-left:3px solid #10b981"><strong>✓ Solution:</strong> ${esc(p.solutionDetail)}</div>` : (p.solutionAvailable ? `<div style="font-size:13px;color:#064e3b;font-style:italic">Solution noted but not yet documented.</div>` : `<div style="font-size:13px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:4px;border-left:3px solid #f59e0b;font-style:italic">⚠ No solution available — needs office decision.</div>`)}
+          ${p.solutionAvailable && p.solutionDetail ? `<div style="font-size:14px;color:#064e3b;background:#d1fae5;padding:8px 10px;border-radius:4px;border-left:3px solid #10b981"><strong>✓ Solution:</strong> ${esc(p.solutionDetail)}</div>` : (p.solutionAvailable ? `<div style="font-size:13px;color:#064e3b;font-style:italic">Solution noted but not yet documented.</div>` : `<div style="font-size:13px;color:#92400e;background:#fef3c7;padding:6px 10px;border-radius:4px;border-left:3px solid #f59e0b;font-style:italic">No solution available — needs office decision.</div>`)}
         </div>
       </div>`;
     });
@@ -7095,8 +7157,8 @@ async function generateReport() {
     html += `<h2>Hours Summary</h2><table>
       <thead><tr><th>Category</th><th>Hours</th></tr></thead><tbody>
       ${segments.length ? `
-      <tr><td>🚗 Drive Time</td><td>${segDriveH.toFixed(2)}</td></tr>
-      <tr><td>🏗️ Site Time</td><td>${segSiteH.toFixed(2)}</td></tr>
+      <tr><td>Drive Time</td><td>${segDriveH.toFixed(2)}</td></tr>
+      <tr><td>Site Time</td><td>${segSiteH.toFixed(2)}</td></tr>
       ` : `
       <tr><td>On Site</td><td>${siteH.toFixed(1)}</td></tr>
       <tr><td>Drive (to job)</td><td>${driveToH.toFixed(1)}</td></tr>
@@ -7126,11 +7188,11 @@ async function generateReport() {
           dayMiles += segDriveMiles(s);
         } else { dayWorkMs += dur; }
       });
-      html += `<h3 style="font-size:14px;margin:14px 0 6px;color:#222">📅 ${dayDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'})}</h3>`;
+      html += `<h3 style="font-size:14px;margin:14px 0 6px;color:#222">${dayDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric', year:'numeric'})}</h3>`;
       html += `<table style="margin-bottom:6px">
         <thead><tr><th style="width:90px">Type</th><th>Time</th><th>Note</th><th style="text-align:right;width:110px">Duration</th></tr></thead><tbody>`;
       sorted.forEach(s => {
-        const ico = s.type === 'drive' ? '🚗 Drive' : '🏗️ Workday';
+        const ico = s.type === 'drive' ? 'Drive' : 'Workday';
         const start = new Date(s.startedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
         const end = s.endedAt ? new Date(s.endedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) : 'now';
         html += `<tr><td>${ico}</td><td>${start} → ${end}</td><td>${esc(s.note||'')}</td><td style="text-align:right">${segDurationCell(s)}</td></tr>`;
@@ -7195,7 +7257,7 @@ async function generateReport() {
       if (isChecklistHeader(it)) {
         html += `<li style="padding:12px 0 4px;font-size:13px;font-weight:700;color:#1e40af;text-transform:uppercase;letter-spacing:1px;border-top:1px solid #ddd;margin-top:8px">${esc(checklistHeaderText(it))}</li>`;
       } else {
-        html += `<li style="padding:6px 0;font-size:14px${it.checked?';color:#666':''}">${it.checked ? '☑' : '☐'} ${esc(it.label)}</li>`;
+        html += `<li style="padding:6px 0;font-size:14px${it.checked?';color:#666':''}">${it.checked ? '' : ''} ${esc(it.label)}</li>`;
       }
     });
     html += `</ul>`;
@@ -7208,16 +7270,16 @@ async function generateReport() {
       const cardWrapStyle = p.isDiscrepancy ? 'border:2px solid #dc2626;padding:6px;background:#fef2f2;border-radius:6px' : '';
       let s = `<div class="photo-item" style="${cardWrapStyle}"><img src="${url}">`;
       const badges = [];
-      if (p.isDiscrepancy) badges.push(`<span style="font-size:10px;color:#fff;font-weight:700;background:#dc2626;padding:2px 6px;border-radius:3px;display:inline-block">🚩 ISSUE</span>`);
-      if (p.annotatedURL) badges.push(`<span style="font-size:10px;color:#dc2626;font-weight:700;background:#fee2e2;padding:2px 6px;border-radius:3px;display:inline-block">✏ MARKED</span>`);
+      if (p.isDiscrepancy) badges.push(`<span style="font-size:10px;color:#fff;font-weight:700;background:#dc2626;padding:2px 6px;border-radius:3px;display:inline-block">ISSUE</span>`);
+      if (p.annotatedURL) badges.push(`<span style="font-size:10px;color:#dc2626;font-weight:700;background:#fee2e2;padding:2px 6px;border-radius:3px;display:inline-block">MARKED</span>`);
       if (p.component) badges.push(`<span style="font-size:11px;color:#0c4a6e;font-weight:700;background:#e0f2fe;padding:2px 6px;border-radius:3px;display:inline-block">${esc(p.component.toUpperCase())}</span>`);
       if (p.area) badges.push(`<span style="font-size:11px;color:#555;background:#f0f0f0;padding:2px 6px;border-radius:3px;display:inline-block">${esc(p.area)}</span>`);
       if (badges.length) s += `<div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:3px">${badges.join('')}</div>`;
       if (p.notes) s += `<div class="photo-notes">${esc(p.notes)}</div>`;
       if (p.isDiscrepancy && p.discrepancyReason) {
-        s += `<div style="font-size:12px;color:#991b1b;background:#fef2f2;border-left:3px solid #dc2626;padding:6px 8px;margin-top:4px;border-radius:3px"><strong>🚩 ${esc(p.discrepancyReason)}</strong>${p.solutionAvailable && p.solutionDetail ? `<br><span style="color:#065f46">✓ Solution: ${esc(p.solutionDetail)}</span>` : (p.solutionAvailable ? '' : `<br><span style="color:#92400e;font-style:italic">⚠ Needs office decision</span>`)}</div>`;
+        s += `<div style="font-size:12px;color:#991b1b;background:#fef2f2;border-left:3px solid #dc2626;padding:6px 8px;margin-top:4px;border-radius:3px"><strong>${esc(p.discrepancyReason)}</strong>${p.solutionAvailable && p.solutionDetail ? `<br><span style="color:#065f46">✓ Solution: ${esc(p.solutionDetail)}</span>` : (p.solutionAvailable ? '' : `<br><span style="color:#92400e;font-style:italic">Needs office decision</span>`)}</div>`;
       }
-      if (p.gps) s += `<div style="font-size:11px;color:#666;margin-top:2px"><a href="${gpsMapsLink(p.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">📍 ${fmtGps(p.gps)}</a></div>`;
+      if (p.gps) s += `<div style="font-size:11px;color:#666;margin-top:2px"><a href="${gpsMapsLink(p.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">${fmtGps(p.gps)}</a></div>`;
       s += `</div>`;
       return s;
     };
@@ -7242,7 +7304,7 @@ async function generateReport() {
       bySystem[key].push(p);
     });
 
-    const phaseLabels = { before: '📷 Before', during: '🔧 During', after: '✅ After', untagged: '📁 Other' };
+    const phaseLabels = { before: 'Before', during: 'During', after: 'After', untagged: 'Other' };
     const renderSystemBlock = (sysKey, label) => {
       const bucket = bySystem[sysKey] || [];
       if (!bucket.length) return '';
@@ -7260,7 +7322,7 @@ async function generateReport() {
     };
 
     SYSTEM_ORDER.forEach(sysKey => { html += renderSystemBlock(sysKey, SYSTEM_LABELS[sysKey]); });
-    if (bySystem.untagged.length) html += renderSystemBlock('untagged', '❔ Uncategorized');
+    if (bySystem.untagged.length) html += renderSystemBlock('untagged', 'Uncategorized');
   }
 
   // Videos — thumbnail grid; click any thumbnail to play in-place
@@ -7282,9 +7344,9 @@ async function generateReport() {
       } else {
         // Too big to embed: show the thumbnail as a static image (still clickable to nothing) + notice
         if (v.thumbnail) {
-          html += `<div style="position:relative;background:#000;aspect-ratio:16/9"><img src="${v.thumbnail}" style="width:100%;height:100%;object-fit:cover;display:block;opacity:0.75"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:36px;text-shadow:0 2px 8px rgba(0,0,0,0.8)">📹</div></div>`;
+          html += `<div style="position:relative;background:#000;aspect-ratio:16/9"><img src="${v.thumbnail}" style="width:100%;height:100%;object-fit:cover;display:block;opacity:0.75"><div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:36px;text-shadow:0 2px 8px rgba(0,0,0,0.8)"><svg width="44" height="44" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div></div>`;
         } else {
-          html += `<div style="background:#1f2937;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:48px">📹</div>`;
+          html += `<div style="background:#1f2937;aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;color:#9ca3af;font-size:48px"><svg width="44" height="44" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg></div>`;
         }
         html += `<div style="padding:8px 12px;background:#fef3c7;font-size:12px;color:#78350f">Original video on the field-tech device (${sz}, too large to embed here).</div>`;
       }
@@ -7293,7 +7355,7 @@ async function generateReport() {
       html += `<div style="font-size:13px;font-weight:600;color:#111;line-height:1.3">${esc(v.fileName)}</div>`;
       html += `<div style="font-size:11px;color:#666;margin-top:3px">${sz}${v.stamp ? ' · ' + esc(v.stamp) : ''}${tag ? ' · ' + esc(tag) : ''}</div>`;
       if (v.notes) html += `<div style="font-size:13px;color:#444;margin-top:6px;font-style:italic">"${esc(v.notes)}"</div>`;
-      if (v.gps) html += `<div style="font-size:11px;margin-top:6px"><a href="${gpsMapsLink(v.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">📍 ${fmtGps(v.gps)}</a></div>`;
+      if (v.gps) html += `<div style="font-size:11px;margin-top:6px"><a href="${gpsMapsLink(v.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">${fmtGps(v.gps)}</a></div>`;
       html += `</div></div>`;
     });
     html += `</div>`;
@@ -7310,7 +7372,7 @@ async function generateReport() {
           <p><strong>$${amt.toFixed(2)}</strong></p>
           <p>${esc(r.vendor) || 'No vendor'}</p>
           <p style="color:#666">${(r.category||'other').charAt(0).toUpperCase()+(r.category||'other').slice(1)}</p>
-          ${r.gps ? `<p style="font-size:11px;margin-top:4px"><a href="${gpsMapsLink(r.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">📍 ${fmtGps(r.gps)}</a></p>` : ''}
+          ${r.gps ? `<p style="font-size:11px;margin-top:4px"><a href="${gpsMapsLink(r.gps)}" target="_blank" style="color:#1a56db;text-decoration:none">${fmtGps(r.gps)}</a></p>` : ''}
         </div>
       </div>`;
     });
@@ -7404,7 +7466,7 @@ async function generateReport() {
 function generateWorkOrder() {
   const w = workOrder;
   if (!workOrderHasContent()) {
-    showToast('Fill out the Work Order first — tap 🧾 WORK ORDER', 'info');
+    showToast('Fill out the Work Order first — tap WORK ORDER', 'info');
     openWorkOrder();
     return;
   }
@@ -7500,9 +7562,9 @@ function generateWorkOrder() {
   }
 </style></head><body>
 <div class="action-bar">
-  <button class="btn-share" onclick="__shareWO()">📤 Share</button>
-  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
-  <button class="btn-dl" onclick="__dlWO()">💾 Download</button>
+  <button class="btn-share" onclick="__shareWO()">Share</button>
+  <button class="btn-print" onclick="window.print()">Print / PDF</button>
+  <button class="btn-dl" onclick="__dlWO()">Download</button>
 </div>
 <script>
   const __woName=${JSON.stringify(fileBase)};
@@ -7707,9 +7769,9 @@ function generateSummary() {
   @media print{body{padding:0}.action-bar{display:none !important}.__lb{display:none !important}@page{margin:.5in}}
 </style></head><body>
 <div class="action-bar">
-  <button class="btn-share" onclick="__shareReport()">📤 Share</button>
-  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
-  <button class="btn-dl" onclick="__downloadReport()">💾 Download</button>
+  <button class="btn-share" onclick="__shareReport()">Share</button>
+  <button class="btn-print" onclick="window.print()">Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadReport()">Download</button>
 </div>
 <div class="__lb" id="__lightbox" onclick="__closeLB(event)">
   <button class="__lb-close" onclick="__closeLB(event)" aria-label="Close">✕</button>
@@ -7726,7 +7788,7 @@ function generateSummary() {
 <\/script>
 <h1>Field Log — Project Summary</h1>
 <p class="meta" style="font-size:11px;color:#666">Personal work record of Lyle Krug · auto-captured GPS/time data · generated by his own documentation app</p>
-<p class="meta"><strong>Client:</strong> ${(() => { const q = encodeURIComponent([client, city, state].filter(Boolean).join(' ')); return q ? `<a href="https://www.google.com/maps/search/${q}" target="_blank" style="color:#1a56db;text-decoration:none">${esc(client)} 📍</a>` : esc(client); })()}</p>
+<p class="meta"><strong>Client:</strong> ${(() => { const q = encodeURIComponent([client, city, state].filter(Boolean).join(' ')); return q ? `<a href="https://www.google.com/maps/search/${q}" target="_blank" style="color:#1a56db;text-decoration:none">${esc(client)} </a>` : esc(client); })()}</p>
 <p class="meta"><strong>Location:</strong> ${esc(location)}</p>
 <p class="meta"><strong>Dates:</strong> ${fmtDate(dateStart) || 'N/A'}${dateEnd ? ' — ' + fmtDate(dateEnd) : ''}</p>
 <p class="meta" style="margin-top:6px"><strong>Status:</strong> <span class="status-pill ${status==='Completed'||status.startsWith('Completed')?'status-completed':status.includes('Punch')?'status-punch':'status-progress'}">${status}</span></p>
@@ -7848,9 +7910,9 @@ function generateDailyReport() {
   @media print{body{padding:0}.action-bar{display:none !important}@page{margin:.5in}}
 </style></head><body>
 <div class="action-bar">
-  <button class="btn-share" onclick="__shareReport()">📤 Share</button>
-  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
-  <button class="btn-dl" onclick="__downloadReport()">💾 Download</button>
+  <button class="btn-share" onclick="__shareReport()">Share</button>
+  <button class="btn-print" onclick="window.print()">Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadReport()">Download</button>
 </div>
 <script>
   const __reportName = ${JSON.stringify(fileBase)};
@@ -7875,7 +7937,7 @@ function generateDailyReport() {
     todaysSegs.sort((a,b) => a.startedAt - b.startedAt).forEach(s => {
       const start = new Date(s.startedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'});
       const end = s.endedAt ? new Date(s.endedAt).toLocaleTimeString('en-US', {hour:'numeric', minute:'2-digit'}) : 'now';
-      const ico = s.type === 'drive' ? '🚗' : '🏗️';
+      const ico = s.type === 'drive' ? '' : '';
       html += `<tr><td>${ico} ${s.type === 'drive' ? 'Drive' : 'Workday'}</td><td>${start} → ${end}</td><td>${esc(s.note||'')}</td><td style="text-align:right">${segDurationCell(s)}</td></tr>`;
     });
     html += `</tbody></table>`;
@@ -7883,26 +7945,26 @@ function generateDailyReport() {
 
   // Self-notes
   if (dailyNotes.workCompleted) {
-    html += `<h2>🔧 Work Completed Today</h2><div style="font-size:13px;white-space:pre-wrap">${esc(dailyNotes.workCompleted)}</div>`;
+    html += `<h2>Work Completed Today</h2><div style="font-size:13px;white-space:pre-wrap">${esc(dailyNotes.workCompleted)}</div>`;
   }
   if (dailyNotes.blockers) {
-    html += `<h2>⚠️ Blockers / Decisions Needed</h2><div class="blockerbox" style="font-size:13px;white-space:pre-wrap">${esc(dailyNotes.blockers)}</div>`;
+    html += `<h2>Blockers / Decisions Needed</h2><div class="blockerbox" style="font-size:13px;white-space:pre-wrap">${esc(dailyNotes.blockers)}</div>`;
   }
   if (dailyNotes.selfNotes) {
-    html += `<h2>🤦 Honest Self-Notes</h2><div class="selfbox" style="font-size:13px;white-space:pre-wrap;font-style:italic">${esc(dailyNotes.selfNotes)}</div>`;
+    html += `<h2>Honest Self-Notes</h2><div class="selfbox" style="font-size:13px;white-space:pre-wrap;font-style:italic">${esc(dailyNotes.selfNotes)}</div>`;
   }
 
   // Communications today
   if (todaysComms.length) {
-    html += `<h2>📞 Communications Today</h2><table><thead><tr><th>Kind</th><th>To</th><th>Subject</th><th>Status</th></tr></thead><tbody>`;
+    html += `<h2>Communications Today</h2><table><thead><tr><th>Kind</th><th>To</th><th>Subject</th><th>Status</th></tr></thead><tbody>`;
     todaysComms.forEach(c => {
-      const kindMap = { email:'📧 Email', text:'💬 Text', call:'📞 Call', 'in-person':'🤝 In-person' };
+      const kindMap = { email:'Email', text:'Text', call:'Call', 'in-person':'In-person' };
       let status;
       if (c.responseReceived) {
         status = `<span style="color:#16a34a">✓ Responded ${c.responseAt}</span>`;
       } else {
         const days = c.sentAt ? Math.round((Date.now() - new Date(c.sentAt).getTime()) / 86400000) : 0;
-        status = `<span class="ignored">⚠ Unanswered (${days}d)</span>`;
+        status = `<span class="ignored">Unanswered (${days}d)</span>`;
       }
       html += `<tr><td>${kindMap[c.kind] || c.kind}</td><td>${esc(c.to)}</td><td>${esc(c.subject)}</td><td>${status}</td></tr>`;
     });
@@ -7911,7 +7973,7 @@ function generateDailyReport() {
 
   // Discrepancies flagged today
   if (todaysDisc.length) {
-    html += `<h2>⚠️ Discrepancies Flagged Today</h2>`;
+    html += `<h2>Discrepancies Flagged Today</h2>`;
     todaysDisc.forEach(d => {
       html += `<div class="blockerbox"><strong>${esc(d.area)}</strong>
         <div style="font-size:12px;margin-top:4px"><strong>Spec says:</strong> ${esc(d.specSays)}</div>
@@ -7922,7 +7984,7 @@ function generateDailyReport() {
 
   // Photos today (counts)
   if (todaysPhotos.length || todaysReceipts.length) {
-    html += `<h2>📎 Attachments</h2><ul>`;
+    html += `<h2>Attachments</h2><ul>`;
     if (todaysPhotos.length) html += `<li>${todaysPhotos.length} job photos</li>`;
     if (todaysReceipts.length) html += `<li>${todaysReceipts.length} receipts ($${todaysSpent.toFixed(2)} total)</li>`;
     html += `</ul><p style="font-size:12px;color:#666">(Full photos/receipts in the FULL REPORT)</p>`;
@@ -8120,9 +8182,9 @@ async function generateWeeklyDigest() {
   @media print{body{padding:0}.action-bar{display:none !important}@page{margin:.5in}}
 </style></head><body>
 <div class="action-bar">
-  <button class="btn-share" onclick="__shareReport()">📤 Share</button>
-  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
-  <button class="btn-dl" onclick="__downloadReport()">💾 Download</button>
+  <button class="btn-share" onclick="__shareReport()">Share</button>
+  <button class="btn-print" onclick="window.print()">Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadReport()">Download</button>
 </div>
 <script>
   const __reportName = ${JSON.stringify(fileBase)};
@@ -8392,7 +8454,7 @@ async function refreshSidebar() {
       <div class="si-meta">${esc(loc)}${j.dateStart ? ' — ' + fmtDate(j.dateStart) : ''}</div>
       <div class="si-actions" style="flex-wrap:wrap">
         <button class="btn-green" style="padding:6px 14px;font-size:13px;border:none;border-radius:var(--radius);cursor:pointer" onclick="event.stopPropagation();viewSavedReport(${j.id})">View</button>
-        ${canReopen ? `<button style="padding:6px 14px;font-size:13px;border:none;border-radius:var(--radius);cursor:pointer;background:var(--accent);color:#fff" onclick="event.stopPropagation();reopenForEditing(${j.id})">✏️ Edit</button>` : ''}
+        ${canReopen ? `<button style="padding:6px 14px;font-size:13px;border:none;border-radius:var(--radius);cursor:pointer;background:var(--accent);color:#fff" onclick="event.stopPropagation();reopenForEditing(${j.id})">Edit</button>` : ''}
         <button class="btn-red" style="padding:6px 14px;font-size:13px;border:none;border-radius:var(--radius);cursor:pointer" onclick="event.stopPropagation();deleteSavedJob(${j.id})">Delete</button>
       </div>
     </div>`;
@@ -8434,7 +8496,7 @@ async function reopenForEditing(id, skipConfirm) {
   await refreshDraftSelector();
   await refreshSidebar();
   closeSidebar();
-  showToast('✏️ Reopened for editing', 'good', 3000);
+  showToast('Reopened for editing', 'good', 3000);
   window.scrollTo(0, 0);
 }
 
@@ -8460,9 +8522,9 @@ function upgradeReportHTML(html, reportName) {
   @media print{.__action-bar{display:none !important}.__lb{display:none !important}body{padding-top:0 !important}body img{cursor:default}}
 </style>
 <div class="__action-bar" id="__actionBar">
-  <button class="__btn-share" onclick="__shareReport()">📤 Share</button>
-  <button class="__btn-print" onclick="window.print()">🖨️ Print / PDF</button>
-  <button class="__btn-dl" onclick="__downloadReport()">💾 Download</button>
+  <button class="__btn-share" onclick="__shareReport()">Share</button>
+  <button class="__btn-print" onclick="window.print()">Print / PDF</button>
+  <button class="__btn-dl" onclick="__downloadReport()">Download</button>
 </div>
 <div class="__lb" id="__lightbox" onclick="__closeLB(event)">
   <button class="__lb-close" onclick="__closeLB(event)" aria-label="Close">✕</button>
@@ -8845,7 +8907,7 @@ async function extractContactsFromFile(fileIndex) {
   // Loading overlay
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:5000;display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;font-weight:600;flex-direction:column;gap:14px';
-  overlay.innerHTML = '<div>🤖 Reading PDF...</div><div id="extractStatus" style="font-size:14px;color:#aaa;font-weight:400">Loading PDF reader</div>';
+  overlay.innerHTML = '<div>Reading PDF...</div><div id="extractStatus" style="font-size:14px;color:#aaa;font-weight:400">Loading PDF reader</div>';
   document.body.appendChild(overlay);
   const setStatus = msg => { const el = document.getElementById('extractStatus'); if (el) el.textContent = msg; };
 
@@ -8938,8 +9000,8 @@ function showFoundContactsDialog() {
         <input type="checkbox" data-idx="${i}" checked style="width:20px;height:20px;flex-shrink:0;margin-top:2px;cursor:pointer">
         <div style="flex:1">
           <div style="font-weight:700;font-size:15px">${esc(c.name)} <span style="font-weight:400;color:var(--dim);font-size:13px">— ${esc(c.role)}</span></div>
-          ${c.phone ? `<div style="font-size:13px;margin-top:2px">📞 ${esc(c.phone)}</div>` : ''}
-          ${c.email ? `<div style="font-size:13px;margin-top:2px">✉ ${esc(c.email)}</div>` : ''}
+          ${c.phone ? `<div style="font-size:13px;margin-top:2px">${esc(c.phone)}</div>` : ''}
+          ${c.email ? `<div style="font-size:13px;margin-top:2px">${esc(c.email)}</div>` : ''}
           ${c.discussed ? `<div style="font-size:12px;color:var(--dim);margin-top:4px">${esc(c.discussed)}</div>` : ''}
         </div>
       </div>
@@ -9129,7 +9191,7 @@ function _showSendGcReportDialog(allContacts) {
         ${isGc ? '<div style="display:inline-block;font-size:10px;background:#ea580c;color:#fff;padding:2px 8px;border-radius:10px;letter-spacing:1px;font-weight:700;margin-bottom:6px">GC</div>' : ''}
         <div style="font-weight:700;font-size:15px;color:var(--text);margin-bottom:2px">${esc(name)}</div>
         ${role ? `<div style="font-size:12px;color:var(--dim);margin-bottom:8px">${esc(role)}</div>` : '<div style="margin-bottom:8px"></div>'}
-        <button onclick="_sendGcReportToContact(${i})" style="width:100%;padding:10px 14px;background:#ea580c;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📧 Send GC Report to ${esc(c.email)}</button>
+        <button onclick="_sendGcReportToContact(${i})" style="width:100%;padding:10px 14px;background:#ea580c;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Send GC Report to ${esc(c.email)}</button>
       </div>
     `;
   }).join('');
@@ -9203,7 +9265,7 @@ function _logGcReportSent(contact) {
   });
   if (typeof renderCommunications === 'function') renderCommunications();
   scheduleAutoSave();
-  showToast(`📝 Comm log updated — GC report email to ${contact.name || 'GC'}`, 'good', 3000);
+  showToast(`Comm log updated — GC report email to ${contact.name || 'GC'}`, 'good', 3000);
 }
 
 async function _openGcReportPreview() {
@@ -9317,9 +9379,9 @@ async function _buildAndOpenGcReport() {
   @media (max-width:560px){.hero{padding:24px 18px}.hero h1{font-size:24px}.doc-body{padding:0 16px 16px}.signoff-row{grid-template-columns:1fr}.contact-card{grid-template-columns:1fr;text-align:center}.contact-card .rhs{text-align:center}}
 </style></head><body>
 <div class="action-bar">
-  <button class="btn-share" onclick="__shareGc()">📤 Share</button>
-  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
-  <button class="btn-dl" onclick="__dlGc()">💾 Download</button>
+  <button class="btn-share" onclick="__shareGc()">Share</button>
+  <button class="btn-print" onclick="window.print()">Print / PDF</button>
+  <button class="btn-dl" onclick="__dlGc()">Download</button>
 </div>
 <script>
   const __gcName = ${JSON.stringify(fileBase)};
@@ -9351,10 +9413,10 @@ async function _buildAndOpenGcReport() {
   <h1>Installation Completion Report</h1>
   <div class="subtitle">Scope completed, as-built notes, craftsmanship checklist, and sign-off for the general contractor.</div>
   <div class="meta-row">
-    <span class="meta-chip">🏗️ <strong>${esc(client)}</strong></span>
-    ${location ? `<span class="meta-chip">📍 <strong>${esc(location)}</strong></span>` : ''}
-    <span class="meta-chip">📅 Completed: <strong>${esc(installDate)}</strong></span>
-    <span class="meta-chip">🛠️ Installer: <strong>Lyle Krug</strong></span>
+    <span class="meta-chip"><strong>${esc(client)}</strong></span>
+    ${location ? `<span class="meta-chip"><strong>${esc(location)}</strong></span>` : ''}
+    <span class="meta-chip">Completed: <strong>${esc(installDate)}</strong></span>
+    <span class="meta-chip">Installer: <strong>Lyle Krug</strong></span>
   </div>
 </div>
 
@@ -9396,7 +9458,7 @@ async function _buildAndOpenGcReport() {
               ${p.area ? `<div style="font-weight:600;color:var(--ink);margin-bottom:2px">${esc(p.area)}</div>` : ''}
               ${p.notes ? esc(p.notes) : ''}
             </div>` : ''}
-            ${p.annotatedURL ? '<div style="padding:6px 14px;background:#fef2f2;color:#991b1b;font-size:11px;font-weight:600;letter-spacing:0.5px;border-top:1px solid #fee2e2">✏ FIELD MARKUP APPLIED</div>' : '<div style="padding:6px 14px;background:#fef3c7;color:#92400e;font-size:11px;font-style:italic;border-top:1px solid #fde68a">Original drawing — no field markup added yet</div>'}
+            ${p.annotatedURL ? '<div style="padding:6px 14px;background:#fef2f2;color:#991b1b;font-size:11px;font-weight:600;letter-spacing:0.5px;border-top:1px solid #fee2e2">FIELD MARKUP APPLIED</div>' : '<div style="padding:6px 14px;background:#fef3c7;color:#92400e;font-size:11px;font-style:italic;border-top:1px solid #fde68a">Original drawing — no field markup added yet</div>'}
           </div>
         `).join('')}
       </div>
@@ -9447,7 +9509,7 @@ async function _buildAndOpenGcReport() {
   </div>
   <div class="card-body" style="background:#fff">
     ${(['equipment', 'fans', 'switching', 'site'].map(sys => {
-      const label = { equipment: '🛠️ Equipment', fans: '🌀 Fans', switching: '🎛️ Switching', site: '📐 Site / Overall' }[sys];
+      const label = { equipment: 'Equipment', fans: 'Fans', switching: 'Switching', site: 'Site / Overall' }[sys];
       const bucket = bySystem[sys] || [];
       if (!bucket.length) return '';
       return `<div class="photo-section">
@@ -9602,7 +9664,7 @@ function downloadQrPng() {
 function copyQrUrl() {
   if (!__qrLastURL) return;
   navigator.clipboard.writeText(__qrLastURL).then(() => {
-    showToast('📋 URL copied to clipboard', 'good', 2500);
+    showToast('URL copied to clipboard', 'good', 2500);
   }).catch(() => {
     alert('Copy failed — URL: ' + __qrLastURL);
   });
@@ -9685,8 +9747,8 @@ function _showSendUserGuideDialog(siteContacts) {
         <div style="font-weight:700;font-size:15px;color:var(--text);margin-bottom:2px">${esc(name)}</div>
         ${role ? `<div style="font-size:12px;color:var(--dim);margin-bottom:8px">${esc(role)}</div>` : '<div style="margin-bottom:8px"></div>'}
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-          ${c.email ? `<button onclick="_sendUserGuideViaEmail(${i})" style="flex:1;min-width:120px;padding:10px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📧 Email<br><span style="font-size:11px;font-weight:400;opacity:0.85">${esc(c.email)}</span></button>` : ''}
-          ${c.phone ? `<button onclick="_sendUserGuideViaText(${i})" style="flex:1;min-width:120px;padding:10px 14px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">📱 Text<br><span style="font-size:11px;font-weight:400;opacity:0.85">${esc(c.phone)}</span></button>` : ''}
+          ${c.email ? `<button onclick="_sendUserGuideViaEmail(${i})" style="flex:1;min-width:120px;padding:10px 14px;background:#16a34a;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Email<br><span style="font-size:11px;font-weight:400;opacity:0.85">${esc(c.email)}</span></button>` : ''}
+          ${c.phone ? `<button onclick="_sendUserGuideViaText(${i})" style="flex:1;min-width:120px;padding:10px 14px;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Text<br><span style="font-size:11px;font-weight:400;opacity:0.85">${esc(c.phone)}</span></button>` : ''}
         </div>
       </div>
     `;
@@ -9806,7 +9868,7 @@ function _logUserGuideSent(contact, method) {
   });
   if (typeof renderCommunications === 'function') renderCommunications();
   scheduleAutoSave();
-  showToast(`📝 Comm log updated — User Guide ${method === 'text' ? 'SMS' : 'email'} to ${contact.name || 'contact'}`, 'good', 3000);
+  showToast(`Comm log updated — User Guide ${method === 'text' ? 'SMS' : 'email'} to ${contact.name || 'contact'}`, 'good', 3000);
 }
 
 // Internal: just open the guide preview tab
@@ -9875,7 +9937,7 @@ async function _buildAndOpenUserGuide() {
   // Helper to render a photo frame (new visual style)
   const photoCard = (p, caption) => p
     ? `<div class="photo-frame"><img src="${p.annotatedURL || p.dataURL}" alt=""><div class="ph-cap">${esc(caption)}</div></div>`
-    : `<div class="photo-frame empty"><div class="ph-empty"><div class="em">📷</div><div class="et">${esc(caption)}<br><span style="opacity:0.7;font-weight:400">photo not yet tagged</span></div></div></div>`;
+    : `<div class="photo-frame empty"><div class="ph-empty"><div class="em"></div><div class="et">${esc(caption)}<br><span style="opacity:0.7;font-weight:400">photo not yet tagged</span></div></div></div>`;
 
   // SVG icon set — used as section header art
   const ICONS = {
@@ -9885,7 +9947,7 @@ async function _buildAndOpenUserGuide() {
     book: `<svg viewBox="0 0 64 64" fill="none"><rect x="12" y="14" width="40" height="38" rx="2" fill="white" opacity="0.95"/><line x1="32" y1="14" x2="32" y2="52" stroke="#1e3a8a" stroke-width="1.5"/><line x1="18" y1="24" x2="28" y2="24" stroke="#1e3a8a" stroke-width="1"/><line x1="18" y1="30" x2="28" y2="30" stroke="#1e3a8a" stroke-width="1"/><line x1="18" y1="36" x2="28" y2="36" stroke="#1e3a8a" stroke-width="1"/><line x1="36" y1="24" x2="46" y2="24" stroke="#1e3a8a" stroke-width="1"/><line x1="36" y1="30" x2="46" y2="30" stroke="#1e3a8a" stroke-width="1"/><line x1="36" y1="36" x2="46" y2="36" stroke="#1e3a8a" stroke-width="1"/></svg>`,
     filter: `<svg viewBox="0 0 64 64" fill="none"><path d="M14 14 H50 L40 30 V48 L24 54 V30 Z" fill="white" opacity="0.95"/><circle cx="32" cy="40" r="3" fill="#7c2d12"/></svg>`,
     wrench: `<svg viewBox="0 0 64 64" fill="none"><path d="M20 14 L30 24 L24 30 L14 20 a8 8 0 0 1 6-6 Z" fill="white" opacity="0.95"/><rect x="26" y="26" width="24" height="6" rx="3" transform="rotate(45 38 29)" fill="white" opacity="0.95"/></svg>`,
-    pin: '📍', switch: '⚙', alert: '⚠', check: '✓'
+    pin: '', switch: '', alert: '', check: '✓'
   };
 
   // Helper for a canopy section — visual layout with header card + photos + switch pill + warning
@@ -9903,7 +9965,7 @@ async function _buildAndOpenUserGuide() {
         <div style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:8px">${description}</div>
 
         <div class="switch-pill blue">
-          <div class="ic">⚙</div>
+          <div class="ic"></div>
           <div class="deets">
             <div class="lbl">Fan switch location</div>
             <div class="loc">${switchLoc ? esc(switchLoc) : '<em style="opacity:0.6">Not yet documented for this site</em>'}</div>
@@ -9916,7 +9978,7 @@ async function _buildAndOpenUserGuide() {
         </div>
 
         <div class="callout warn">
-          <div class="ic">⚠</div>
+          <div class="ic"></div>
           <div class="body"><strong>This switch controls THE FAN ONLY.</strong> The mist is on a separate switch at the pump (see the Mist Pump section).</div>
         </div>
       </div>
@@ -10104,10 +10166,10 @@ async function _buildAndOpenUserGuide() {
   }
 </style></head><body>
 <div class="action-bar" id="__actionBar">
-  <button class="btn-share" onclick="__shareGuide()">📤 Share</button>
-  ${contactEmails ? `<button class="btn-mail" onclick="__emailGuide()">📧 Email Site Contacts</button>` : ''}
-  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
-  <button class="btn-dl" onclick="__downloadGuide()">💾 Download</button>
+  <button class="btn-share" onclick="__shareGuide()">Share</button>
+  ${contactEmails ? `<button class="btn-mail" onclick="__emailGuide()">Email Site Contacts</button>` : ''}
+  <button class="btn-print" onclick="window.print()">Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadGuide()">Download</button>
 </div>
 <script>
   const __guideName = ${JSON.stringify(fileBase)};
@@ -10157,10 +10219,10 @@ async function _buildAndOpenUserGuide() {
   <h1>Misting System User Guide</h1>
   <div class="subtitle">Your system in plain English: the fans cool, the pump mists, and everything else stays untouched.</div>
   <div class="meta-row">
-    <span class="meta-chip">🏪 <strong>${esc(client)}</strong></span>
-    ${location ? `<span class="meta-chip">📍 <strong>${esc(location)}</strong></span>` : ''}
-    <span class="meta-chip">📅 <strong>${esc(installDate)}</strong></span>
-    <span class="meta-chip">🛠️ <strong>Lyle Krug</strong></span>
+    <span class="meta-chip"><strong>${esc(client)}</strong></span>
+    ${location ? `<span class="meta-chip"><strong>${esc(location)}</strong></span>` : ''}
+    <span class="meta-chip"><strong>${esc(installDate)}</strong></span>
+    <span class="meta-chip"><strong>Lyle Krug</strong></span>
   </div>
 </div>
 
@@ -10169,7 +10231,7 @@ async function _buildAndOpenUserGuide() {
 <!-- PREFACE -->
 <div class="card preface">
   <div class="card-head">
-    <div class="num-badge">📖</div>
+    <div class="num-badge"></div>
     <div class="head-text">
       <div class="label">Start Here</div>
       <div class="title">How to Think About Your System</div>
@@ -10181,20 +10243,20 @@ async function _buildAndOpenUserGuide() {
 
     <div class="concepts">
       <div class="concept fans">
-        <div class="ic">🌀</div>
+        <div class="ic"></div>
         <h4>THE FANS</h4>
         <p>Move air to spread cool fog. Each canopy has its own switch on the same column as the lights and heaters. Fans alone do not produce mist — they just move air.</p>
       </div>
       <div class="vs">VS</div>
       <div class="concept mist">
-        <div class="ic">💧</div>
+        <div class="ic"></div>
         <h4>THE MIST</h4>
         <p>Pressurized water from the pump, sprayed through nozzles on each canopy. The pump has its own switch. Fans don't know mist exists; mist doesn't know fans exist.</p>
       </div>
     </div>
 
     <div class="callout warn">
-      <div class="ic">⚠</div>
+      <div class="ic"></div>
       <div class="body"><strong>BOTH must be ON for cool mist.</strong> The FAN at that canopy must be on. The MIST PUMP must be on. Turn off either one and you lose the cooling effect.</div>
     </div>
 
@@ -10234,7 +10296,7 @@ ${hasPatio ? canopySection('03',
     <div style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:8px"><strong>What it does:</strong> Pressurizes filtered water and pushes it to the canopies as mist. This pump is what creates the mist — nothing else does.</div>
 
     <div class="switch-pill green">
-      <div class="ic">📍</div>
+      <div class="ic"></div>
       <div class="deets">
         <div class="lbl">Pump unit location</div>
         <div class="loc">${ug.pumpLocation ? esc(ug.pumpLocation) : '<em style="opacity:0.6">Not yet documented for this site</em>'}</div>
@@ -10242,13 +10304,13 @@ ${hasPatio ? canopySection('03',
     </div>
 
     <div class="photo-single">
-      ${pumpPhoto ? `<img src="${pumpPhoto.annotatedURL || pumpPhoto.dataURL}" alt=""><div class="ph-cap">The Mist Pump</div>` : `<div style="height:100%;background:linear-gradient(135deg,#e2e8f0 0%,#cbd5e1 100%);display:flex;align-items:center;justify-content:center;flex-direction:column;color:#64748b"><div style="font-size:48px">📷</div><div style="font-size:13px;font-weight:600;margin-top:6px">Pump photo not yet tagged</div></div>`}
+      ${pumpPhoto ? `<img src="${pumpPhoto.annotatedURL || pumpPhoto.dataURL}" alt=""><div class="ph-cap">The Mist Pump</div>` : `<div style="height:100%;background:linear-gradient(135deg,#e2e8f0 0%,#cbd5e1 100%);display:flex;align-items:center;justify-content:center;flex-direction:column;color:#64748b"><div style="font-size:48px"></div><div style="font-size:13px;font-weight:600;margin-top:6px">Pump photo not yet tagged</div></div>`}
     </div>
 
     <h4 style="font-size:13px;color:var(--green-deep);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin:18px 0 8px;text-align:center">Your Mist Switches — The Hierarchy</h4>
 
     <div class="switch-pill green">
-      <div class="ic">1️⃣</div>
+      <div class="ic">1⃣</div>
       <div class="deets">
         <div class="lbl">Main pump switch (the master)</div>
         <div class="loc">${ug.pumpSwitch ? esc(ug.pumpSwitch) : '<em style="opacity:0.6">Not yet documented</em>'}</div>
@@ -10259,7 +10321,7 @@ ${hasPatio ? canopySection('03',
 
     ${hasOmdMistSwitch ? `
     <div class="switch-pill amber">
-      <div class="ic">2️⃣</div>
+      <div class="ic">2⃣</div>
       <div class="deets">
         <div class="lbl">OMD mist cutoff (optional layer)</div>
         <div class="loc">${esc(ug.omdMistSwitch)}</div>
@@ -10270,7 +10332,7 @@ ${hasPatio ? canopySection('03',
     ` : ''}
 
     <div class="hierarchy">
-      <h4>📋 What turns on what — the rules</h4>
+      <h4>What turns on what — the rules</h4>
       <div class="hier-row header">
         <div>Main Pump</div>
         ${hasOmdMistSwitch ? '<div>OMD Cutoff</div>' : ''}
@@ -10300,7 +10362,7 @@ ${hasPatio ? canopySection('03',
     </div>
 
     <div class="callout warn">
-      <div class="ic">⚠</div>
+      <div class="ic"></div>
       <div class="body"><strong>For cool mist at any canopy, you also need that canopy's fan ON</strong> (Sections 01-${hasPatio ? '03' : '02'}). The mist column above only addresses water — the fan is what spreads it.</div>
     </div>
   </div>
@@ -10318,7 +10380,7 @@ ${hasPatio ? canopySection('03',
   </div>
   <div class="card-body">
     <div class="mega-warn">
-      <span class="icon">⛔</span>
+      <span class="icon"></span>
       <div class="title">Do Not Touch</div>
       <div class="sub">Do not adjust. Do not turn off the water. Everything is preset at install.</div>
     </div>
@@ -10331,7 +10393,7 @@ ${hasPatio ? canopySection('03',
     </div>
 
     <div class="switch-pill amber" style="margin-top:14px">
-      <div class="ic">💧</div>
+      <div class="ic"></div>
       <div class="deets">
         <div class="lbl">The drain</div>
         <div class="loc">${ug.roDrain ? esc(ug.roDrain) : '<em style="opacity:0.6">Routing not documented</em>'}</div>
@@ -10345,7 +10407,7 @@ ${hasPatio ? canopySection('03',
     </div>
 
     <div class="callout warn">
-      <div class="ic">📝</div>
+      <div class="ic"></div>
       <div class="body"><em>Breaker location info will be added to this guide once confirmed at this site.</em></div>
     </div>
   </div>
@@ -10365,7 +10427,7 @@ ${hasAdditional ? `
   <div class="card-body">
     <p style="font-size:13px;color:var(--ink-soft);line-height:1.6;margin-bottom:8px"><strong>This site has an extra fan beyond the standard layout:</strong></p>
     <div class="switch-pill" style="border-color:var(--purple)">
-      <div class="ic" style="background:var(--purple-light);color:var(--purple)">🌀</div>
+      <div class="ic" style="background:var(--purple-light);color:var(--purple)"></div>
       <div class="deets">
         <div class="lbl" style="color:var(--purple)">Additional fan</div>
         <div class="loc">${esc(ug.additionalFan)}</div>
@@ -10383,7 +10445,7 @@ ${hasAdditional ? `
 <!-- TROUBLESHOOTING -->
 <div class="card trouble">
   <div class="card-head">
-    <div class="num-badge">🛠️</div>
+    <div class="num-badge"></div>
     <div class="head-text">
       <div class="label">If Something's Off</div>
       <div class="title">Quick Troubleshooting</div>
@@ -10418,7 +10480,7 @@ ${hasAdditional ? `
       </div>
     </div>
     <div class="callout warn">
-      <div class="ic">❄</div>
+      <div class="ic"></div>
       <div class="body"><strong>End of season:</strong> If your location gets below 35°F, the pump and water lines must be drained to prevent freeze damage. Call MistAmerica well before the first cold snap.</div>
     </div>
   </div>
@@ -10556,8 +10618,8 @@ async function generateTripTotals() {
   const REST_WORK_DAYS = 9, REST_DAYS_OFF = 2; // your rule: a full ~9-day stretch earns 2 days off
   const restRemaining = REST_WORK_DAYS - daysWorked;
   const restMsg = daysWorked >= REST_WORK_DAYS
-    ? `🛌 Full stretch worked — <strong>${REST_DAYS_OFF} days off earned</strong> when you're home, salary or not.`
-    : `🛌 ${restRemaining} more work day${restRemaining === 1 ? '' : 's'} to complete the ${REST_WORK_DAYS}-day stretch (then ${REST_DAYS_OFF} days off).`;
+    ? `Full stretch worked — <strong>${REST_DAYS_OFF} days off earned</strong> when you're home, salary or not.`
+    : `${restRemaining} more work day${restRemaining === 1 ? '' : 's'} to complete the ${REST_WORK_DAYS}-day stretch (then ${REST_DAYS_OFF} days off).`;
 
   const fileBase = ('trip_totals_' + (trip.name || 'trip')).replace(/[^a-z0-9]+/gi, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'trip_totals';
 
@@ -10589,9 +10651,9 @@ async function generateTripTotals() {
   @media print{body{padding:0}.action-bar{display:none !important}@page{margin:.5in}}
 </style></head><body>
 <div class="action-bar">
-  <button class="btn-share" onclick="__shareReport()">📤 Share</button>
-  <button class="btn-print" onclick="window.print()">🖨️ Print / PDF</button>
-  <button class="btn-dl" onclick="__downloadReport()">💾 Download</button>
+  <button class="btn-share" onclick="__shareReport()">Share</button>
+  <button class="btn-print" onclick="window.print()">Print / PDF</button>
+  <button class="btn-dl" onclick="__downloadReport()">Download</button>
 </div>
 <script>
   const __reportName = ${JSON.stringify(fileBase)};
@@ -10645,7 +10707,7 @@ async function generateTripTotals() {
 
   // Trip-level drives (not tied to any single job)
   if (tripLevelSegs.length) {
-    html += `<h2>🚗 Travel Drives <span style="font-size:11px;color:#666;font-weight:400">(getting to and between jobs — not charged to any one job)</span></h2>`;
+    html += `<h2>Travel Drives <span style="font-size:11px;color:#666;font-weight:400">(getting to and between jobs — not charged to any one job)</span></h2>`;
     html += `<table><thead><tr><th>Date</th><th>From Job</th><th>Note</th><th style="text-align:right">Hours</th><th style="text-align:right">Miles</th></tr></thead><tbody>`;
     tripLevelSegs.sort((a,b) => a.startedAt - b.startedAt).forEach(s => {
       const dt = new Date(s.startedAt).toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
@@ -10674,10 +10736,10 @@ async function generateTripTotals() {
       const sorted = allDayBuckets[d].sort((a, b) => a.startedAt - b.startedAt);
       const dT = sumTimeBreakdown(sorted);
       const dayDriveMs = dT.driveMs, dayWorkMs = dT.workMs, dayMiles = dT.miles;
-      html += `<h3>📅 ${dayDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})}</h3>`;
+      html += `<h3>${dayDate.toLocaleDateString('en-US', {weekday:'long', month:'long', day:'numeric'})}</h3>`;
       html += `<table><thead><tr><th style="width:90px">Type</th><th style="width:140px">Time</th><th>Job · Note</th><th style="text-align:right;width:120px">Duration</th></tr></thead><tbody>`;
       sorted.forEach(s => {
-        const ico = s.type === 'drive' ? '🚗 Drive' : '🏗️ Workday';
+        const ico = s.type === 'drive' ? 'Drive' : 'Workday';
         const start = new Date(s.startedAt).toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'});
         const end = s.endedAt ? new Date(s.endedAt).toLocaleTimeString('en-US', {hour:'numeric',minute:'2-digit'}) : 'now';
         const noteStr = s.note ? ' — ' + esc(s.note) : '';
@@ -10929,7 +10991,7 @@ async function refreshDraftSelector() {
   drafts.sort((a, b) => b.savedAt - a.savedAt);
   const sel = document.getElementById('draftSelector');
   if (!sel) return;
-  const kindIcon = k => k === 'install' ? '🔧 ' : k === 'service' ? '🛠️ ' : '';
+  const kindIcon = k => k === 'install' ? '' : k === 'service' ? '' : '';
   const openDrafts = drafts.filter(d => !(d.state && d.state.jobDone));
   const doneDrafts = drafts.filter(d => d.state && d.state.jobDone);
   let html;
@@ -10956,10 +11018,10 @@ async function refreshDraftSelector() {
     const completed = (await getCompletedJobsLite()).filter(j => j.canReopen);
     completed.sort((a, b) => b.savedAt - a.savedAt);
     if (completed.length) {
-      html += `<optgroup label="✅ Finished jobs — pick one to reopen">` +
+      html += `<optgroup label="Finished jobs — pick one to reopen">` +
         completed.map(j => {
           const meta = [j.city, j.state].filter(Boolean).join(', ');
-          return `<option value="job:${j.id}">✅ ${esc(j.client)}${meta ? ' (' + esc(meta) + ')' : ''}</option>`;
+          return `<option value="job:${j.id}">${esc(j.client)}${meta ? ' (' + esc(meta) + ')' : ''}</option>`;
         }).join('') + `</optgroup>`;
     }
   } catch (e) {}
@@ -11125,12 +11187,12 @@ async function sendDriveEmail(kind, gps, whenMs, testMode, durationMs) {
       if (typeof renderCommunications === 'function') renderCommunications();
       scheduleAutoSave();
       const evtLabel = kind === 'work' ? 'Start-work' : kind === 'workEnd' ? 'End-work' : kind === 'dayEnd' ? 'Done-for-day' : (kind === 'start' ? 'Started-driving' : 'Arrival');
-      showToast(`📧 ${evtLabel} email sent — ${place}`, 'good', 3500);
+      showToast(`${evtLabel} email sent — ${place}`, 'good', 3500);
     }
     return true;
   } catch (e) {
     console.warn('Drive email failed:', e);
-    if (!testMode) showToast('⚠️ Drive email didn\'t send — check Settings / signal', 'warn', 4500);
+    if (!testMode) showToast('Drive email didn\'t send — check Settings / signal', 'warn', 4500);
     return false;
   }
 }
@@ -11270,11 +11332,11 @@ async function sendDayPhotosEmail() {
     });
     if (typeof renderCommunications === 'function') renderCommunications();
     scheduleAutoSave();
-    showToast(`📧 ${todays.length} photo(s) emailed${capped ? ' (first ' + PHOTO_EMAIL_MAX_COUNT + ')' : ''} — ${place}`, 'good', 4500);
+    showToast(`${todays.length} photo(s) emailed${capped ? ' (first ' + PHOTO_EMAIL_MAX_COUNT + ')' : ''} — ${place}`, 'good', 4500);
     return true;
   } catch (e) {
     console.warn('Photo email failed:', e);
-    showToast('⚠️ Photo email failed — check EmailJS plan / 500KB limit', 'warn', 5000);
+    showToast('Photo email failed — check EmailJS plan / 500KB limit', 'warn', 5000);
     return false;
   }
 }
@@ -11402,11 +11464,11 @@ async function sendDayRecapEmail() {
     });
     if (typeof renderCommunications === 'function') renderCommunications();
     scheduleAutoSave();
-    showToast(`📧 Day recap sent${montage ? ' + photos' : ''} — ${place}`, 'good', 4500);
+    showToast(`Day recap sent${montage ? ' + photos' : ''} — ${place}`, 'good', 4500);
     return true;
   } catch (e) {
     console.warn('Recap email failed:', e);
-    showToast('⚠️ Recap email failed — check EmailJS / signal', 'warn', 5000);
+    showToast('Recap email failed — check EmailJS / signal', 'warn', 5000);
     return false;
   }
 }

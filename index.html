@@ -1233,7 +1233,7 @@ catch (e) { document.body.classList.add('simple'); }
 <!-- SIMPLE TOOLS — the less-frequent tools, each with one plain line saying what it does.
      Photo, Receipt and Talk live in the bottom bar so they're always under your thumb. -->
 <div class="sv-tools simple-only">
-  <button class="sv-tool" onclick="toggleSection('notesSection'); addNoteIfEmpty()">
+  <button class="sv-tool" onclick="svWrite()">
     <span class="sv-t"><svg class="ic"><use href="#i-note"/></svg> Write</span>
     <span class="sv-d">Type a note about this job.</span>
   </button>
@@ -1570,6 +1570,17 @@ function svShowWeek() {
   const wrap = document.getElementById('weekStripWrap');
   if (wrap && wrap.style.display === 'none') toggleWeekStrip();
   document.getElementById('myDayCard').scrollIntoView({ behavior: 'smooth' });
+}
+// Write always OPENS the notes box (never hides it) and hands you a blank note to type in
+function svWrite() {
+  const sec = document.getElementById('notesSection');
+  sec.classList.remove('hidden');
+  if (!notes.length || (notes[notes.length - 1].text || '').trim()) addNote();
+  renderNotes();
+  const boxes = sec.querySelectorAll('textarea');
+  const last = boxes[boxes.length - 1];
+  sec.scrollIntoView({ behavior: 'smooth' });
+  if (last) last.focus();
 }
 async function svChangeJob() {
   const gps = await getGps();
@@ -3195,7 +3206,7 @@ function exportMasterLogCSV() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `field-log-work-log-${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `field-log-work-log-${dayKey()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -3524,14 +3535,19 @@ function renderDayFlow(force) {
   const todayK = dayKey();
   const sentToday = localStorage.getItem('dayEndEmailDate') === todayK;
   const activeToday = segments.some(s => dayKey(s.startedAt) === todayK);
-  const eodShow = (activeToday && !sentToday) ? '1' : '0';
+  // The day is closed until something happens after the last DONE tap — a call-back,
+  // or a normal day after an overnight shift that was closed out past midnight.
+  const lastDoneAt = +localStorage.getItem('dayEndAt') || 0;
+  const lastActivity = segments.reduce((m, s) => Math.max(m, s.startedAt || 0, s.endedAt || 0), 0);
+  const closedOut = activeToday && (lastDoneAt ? lastActivity <= lastDoneAt : sentToday);
+  const eodShow = (activeToday && !closedOut) ? '1' : '0';
   const key = state + '|' + (running ? running.id : '') + '|' + client + '|' + eodShow + '|' + (activeToday ? 1 : 0);
   if (!force && key === __lastDayFlowKey) return;
   __lastDayFlowKey = key;
   const svg = k => `<svg class="ic"><use href="#${k}"/></svg>`;
   // Step bar: where the day stands, DRIVE → ARRIVE → WORK → DONE
   let done = -1, cur = -1, next = 0;
-  if (sentToday && state === 'idle') { done = 3; next = -1; }
+  if (closedOut && state === 'idle') { done = 3; next = -1; }
   else if (state === 'driving') { cur = 0; next = 1; }
   else if (state === 'working') { done = 1; cur = 2; next = 3; }
   else if (activeToday) {
@@ -3583,7 +3599,12 @@ function toggleWeekStrip() {
   if (btn) btn.style.color = show ? 'var(--accent)' : '';
 }
 
+// Drives taken before any job is picked land here instead of a blank "Untitled Job"
+const TRAVEL_JOB_NAME = 'Travel — no job picked';
+
 async function dayStartDriving() {
+  const clientEl = document.getElementById('client');
+  if (clientEl && !clientEl.value.trim()) clientEl.value = TRAVEL_JOB_NAME;
   const running = getRunningSegment();
   if (running) { running.endedAt = Date.now(); running.endGps = await getGps(); if (running.type === 'workday') onWorkEnded(running); }
   const gps = await getGps();
@@ -3702,7 +3723,7 @@ async function dayResolveJob(gps) {
 function dayPickJob(gps) {
   return new Promise(async resolve => {
     let drafts = [], completed = [];
-    try { drafts = await dbGetAllDrafts(); } catch (e) {}
+    try { drafts = (await dbGetAllDrafts()).filter(d => d.name !== TRAVEL_JOB_NAME); } catch (e) {}
     try { completed = await getCompletedJobsLite(); } catch (e) {}
     // Where am I? (city/state for the header + new-job autofill)
     const geo = await reverseGeocode(gps);
@@ -3777,6 +3798,8 @@ async function deriveDriveScope(seg) {
 
 async function dayBeginWorkSegment(gps) {
   if (!gps) gps = await getGps();
+  // Back at a job already marked done (a return visit) → it's open again until this visit closes
+  if (jobDone) { jobDone = false; jobDoneAt = ''; updateJobDoneUI(); }
   segments.push({
     id: newSegId(), type: 'workday', startedAt: Date.now(), endedAt: null,
     startGps: gps, endGps: null, note: '', tripLevel: false
@@ -3842,7 +3865,7 @@ async function toggleJobDone() {
   const name = (document.getElementById('client').value || '').trim() || 'this job';
   if (!confirm('Mark "' + name + '" as DONE?\n\nIt moves to your finished list (you can reopen it anytime).')) return;
   jobDone = true; jobDoneAt = new Date().toISOString();
-  if (!document.getElementById('dateEnd').value) document.getElementById('dateEnd').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('dateEnd').value = dayKey(); // a reopened job closes on today, not its old end date
   updateJobDoneUI();
   await autoSave();
   await refreshDraftSelector();
@@ -3854,11 +3877,11 @@ async function toggleJobDone() {
 async function autoCompleteServicesToday() {
   const tk = dayKey();
   const isServiceTodayOpen = (kind, done, segs) =>
-    kind === 'service' && !done && (segs || []).some(s => dayKey(s.startedAt) === tk);
+    kind === 'service' && !done && (segs || []).some(s => dayKey(s.startedAt) === tk || (s.endedAt && dayKey(s.endedAt) === tk));
   // current in-memory job
   if (isServiceTodayOpen(document.getElementById('jobKind')?.value, jobDone, segments)) {
     jobDone = true; jobDoneAt = new Date().toISOString();
-    if (!document.getElementById('dateEnd').value) document.getElementById('dateEnd').value = new Date().toISOString().slice(0, 10);
+    document.getElementById('dateEnd').value = dayKey(); // repeat visit moves the end date forward
     updateJobDoneUI();
     await autoSave();
   }
@@ -3870,7 +3893,7 @@ async function autoCompleteServicesToday() {
         const st = d.state || {};
         if (isServiceTodayOpen(st.jobKind, st.jobDone, st.segments)) {
           st.jobDone = true; st.jobDoneAt = new Date().toISOString();
-          if (!st.dateEnd) st.dateEnd = new Date().toISOString().slice(0, 10);
+          st.dateEnd = dayKey(); // repeat visit moves the end date forward
           await dbPutDraft(d);
         }
       }
@@ -3886,6 +3909,7 @@ async function endOfDay() {
   await autoCompleteServicesToday(); // services close themselves; installs stay open
   const gps = await getGps();
   localStorage.setItem('dayEndEmailDate', dayKey());
+  localStorage.setItem('dayEndAt', String(Date.now()));
   await sendDriveEmail('dayEnd', gps, Date.now()); // #2 — "back at the hotel"
   await sendDayRecapEmail();                       // #3 — what got done + WO + photos
   renderDayFlow(true);
@@ -4121,7 +4145,7 @@ function prefillWorkOrderFromJob() {
   if (!workOrder.custAddress && g('jobAddress')) workOrder.custAddress = g('jobAddress');
   if (!workOrder.custPhone && g('jobPhone')) workOrder.custPhone = g('jobPhone');
   if (!workOrder.custEmail && g('jobEmail')) workOrder.custEmail = g('jobEmail');
-  if (!workOrder.woDate) workOrder.woDate = g('dateStart') || new Date().toISOString().slice(0, 10);
+  if (!workOrder.woDate) workOrder.woDate = g('dateStart') || dayKey();
 }
 
 function openWorkOrder() {
@@ -5913,7 +5937,7 @@ function startClock() {
   clockState.running = true;
   clockState.startedAt = Date.now();
   if (!document.getElementById('dateStart').value) {
-    document.getElementById('dateStart').value = new Date().toISOString().slice(0,10);
+    document.getElementById('dateStart').value = dayKey();
   }
   document.getElementById('clockStartBtn').style.display = 'none';
   document.getElementById('clockStopBtn').style.display = '';
@@ -5936,7 +5960,7 @@ function stopClock() {
     document.getElementById('hoursSection').classList.remove('hidden');
   }
   if (!document.getElementById('dateEnd').value) {
-    document.getElementById('dateEnd').value = new Date().toISOString().slice(0,10);
+    document.getElementById('dateEnd').value = dayKey();
   }
   document.getElementById('clockMeta').textContent = 'Total: ' + fmtClock(clockState.accumulatedMs);
   saveClockToLocal();
@@ -5990,7 +6014,7 @@ function addCommunication() {
     to: '',
     subject: '',
     summary: '',
-    sentAt: new Date().toISOString().slice(0,10),
+    sentAt: dayKey(),
     responseReceived: false,
     responseAt: '',
     responseSummary: ''
@@ -6030,7 +6054,7 @@ function renderCommunications() {
       <textarea placeholder="What you said / asked..." onchange="communications[${i}].summary=this.value">${esc(c.summary)}</textarea>
       <div style="margin-top:10px;padding:10px;background:var(--surface);border-radius:var(--radius)">
         <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-          <input type="checkbox" ${c.responseReceived?'checked':''} onchange="communications[${i}].responseReceived=this.checked;if(this.checked&&!communications[${i}].responseAt)communications[${i}].responseAt=new Date().toISOString().slice(0,10);renderCommunications();updateCommStats()" style="width:18px;height:18px">
+          <input type="checkbox" ${c.responseReceived?'checked':''} onchange="communications[${i}].responseReceived=this.checked;if(this.checked&&!communications[${i}].responseAt)communications[${i}].responseAt=dayKey();renderCommunications();updateCommStats()" style="width:18px;height:18px">
           <span style="font-weight:700">Response received?</span>
           ${daysWaited ? `<span style="color:${c.responseReceived?'var(--green)':'var(--red)'};font-size:12px;margin-left:auto">${daysWaited}</span>` : ''}
         </label>
@@ -6070,7 +6094,7 @@ function addDiscrepancy() {
     area: '',
     specSays: '',
     siteShows: '',
-    flaggedAt: new Date().toISOString().slice(0,10),
+    flaggedAt: dayKey(),
     raisedToOffice: false,
     responseReceived: false,
     responseAt: '',
@@ -6098,7 +6122,7 @@ function renderDiscrepancies() {
         </label>
         ${d.raisedToOffice ? `
           <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-            <input type="checkbox" ${d.responseReceived?'checked':''} onchange="discrepancies[${i}].responseReceived=this.checked;if(this.checked&&!discrepancies[${i}].responseAt)discrepancies[${i}].responseAt=new Date().toISOString().slice(0,10);renderDiscrepancies();updateDiscStats()" style="width:18px;height:18px">
+            <input type="checkbox" ${d.responseReceived?'checked':''} onchange="discrepancies[${i}].responseReceived=this.checked;if(this.checked&&!discrepancies[${i}].responseAt)discrepancies[${i}].responseAt=dayKey();renderDiscrepancies();updateDiscStats()" style="width:18px;height:18px">
             <span style="font-weight:700">Response received?</span>
           </label>
           ${d.responseReceived ? `
@@ -8624,7 +8648,7 @@ async function exportAllJobs() {
     jobs: jobs
   };
   const json = JSON.stringify(backup);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = dayKey();
   const fileName = `field-log-backup-${today}.json`;
   const blob = new Blob([json], { type: 'application/json' });
   const file = new File([blob], fileName, { type: 'application/json' });
@@ -8709,7 +8733,7 @@ async function freezeCopy() {
       jobCount: jobs.length, draftCount: drafts.length,
       jobs, drafts, trips: allTrips
     };
-    const day = new Date().toISOString().slice(0, 10);
+    const day = dayKey();
     const jsonFile = new File([JSON.stringify(payload)], `field-log-freeze-${day}.json`, { type: 'application/json' });
     const csvFile = new File([csv], `field-log-freeze-${day}.csv`, { type: 'text/csv' });
     try {
@@ -9253,7 +9277,7 @@ function _logGcReportSent(contact) {
   if (!Array.isArray(communications)) communications = [];
   const client = document.getElementById('client').value.trim() || 'Untitled';
   const toLabel = (contact.name || 'GC') + (contact.email ? ` <${contact.email}>` : '');
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = dayKey();
   communications.push({
     id: 'comm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
     kind: 'email',
@@ -9856,7 +9880,7 @@ function _logUserGuideSent(contact, method) {
   const toLabel = (contact.name || 'Contact') +
     (method === 'email' && contact.email ? ` <${contact.email}>` : '') +
     (method === 'text' && contact.phone ? ` (${contact.phone})` : '');
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = dayKey();
   communications.push({
     id: 'comm_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
     kind: method === 'text' ? 'text' : 'email',
@@ -11183,7 +11207,7 @@ async function sendDriveEmail(kind, gps, whenMs, testMode, durationMs) {
         to: 'Robert + Sean (CC Lyle)',
         subject,
         summary: message,
-        sentAt: when.toISOString().slice(0, 10),
+        sentAt: dayKey(when.getTime()),
         responseReceived: false, responseAt: '', responseSummary: ''
       });
       if (typeof renderCommunications === 'function') renderCommunications();
@@ -11329,7 +11353,7 @@ async function sendDayPhotosEmail() {
       to: 'Robert + Sean (CC Lyle)',
       subject,
       summary: message,
-      sentAt: new Date(b.start).toISOString().slice(0, 10),
+      sentAt: dayKey(new Date(b.start).getTime()),
       responseReceived: false, responseAt: '', responseSummary: ''
     });
     if (typeof renderCommunications === 'function') renderCommunications();

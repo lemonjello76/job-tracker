@@ -482,7 +482,9 @@ function audit(r) {
   const jobsTruth = [...new Set(truthSegs.filter(s => s.type === 'workday').map(s => s.job))];
   const appJobs = app.drafts.concat(app.jobs);
   jobsTruth.forEach(j => { const n = appJobs.filter(a => a.name === j).length; if (n !== 1) found.push({ sev: n ? 'WRONG' : 'BREAK', msg: `job "${j}" appears ${n} times in the app` }); });
-  appJobs.filter(a => !jobsTruth.includes(a.name)).forEach(a => found.push({ sev: 'JUNK', msg: `extra job in app: "${a.name || '(blank)'}" (${a.photos} photos)` }));
+  const TRAVEL = 'Travel — no job picked'; // the named bucket for drives before any job is picked
+  appJobs.filter(a => !jobsTruth.includes(a.name) && a.name !== TRAVEL).forEach(a => found.push({ sev: 'JUNK', msg: `extra job in app: "${a.name || '(blank)'}" (${a.photos} photos)` }));
+  if (appJobs.some(a => a.name === TRAVEL)) found.push({ sev: 'INFO', msg: 'pre-job drives saved under "' + TRAVEL + '"' });
   // end dates: closed services should end on the local day of their last work
   appJobs.filter(a => a.dateEnd).forEach(a => {
     const last = truthSegs.filter(s => s.job === a.name).sort((x, y) => y.end - x.end)[0];

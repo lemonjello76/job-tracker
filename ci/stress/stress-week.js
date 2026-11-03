@@ -183,6 +183,7 @@ async function runPersona(browser, P) {
     await ctx.setGeolocation({ latitude: q.lat, longitude: q.lng, accuracy: 10 + R() * 15 });
   };
   const flowBtn = re => page.locator('#dayFlowBox button').filter({ hasText: re }).first();
+  const beat = () => plus(0.02); // ~1.2 s between taps, like a thumb; the app ignores taps inside 0.7 s as double-taps
   const step = async (label, fn) => {
     const t0 = Date.now();
     try { await fn(); } catch (e) {
@@ -214,7 +215,7 @@ async function runPersona(browser, P) {
       // a person who forgot last night sees STOP WORK first and taps it
       await step('stop forgotten work', async () => {
         await setGps(curPos);
-        await flowBtn(/STOP WORK/).click();
+        await beat(); await flowBtn(/STOP WORK/).click();
         await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 });
       });
       closeOpen(now);
@@ -224,7 +225,7 @@ async function runPersona(browser, P) {
       const before = S.odoPrompts;
       // odometer photo goes through segOdoInput after the confirm
       const fc = page.waitForEvent('filechooser', { timeout: 4000 }).catch(() => null);
-      await flowBtn(/START DRIVE/).click();
+      await beat(); await flowBtn(/START DRIVE/).click();
       const ch = await fc; if (ch) await ch.setFiles(file(1)); else await page.setInputFiles('#segOdoInput', file(1));
       await waitOdo(before + 1);
       await page.waitForFunction(() => getRunningSegment() && getRunningSegment().type === 'drive', null, { timeout: 8000 });
@@ -238,7 +239,7 @@ async function runPersona(browser, P) {
       await setGps(toPos);
       const before = S.odoPrompts;
       const fc = page.waitForEvent('filechooser', { timeout: 4000 }).catch(() => null);
-      await flowBtn(/I'VE ARRIVED/).click();
+      await beat(); await flowBtn(/I'VE ARRIVED/).click();
       const ch = await fc; if (ch) await ch.setFiles(file(2)); else await page.setInputFiles('#segOdoInput', file(2));
       await waitOdo(before + 1);
       await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 });
@@ -250,7 +251,7 @@ async function runPersona(browser, P) {
     S.intended = job; S.jobName = job;
     await step('start work ' + job, async () => {
       await setGps(curPos, P.quirks.gpsJitterM);
-      await flowBtn(/^\s*START WORK\s*$|ALREADY ON SITE/).click();
+      await beat(); await flowBtn(/^\s*START WORK\s*$|ALREADY ON SITE/).click();
       // either the GPS confirm (handled by the dialog handler) or the picker
       const picked = await page.waitForSelector('#dayPickOverlay', { timeout: 5000 }).catch(() => null);
       if (picked) {
@@ -276,7 +277,7 @@ async function runPersona(browser, P) {
   async function leaveSite() {
     await step('stop work', async () => {
       await setGps(curPos, P.quirks.gpsJitterM);
-      await flowBtn(/STOP WORK/).click();
+      await beat(); await flowBtn(/STOP WORK/).click();
       await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 });
     });
     closeOpen(now);
@@ -335,7 +336,7 @@ async function runPersona(browser, P) {
         note('no-done-button', JSON.stringify(dbg));
         return;
       }
-      await page.locator('#dayFlowBox .btn-endday').click();
+      await beat(); await page.locator('#dayFlowBox .btn-endday').click();
       await page.waitForTimeout(600);
     });
     closeOpen(now);

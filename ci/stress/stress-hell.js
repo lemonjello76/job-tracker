@@ -79,7 +79,7 @@ const PERSONAS = [
     await A.drive(P_('Phoenix', 15, -6)); await A.noshow('Tempe res - outlet', 25, false);
     await A.drive(P_('Phoenix', 30, -20)); await A.work('Chandler office - lighting', 'service', 2); await A.drive(home); await A.done();
     await A.day(1, 5, 45); await A.drive(verrado, { miles: 18, mins: 150 }); /* I-10 crash */ await A.work(V, 'install', 6); await A.drive(home); await A.done();
-    await A.day(2, 6, 0); await A.drive(verrado); await A.work(V, 'install', 7); await A.drive(P_('Phoenix', 25, -2)); await A.noshow('Mesa res - EV charger', 40, true); await A.drive(home); await A.done();
+    await A.day(2, 6, 0); await A.drive(verrado, { dblStart: true }); await A.work(V, 'install', 7); await A.drive(P_('Phoenix', 25, -2)); await A.noshow('Mesa res - EV charger', 40, true); await A.drive(home); await A.done();
     await A.day(3, 17, 55); await A.drive(P_('Phoenix', 15, 8)); await A.work('Old Town Scottsdale restaurant - walk-in cooler power', 'service', 3); await A.drive(home); await A.done();
     await A.day(4, 6, 0); await A.drive(verrado); await A.work(V, 'install', 8); await A.drive(home); await A.done();
     await A.day(5, 7, 30); await A.drive(P_('Phoenix', -10, 12)); await A.work('Glendale res - ceiling fans', 'service', 2); await A.drive(P_('Phoenix', -5, 20)); await A.work('Peoria res - GFCI', 'service', 1); await A.drive(home); await A.done();
@@ -90,7 +90,7 @@ const PERSONAS = [
     await A.day(0, 7, 30); await A.drive(deck); await A.work(D, 'install', 1.5); await A.rain(45); await A.work(D, 'install', 1); await A.rain(70); await A.work(D, 'install', 2); await A.drive(home); await A.done();
     await A.day(1, 7, 15); await A.drive(deck); await A.work(D, 'install', 1); await A.rainout(); await A.done();
     await A.day(2, 7, 0); await A.drive(deck); await A.work(D, 'install', 6); await A.drive(P_('Charlotte', 4, 3)); await A.noshow('Plaza Midwood - door', 20, false); await A.drive(home); await A.done();
-    await A.day(4, 8, 0); await A.drive(P_('Charlotte', 0.5, -1)); await A.work('South End condo - drywall', 'service', 2);
+    await A.day(4, 8, 0); await A.drive(P_('Charlotte', 0.5, -1)); await A.work('South End condo - drywall', 'service', 2, { dblStop: true });
     await A.drive(P_('Charlotte', -3, 22), { miles: 14, mins: 105 }); /* I-77 */ await A.work('Huntersville res - gutter', 'service', 1.5); await A.drive(home); await A.done();
     await A.day(5, 9, 0); await A.drive(P_('Charlotte', 3, 4)); await A.work('NoDa cafe - shelving', 'service', 3); await A.drive(home); await A.done();
     await A.day(5, 20, 10); await A.drive(P_('Charlotte', 1, -5)); await A.work('Myers Park - toilet "emergency"', 'service', 1); await A.drive(home); await A.done();
@@ -113,7 +113,7 @@ const PERSONAS = [
     await A.day(0, 4, 15);
     await A.flyThrough({ airport: sea, truckMiles: 16, truckMins: 30, gateMin: 80, flightMin: 240, destCity: 'Chicago', destAirport: ord, rentalOdo: 3051, rentalMiles: 18, rentalMins: 45, to: site });
     await A.work(F, 'install', 3.5); await A.drive(hotel); await A.done();
-    await A.day(1, 6, 45); await A.drive(site); await A.work(F, 'install', 9); await A.drive(hotel); await A.done();
+    await A.day(1, 6, 45); await A.drive(site); await A.work(F, 'install', 9, { phoneDiesH: 3 }); await A.drive(hotel); await A.done();
     await A.day(2, 6, 45); await A.drive(site); await A.work(F, 'install', 6);
     await A.driveThenFly(ord, { gateMin: 75, flightMin: 270, destCity: 'Seattle', destAirport: sea, car: 'truck' });
     await A.drive(home); await A.done();
@@ -122,7 +122,7 @@ const PERSONAS = [
   } },
   { id: 'msy-handy', who: 'Handyman (solo), New Orleans', city: 'New Orleans', seed: 606, run: async A => {
     const home = A.home, L = 'Lakeview kitchen cabinets', lake = P_('New Orleans', -4, 7);
-    await A.day(0, 7, 20); await A.drive(P_('New Orleans', -2, 3)); await A.work('Mid-City - fence', 'service', 1); await A.rain(30); await A.work('Mid-City - fence', 'service', 1);
+    await A.day(0, 7, 20); await A.drive(P_('New Orleans', -2, 3), { dblArrive: true, gpsOffMid: true }); await A.work('Mid-City - fence', 'service', 1); await A.rain(30); await A.work('Mid-City - fence', 'service', 1);
     await A.drive(P_('New Orleans', 5, 1)); await A.work('Bywater - porch', 'service', 1); await A.rain(25); await A.work('Bywater - porch', 'service', 1); await A.drive(home); await A.done();
     await A.day(1, 6, 50); await A.drive(P_('New Orleans', 6, 8), { miles: 12, mins: 90 }); /* street flooding */ await A.noshow('Gentilly - roof leak patch', 30, false);
     await A.drive(lake); await A.work(L, 'install', 5); await A.drive(home); await A.done();
@@ -228,6 +228,7 @@ async function runPersona(browser, P) {
     const t0 = Date.now();
     try { await fn(); } catch (e) {
       note('step-failed', `${label} @ ${localTime(tz, now)}: ${String(e.message).split('\n')[0].slice(0, 180)}`);
+      console.log(`  [${P.id}] FAIL ${label} @ ${localTime(tz, now)}: ${String(e.message).split('\n')[0].slice(0, 160)}`);
       await page.screenshot({ path: path.join(OUT, `${P.id}-fail-${issues.length}.png`) }).catch(() => {});
       await page.evaluate(() => document.querySelectorAll('#dayPickOverlay, [style*="z-index:10060"]').forEach(o => o.remove())).catch(() => {});
     }
@@ -247,23 +248,26 @@ async function runPersona(browser, P) {
   let curPos = home, curJob = '';
   const seen = new Set();
 
-  const tapStartDrive = async label => step('start drive ' + label, async () => {
+  const beat = () => plus(0.02); // ~1.2 s between taps, like a thumb; the app ignores taps inside 0.7 s as double-taps
+  const tap = async (loc, dbl) => { await beat(); return dbl ? loc.dblclick() : loc.click(); }; // a gloved double-tap lands twice on the same spot
+  const tapStartDrive = async (label, dbl) => step('start drive ' + label + (dbl ? ' (double-tap)' : ''), async () => {
     if (await page.locator('#dayFlowBox button').filter({ hasText: /STOP WORK/ }).count()) { // a stale work entry blocks it
       note('stop-before-drive', 'had to tap STOP WORK before START DRIVE');
-      await flowBtn(/STOP WORK/).click(); await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 });
+      await beat(); await flowBtn(/STOP WORK/).click(); await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 });
     }
     await setGps(curPos);
     const before = S.odoPrompts;
     const fc = page.waitForEvent('filechooser', { timeout: 4000 }).catch(() => null);
-    await flowBtn(/START DRIVE/).click();
+    await tap(flowBtn(/START DRIVE/), dbl);
     const ch = await fc; if (ch) await ch.setFiles(file(1)); else await page.setInputFiles('#segOdoInput', file(1));
     await waitOdo(before + 1);
     await page.waitForFunction(() => getRunningSegment() && getRunningSegment().type === 'drive', null, { timeout: 8000 });
   });
-  const tapArrive = async label => step('arrive ' + label, async () => {
+  const tapArrive = async (label, dbl) => step('arrive ' + label + (dbl ? ' (double-tap)' : ''), async () => {
     const before = S.odoPrompts;
     const fc = page.waitForEvent('filechooser', { timeout: 4000 }).catch(() => null);
-    await flowBtn(/I'VE ARRIVED/).click();
+    await tap(flowBtn(/I'VE ARRIVED/), dbl);
+    if (dbl) { await page.waitForTimeout(800); await page.evaluate(() => document.querySelectorAll('#dayPickOverlay').forEach(o => o.remove())); }
     const ch = await fc; if (ch) await ch.setFiles(file(0)); else await page.setInputFiles('#segOdoInput', file(0));
     await waitOdo(before + 1);
     await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 });
@@ -283,12 +287,14 @@ async function runPersona(browser, P) {
       const miles = o.miles || Math.max(1, Math.round(distMi(curPos, to) * 1.3));
       const mins = o.mins || Math.max(6, Math.round(miles / 28 * 60 * (0.85 + R() * 0.3)));
       if (open && open.type === 'workday') closeOpen(now);
-      await tapStartDrive('-> ' + (to.label || to.city));
+      await tapStartDrive('-> ' + (to.label || to.city), o.dblStart);
       open = { type: 'drive', start: now, miles, car: S.car };
-      await plus(mins);
+      if (o.gpsOffMid) { await plus(Math.round(mins / 2)); await ctx.clearPermissions(); log.push({ type: 'event', start: now, what: 'battery saver turned location off mid-drive' }); await plus(mins - Math.round(mins / 2)); }
+      else await plus(mins);
       S.odo[S.car] += miles;
       curPos = to; await setGps(to);
-      await tapArrive('-> ' + (to.label || to.city));
+      await tapArrive('-> ' + (to.label || to.city), o.dblArrive);
+      if (o.gpsOffMid) await ctx.grantPermissions(['geolocation']);
       closeOpen(now);
     },
     async work(job, kind, hours, o = {}) {
@@ -296,7 +302,7 @@ async function runPersona(browser, P) {
       S.intended = job; S.jobName = job;
       await step('start work ' + job, async () => {
         await setGps(curPos);
-        await flowBtn(/^\s*START WORK\s*$|ALREADY ON SITE/).click();
+        await beat(); await flowBtn(/^\s*START WORK\s*$|ALREADY ON SITE/).click();
         const picked = await page.waitForSelector('#dayPickOverlay', { timeout: 5000 }).catch(() => null);
         if (picked) {
           let want = isNew ? page.locator('#dayPickOverlay [data-pick="__new"]') : page.locator('#dayPickOverlay [data-pick]').filter({ hasText: job.slice(0, 24) }).first();
@@ -336,8 +342,25 @@ async function runPersona(browser, P) {
         log.push({ type: 'receipt', start: now, amount: amt, job });
       }
       await plus(Math.round(hours * 30));
+      if (o.phoneDiesH) {   // battery dies mid-job; plugs in and reopens hours later, still working
+        await page.goto('about:blank'); log.push({ type: 'event', start: now, what: `phone died for ${o.phoneDiesH} h mid-job` });
+        await plus(o.phoneDiesH * 60);
+        await step('reopen after dead phone', async () => { await page.goto(URL_APP); await page.waitForFunction(() => typeof db !== 'undefined' && db && getRunningSegment && getRunningSegment(), null, { timeout: 20000 }); });
+        if (await page.waitForSelector('#stalePrompt', { timeout: 6000 }).catch(() => null)) {
+          const still = page.locator('#stalePrompt [data-stale="still"]');
+          if (await still.count()) { await still.click(); log.push({ type: 'event', start: now, what: '12-hour check: answered "still working"' }); }
+          else note('stale-prompt-same-day', 'same-day long run asked "when did you stop?" with no "still working" first');
+        }
+      }
       if (!o.forgetStop) {
-        await step('stop work', async () => { await flowBtn(/STOP WORK/).click(); await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 }); });
+        await step('stop work' + (o.dblStop ? ' (double-tap)' : ''), async () => {
+          await tap(flowBtn(/STOP WORK/), o.dblStop);
+          await page.waitForFunction(() => !getRunningSegment() || getRunningSegment().type !== 'workday', null, { timeout: 8000 });
+          await page.waitForTimeout(800);
+          const after = await page.evaluate(() => { const r = getRunningSegment(); return r ? r.type : null; });
+          if (after) note('double-tap-side-effect', `after STOP WORK double-tap a ${after} is running`);
+          await page.evaluate(() => document.querySelectorAll('#dayPickOverlay').forEach(o => o.remove()));
+        });
         closeOpen(now);
       }
     },
@@ -360,7 +383,7 @@ async function runPersona(browser, P) {
           note('no-done-button', JSON.stringify(await page.evaluate(() => ({ today: dayKey(), sent: localStorage.getItem('dayEndEmailDate'), running: !!getRunningSegment() }))));
           return;
         }
-        await page.locator('#dayFlowBox .btn-endday').click();
+        await beat(); await page.locator('#dayFlowBox .btn-endday').click();
         await page.waitForTimeout(600);
       });
       closeOpen(now);
@@ -393,7 +416,7 @@ async function runPersona(browser, P) {
         const before = S.odoPrompts;
         const wasDriving = await page.evaluate(() => !!(getRunningSegment() && getRunningSegment().type === 'drive'));
         const fc = wasDriving ? page.waitForEvent('filechooser', { timeout: 4000 }).catch(() => null) : null;
-        await page.locator('#dayFlowBox button').filter({ hasText: /flying/i }).first().click();
+        await beat(); await page.locator('#dayFlowBox button').filter({ hasText: /flying/i }).first().click();
         if (wasDriving) { const ch = await fc; if (ch) await ch.setFiles(file(0)); else await page.setInputFiles('#segOdoInput', file(0)); await waitOdo(before + 1); }
         await page.waitForFunction(() => getRunningSegment() && getRunningSegment().mode === 'flight', null, { timeout: 8000 });
       });
@@ -401,7 +424,7 @@ async function runPersona(browser, P) {
       await plus(o.gateMin + (o.delayMin || 0) + o.flightMin);
       await setTz(CITIES[o.destCity].tz); curPos = o.destAirport; await setGps(o.destAirport);
       await step('tap LANDED', async () => {
-        await flowBtn(/LANDED/).click();
+        await beat(); await flowBtn(/LANDED/).click();
         await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 });
       });
       closeOpen(now);

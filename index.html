@@ -2261,11 +2261,37 @@ function dbDeleteTrip(id) {
 }
 
 // ── DRAFTS (in-progress jobs) ──
+// Light copy of every job (no photos) for the lookups that run on every tap and save:
+// job picker, "you're at X", week totals, week strip, job list. Built once from the full
+// store, then kept in step by dbPutDraft / dbDeleteDraft — the only two writers.
+const __draftLite = new Map();
+let __draftLiteReady = false;
+function liteDraft(d) {
+  const st = d.state || {};
+  return {
+    id: d.id, name: d.name, meta: d.meta, savedAt: d.savedAt, tripId: d.tripId || null,
+    state: {
+      client: st.client, city: st.city, state: st.state, jobKind: st.jobKind, jobDone: st.jobDone,
+      dateStart: st.dateStart, dateEnd: st.dateEnd, pinnedLocation: st.pinnedLocation || null,
+      segments: (st.segments || []).map(x => Object.assign({}, x, { startOdoPhoto: null, endOdoPhoto: null })),
+      receipts: (st.receipts || []).map(r => ({ amount: r.amount, stamp: r.stamp, category: r.category, vendor: r.vendor })),
+      photoCount: (st.photos || []).length
+    }
+  };
+}
+async function dbGetAllDraftsLite() {
+  if (!__draftLiteReady) {
+    (await dbGetAllDrafts()).forEach(d => __draftLite.set(d.id, liteDraft(d)));
+    __draftLiteReady = true;
+  }
+  return [...__draftLite.values()];
+}
+
 function dbPutDraft(draft) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('drafts', 'readwrite');
     tx.objectStore('drafts').put(draft);
-    tx.oncomplete = () => { resolve(); cloudPushDraft(draft); };
+    tx.oncomplete = () => { __draftLite.set(draft.id, liteDraft(draft)); resolve(); cloudPushDraft(draft); };
     tx.onerror = () => reject(tx.error);
   });
 }
@@ -2289,12 +2315,12 @@ function dbDeleteDraft(id) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction('drafts', 'readwrite');
     tx.objectStore('drafts').delete(id);
-    tx.oncomplete = () => { resolve(); cloudDeleteDraft(id); };
+    tx.oncomplete = () => { __draftLite.delete(id); resolve(); cloudDeleteDraft(id); };
     tx.onerror = () => reject(tx.error);
   });
 }
 function dbPut(job) {
-  __completedCacheDirty = true;
+  __completedCacheDirty = true; __jobsTimeLiteStale = true;
   return new Promise((resolve, reject) => {
     const tx = db.transaction('jobs', 'readwrite');
     tx.objectStore('jobs').put(job);
@@ -2306,6 +2332,16 @@ function dbPut(job) {
 // Lightweight list of completed jobs (no photos/reports) for dropdowns and
 // the day-flow job picker. Reloaded only when the jobs store changes.
 let __completedCacheDirty = true;
+// Finished jobs, times and money only (no photos), for the week totals that refresh every 12 s.
+// Rebuilt only after a finished job is written or deleted (both set __completedCacheDirty).
+let __jobsTimeLite = null, __jobsTimeLiteStale = true;
+async function dbGetAllTimeLite() {
+  if (__jobsTimeLiteStale || !__jobsTimeLite) {
+    __jobsTimeLite = (await dbGetAll()).map(j => ({ id: j.id, tripId: j.tripId, rawState: liteDraft({ state: j.rawState || {} }).state }));
+    __jobsTimeLiteStale = false;
+  }
+  return __jobsTimeLite;
+}
 let __completedJobsLite = [];
 async function getCompletedJobsLite() {
   if (!__completedCacheDirty) return __completedJobsLite;
@@ -2342,7 +2378,7 @@ function dbGet(id) {
   });
 }
 function dbDelete(id) {
-  __completedCacheDirty = true;
+  __completedCacheDirty = true; __jobsTimeLiteStale = true;
   return new Promise((resolve, reject) => {
     const tx = db.transaction('jobs', 'readwrite');
     tx.objectStore('jobs').delete(id);
@@ -3529,7 +3565,7 @@ function metersToMilesStr(m) {
 // Returns { draft, distanceM, inside } for the closest, or null if no pinned sites.
 async function findNearestPinnedJob(gps) {
   if (!gps || !db) return null;
-  const allDrafts = await dbGetAllDrafts();
+  const allDrafts = await dbGetAllDraftsLite();
   let best = null;
   allDrafts.forEach(d => {
     const pin = d.state && d.state.pinnedLocation;
@@ -3686,6 +3722,18 @@ function renderDayFlow(force) {
   box.innerHTML = stepBar + box.innerHTML;
 }
 
+// A gloved double-tap must not start two drives, or land on the button that appears under the
+// finger: the big day buttons ignore taps while one is running, and for a beat after it finishes.
+let __flowBusy = false, __flowQuietUntil = 0; // timestamp, not a timer — nothing can leave the buttons stuck
+function guardFlow(fn) {
+  return async function (...args) {
+    if (__flowBusy || Date.now() < __flowQuietUntil) return;
+    __flowBusy = true;
+    try { return await fn.apply(this, args); }
+    finally { __flowBusy = false; __flowQuietUntil = Date.now() + 700; }
+  };
+}
+
 // Week strip stays out of the way until asked for — the board is about TODAY
 function toggleWeekStrip() {
   const wrap = document.getElementById('weekStripWrap');
@@ -3823,7 +3871,7 @@ async function dayResolveJob(gps) {
 function dayPickJob(gps) {
   return new Promise(async resolve => {
     let drafts = [], completed = [];
-    try { drafts = (await dbGetAllDrafts()).filter(d => d.name !== TRAVEL_JOB_NAME); } catch (e) {}
+    try { drafts = (await dbGetAllDraftsLite()).filter(d => d.name !== TRAVEL_JOB_NAME); } catch (e) {}
     try { completed = await getCompletedJobsLite(); } catch (e) {}
     // Where am I? (city/state for the header + new-job autofill)
     const geo = await reverseGeocode(gps);
@@ -4098,6 +4146,19 @@ function checkStaleRunning(running) {
   const lastSeen = __prevSeenAt > running.startedAt && __prevSeenAt < Date.now() - 10 * 60000 ? __prevSeenAt : 0;
   const pad = n => String(n).padStart(2, '0');
   const local = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  const hrs = Math.floor((Date.now() - running.startedAt) / 3600000);
+  if (!earlierDay) { // same day, past 12 hours: most likely still working — ask that first
+    banner('stalePrompt', `
+    <div class="bb-title">On the clock ${hrs} hours. Still working?</div>
+    <div class="bb-text">${what} has been running since ${fmtClockTime(running.startedAt)}.</div>
+    <div class="bb-row bb-col">
+      <button class="dash-btn dash-btn-work" data-stale="still" onclick="staleStillWorking()">Yes, still working</button>
+      ${lastSeen ? `<button class="action-btn-sm" data-stale="last" onclick="staleStop(${lastSeen}, 'when you last had the app open')">I stopped when I last had the app open: ${fmtClockTime(lastSeen)}</button>` : ''}
+      <div class="bb-pick"><input type="datetime-local" id="staleWhen" min="${local(running.startedAt)}" max="${local(Date.now())}" value="${local(lastSeen || Date.now())}">
+        <button class="action-btn-sm" onclick="staleStopPicked()">I stopped at this time</button></div>
+    </div>`);
+    return true;
+  }
   banner('stalePrompt', `
     <div class="bb-title">${what} has been running since ${fmtDayTime(running.startedAt)}</div>
     <div class="bb-text">When did you stop?</div>
@@ -4135,6 +4196,14 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => lsSet('fieldlog_lastSeenAt', Date.now()));
 setTimeout(() => { renderWorkModeTabs(); homeWatchTick(); setInterval(homeWatchTick, HOME_CHECK_MS); }, 4000);
+// Big day buttons go through guardFlow (double-tap protection)
+dayStartDriving = guardFlow(dayStartDriving);
+dayDoneDriving = guardFlow(dayDoneDriving);
+dayStartWork = guardFlow(dayStartWork);
+dayLeaveSite = guardFlow(dayLeaveSite);
+endOfDay = guardFlow(endOfDay);
+dayStartFlight = guardFlow(dayStartFlight);
+dayLanded = guardFlow(dayLanded);
 
 async function dayLeaveSite() {
   await stopCurrentSegment();
@@ -4277,11 +4346,11 @@ async function refreshWeekAgg(force) {
   addSegs(segments); addReceipts(receipts);
   if (db) {
     try {
-      (await dbGetAllDrafts()).forEach(d => {
+      (await dbGetAllDraftsLite()).forEach(d => {
         if (d.id === currentDraftId) return; // already counted from memory
         addSegs(d.state?.segments); addReceipts(d.state?.receipts);
       });
-      (await dbGetAll()).forEach(j => { addSegs(j.rawState?.segments); addReceipts(j.rawState?.receipts); });
+      (await dbGetAllTimeLite()).forEach(j => { addSegs(j.rawState?.segments); addReceipts(j.rawState?.receipts); });
     } catch (e) {}
   }
   __weekAgg = {
@@ -4329,8 +4398,8 @@ async function refreshWeekStrip() {
   segments.forEach(addSeg);
   try {
     if (db) {
-      (await dbGetAllDrafts()).forEach(d => { if (d.id !== currentDraftId) (d.state?.segments || []).forEach(addSeg); });
-      (await dbGetAll()).forEach(j => (j.rawState?.segments || []).forEach(addSeg));
+      (await dbGetAllDraftsLite()).forEach(d => { if (d.id !== currentDraftId) (d.state?.segments || []).forEach(addSeg); });
+      (await dbGetAllTimeLite()).forEach(j => (j.rawState?.segments || []).forEach(addSeg));
     }
   } catch (e) {}
   __weekTotals = totals;
@@ -11409,7 +11478,7 @@ function hasAnyContent() {
 
 async function refreshDraftSelector() {
   if (!db) return;
-  let drafts = await dbGetAllDrafts();
+  let drafts = await dbGetAllDraftsLite();
   // Filter to current trip context (or solo if no trip selected)
   drafts = drafts.filter(d => (d.tripId || null) === (currentTripId || null));
   drafts.sort((a, b) => b.savedAt - a.savedAt);

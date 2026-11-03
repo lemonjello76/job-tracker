@@ -65,7 +65,7 @@ const PERSONAS = [
   { id: 'atx-elec', who: 'Electrician, Austin', city: 'Austin', seed: 22, mph: 30, week: [2026, 11, 9],
     installs: [{ name: 'Easton Park Lot 41 - new build rough-in', kind: 'install', cls: 'res', at: [9, -12] }],
     services: [['Mueller residence - breaker trips', 'res'], ['Torchy\'s Tacos S Lamar - panel', 'commercial'], ['Zilker residence - EV charger', 'res']],
-    plan: ['install', 'install', 'install+svc', 'install', 'install+svc', 'svc'], quirks: { gpsJitterM: 90 } },
+    plan: ['install', 'install', 'install+svc', 'install+forgotOpen', 'install+svc', 'svc'], quirks: { gpsJitterM: 90 } },
   { id: 'mco-hvac', who: 'HVAC tech, Orlando', city: 'Orlando', seed: 33, mph: 27, week: [2026, 11, 9],
     installs: [{ name: 'Publix #1544 - overnight RTU swap', kind: 'install', cls: 'commercial', at: [6, 8] }],
     services: [['Baldwin Park residence - no cool', 'res'], ['Winter Park office - condenser', 'commercial'], ['College Park residence - drain line', 'res'], ['Lake Nona clinic - split system', 'commercial'], ['Conway residence - capacitor', 'res'], ['Mills 50 restaurant - make-up air', 'commercial'], ['Dr Phillips residence - duct leak', 'res'], ['Hunters Creek residence - thermostat', 'res']],
@@ -113,6 +113,8 @@ async function runPersona(browser, P) {
     if (u.includes('fonts.g')) return route.abort();
     return route.abort();
   });
+  // the fake clock jumps hours in real seconds, so the browser's 60 s GPS cache would hand back old spots; always ask fresh
+  await ctx.addInitScript(() => { const g = navigator.geolocation; if (!g) return; const orig = g.getCurrentPosition.bind(g); g.getCurrentPosition = (ok, bad, o) => orig(ok, bad, Object.assign({}, o, { maximumAge: 0 })); });
   await ctx.addInitScript(() => {
     window.__blobs = [];
     const orig = URL.createObjectURL;
@@ -293,8 +295,15 @@ async function runPersona(browser, P) {
       const before = await page.evaluate(() => receipts.length);
       await choose(() => page.locator('.bottombar .bb-btn', { hasText: 'Receipt' }).click(), '#receiptInput', [file(0)]);
       await page.waitForFunction(b => receipts.length > b, before, { timeout: 20000 });
-      // a person types the amount into the receipt card
-      await page.evaluate(([a, v, c]) => { const i = receipts.length - 1; receipts[i].amount = String(a); receipts[i].vendor = v; receipts[i].category = c; renderReceipts(); updateDashboard(); scheduleAutoSave(); }, [amount, vendor, cat]);
+      // a person types the amount into the receipt card, then taps out of the field
+      const card = page.locator('#receiptGrid > *').last();
+      await card.locator('input[type="number"]').fill(String(amount));
+      await card.locator('input[type="number"]').blur();
+      await card.locator('input[type="text"]').first().fill(vendor);
+      await card.locator('input[type="text"]').first().blur();
+      await card.locator('select').first().selectOption(cat);
+      const got = await page.evaluate(() => receipts[receipts.length - 1].amount);
+      if (String(got) !== String(amount)) note('receipt-typing', `typed ${amount}, app holds ${got}`);
     });
     log.push({ type: 'receipt', start: now, amount, job: curJob });
   }
@@ -373,22 +382,66 @@ async function runPersona(browser, P) {
   };
 
   let dayIdx = 0;
+  let appClosed = false;
   for (dayIdx = 0; dayIdx < P.plan.length; dayIdx++) {
     const plan = P.plan[dayIdx];
     if (plan === 'off') continue;
     const startH = 6 + Math.floor(R() * 2), startM = Math.floor(R() * 50);
     await setTime(at(dayIdx, startH, startM));
     await setGps(curPos = home);
+    if (appClosed) {
+      // Opens the app next morning with work still running → it must ask, not guess
+      await step('reopen app, answer "when did you stop?"', async () => {
+        await page.goto(URL_APP);
+        await page.waitForFunction(() => typeof db !== 'undefined' && db && typeof getRunningSegment === 'function', null, { timeout: 20000 });
+        await page.waitForSelector('#stalePrompt [data-stale="last"]', { timeout: 15000 });
+        await page.locator('#stalePrompt [data-stale="last"]').click();
+        await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 });
+        const n = await page.evaluate(() => segments.filter(s => s.autoStop).map(s => s.note).pop() || '');
+        if (!/stop time set to when you last had the app open/.test(n)) note('stale-label-missing', n.slice(0, 160));
+      });
+      appClosed = false;
+    }
     if (plan.includes('gpsoff')) { await ctx.clearPermissions(); log.push({ type: 'event', start: now, what: 'GPS permission off' }); }
 
     if (plan.startsWith('install')) {
-      await doJob(install.name, 'install', 7 + R() * 2.5);
+      await doJob(install.name, 'install', 7 + R() * 2.5, { forgetStop: plan.includes('forgotOpen') });
       if (plan.includes('svc')) { const s = nextSvc(); if (s) await doJob(s[0], 'service', 1 + R() * 1.5); }
       if (plan.includes('forget')) {
-        // forgets STOP WORK on the last job, drives off next morning
+        // forgets STOP WORK on the last job, pockets the phone, the app gets closed
         const s = nextSvc(); if (s) await doJob(s[0], 'service', 1.2, { forgetStop: true });
-        log.push({ type: 'event', start: now, what: 'forgot STOP WORK' });
-        continue; // no drive home, no done-for-the-day
+        log.push({ type: 'event', start: now, what: 'forgot STOP WORK, app closed' });
+        closeOpen(now); // truth: he stopped when he walked off
+        await page.goto('about:blank');
+        appClosed = true;
+        continue; // no drive home tap, no done-for-the-day
+      }
+      if (plan.includes('forgotOpen')) {
+        // forgets STOP WORK, drives home with the app open on the dash
+        await step('forgot stop, drive home with app open', async () => {
+          await page.waitForFunction(() => getRunningSegment() && getRunningSegment().type === 'workday', null, { timeout: 5000 });
+          const tick = async () => { await page.clock.fastForward(60000); now += 60000; await page.waitForTimeout(300); };
+          const off = offset(curPos, 1.5, 1.5);                 // well outside the job-site pin
+          await ctx.setGeolocation({ latitude: off.lat, longitude: off.lng, accuracy: 15 });
+          await tick();
+          if (open) { log.push(Object.assign({}, open, { end: now })); open = null; } // truth: work ended as he left
+          open = { type: 'drive', start: now, miles: 0, job: '(trip)', gpsDrive: true };
+          const mins = Math.max(8, Math.round(distMi(curPos, home) * 1.3 / P.mph * 60));
+          await setTime(now + mins * 60000);
+          await ctx.setGeolocation({ latitude: home.lat, longitude: home.lng, accuracy: 10 });
+          curPos = home;
+          await tick();                                         // app sees him home
+          if (open) { log.push(Object.assign({}, open, { end: now })); open = null; }
+          const shown = await page.waitForSelector('#homePrompt', { timeout: 5000 }).catch(() => null);
+          if (!shown) note('no-home-prompt', 'back at the start spot with work running, no prompt');
+          for (let i = 0; i < 16; i++) await tick();             // nobody answers for 15+ minutes
+          await page.waitForFunction(() => !getRunningSegment(), null, { timeout: 8000 });
+          const notes = await page.evaluate(() => segments.filter(s => s.autoStop).map(s => s.note));
+          if (!notes.some(n => /Auto-stopped/.test(n))) note('auto-label-missing', JSON.stringify(notes).slice(0, 200));
+          log.push({ type: 'event', start: now, what: 'auto-stopped at base: ' + notes.join(' | ').slice(0, 220) });
+        });
+        await saveTiming('end of day ' + (dayIdx + 1));
+        continue; // the app closed the day out itself
       }
     } else {
       const calls = plan.includes('overnight') ? 2 : 3 + Math.floor(R() * 2);
@@ -414,6 +467,8 @@ async function runPersona(browser, P) {
       await endDay();
     }
     await saveTiming('end of day ' + (dayIdx + 1));
+    const snap = await page.evaluate(async () => (await dbGetAllDrafts()).map(d => [d.name, d.state && d.state.jobDone, d.state && d.state.dateEnd])).catch(() => []);
+    log.push({ type: 'event', start: now, what: 'jobs tonight: ' + JSON.stringify(snap) });
     await page.screenshot({ path: path.join(OUT, `${P.id}-day${dayIdx + 1}.png`) }).catch(() => {});
   }
   closeOpen(now); // anything still running at week's end

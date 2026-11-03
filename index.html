@@ -1006,6 +1006,24 @@
   .bb-photo .ic { width: 30px; height: 30px; color: #101114; }
   .bb-photo:hover { background: #ffb61e; }
   @media (min-width: 700px) { .bottombar { max-width: 900px; margin: 0 auto; } }
+
+  /* Home / On the road tabs */
+  .mode-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 10px; }
+  .mode-tabs button { padding: 10px 6px; background: #0a0b0d; color: var(--dim); border: 2px solid var(--line); border-bottom-width: 4px; border-bottom-color: #000; font-family: var(--font-disp); font-size: 15px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; cursor: pointer; }
+  .mode-tabs button.is-on { background: var(--text); color: #101114; border-color: var(--text); border-bottom-color: #8a8d94; }
+  .mode-hint { grid-column: 1 / -1; font-size: 13px; color: var(--dim); padding: 2px 2px 0; }
+  .linkish { background: none; border: none; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+  /* Back-at-base and clock-left-running prompts */
+  .base-banner { position: fixed; left: 10px; right: 10px; bottom: calc(96px + env(safe-area-inset-bottom)); z-index: 10040; max-width: 560px; margin: 0 auto; padding: 14px; background: #1a1b20; border: 2px solid var(--accent); border-bottom: 5px solid #a86f00; color: var(--text); }
+  .base-banner .bb-title { font-family: var(--font-disp); font-size: 20px; font-weight: 800; letter-spacing: .8px; text-transform: uppercase; margin-bottom: 4px; }
+  .base-banner .bb-text { font-size: 14px; color: var(--dim); margin-bottom: 12px; }
+  .base-banner .bb-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .base-banner .bb-row > * { flex: 1; margin: 0; }
+  .base-banner .bb-col { flex-direction: column; }
+  .base-banner .dash-btn { padding: 14px 10px; font-size: 16px; }
+  .base-banner .bb-pick { display: flex; gap: 8px; flex-wrap: wrap; }
+  .base-banner .bb-pick input { flex: 1; min-width: 180px; padding: 10px; background: var(--input); color: var(--text); border: 2px solid var(--line); font: inherit; color-scheme: dark; }
 </style>
 </head>
 <body>
@@ -1068,6 +1086,11 @@ catch (e) { document.body.classList.add('simple'); }
   <div class="today-plate">
     <div class="tp-day" id="todayPlateDay">TODAY</div>
     <div class="tp-span" id="dashTodaySpan"></div>
+  </div>
+  <div class="mode-tabs" id="workModeTabs">
+    <button data-mode="home" onclick="setWorkMode('home')">Home</button>
+    <button data-mode="road" onclick="setWorkMode('road')">On the road</button>
+    <div class="mode-hint" id="workModeHint"></div>
   </div>
   <div class="dash-status" id="dashStatus">
     <span id="dashStatusIcon" style="display:inline-flex"><svg class="ic"><use href="#i-pause"/></svg></span>
@@ -3608,6 +3631,7 @@ async function dayStartDriving() {
   const running = getRunningSegment();
   if (running) { running.endedAt = Date.now(); running.endGps = await getGps(); if (running.type === 'workday') onWorkEnded(running); }
   const gps = await getGps();
+  noteDayStart(gps);
   const seg = {
     id: newSegId(), type: 'drive', startedAt: Date.now(), endedAt: null,
     startGps: gps, endGps: null, startOdoPhoto: null, startOdoMiles: null,
@@ -3800,6 +3824,7 @@ async function dayBeginWorkSegment(gps) {
   if (!gps) gps = await getGps();
   // Back at a job already marked done (a return visit) → it's open again until this visit closes
   if (jobDone) { jobDone = false; jobDoneAt = ''; updateJobDoneUI(); }
+  noteDayStart(gps);
   segments.push({
     id: newSegId(), type: 'workday', startedAt: Date.now(), endedAt: null,
     startGps: gps, endGps: null, note: '', tripLevel: false
@@ -3829,6 +3854,210 @@ async function dayBeginWorkSegment(gps) {
   renderDayFlow();
   refreshWeekStrip();
 }
+
+// ═══════════════════════════════
+// HOME BASE AUTO-STOP — the forgotten STOP WORK / DONE FOR THE DAY
+// HOME tab: your saved home or shop ends the day. ON THE ROAD tab: wherever you
+// started this morning (tonight's hotel) ends the day. Back there with the clock
+// still running → ask; no answer in 15 min → stop it AT THE ARRIVAL TIME, with a
+// note on the entry saying so. App closed when you got home → it asks the next
+// time it opens, and never guesses silently. Web apps can't watch GPS while the
+// phone is locked, so the second path is the common one.
+// ═══════════════════════════════
+const BASE_RADIUS_M = 150;
+const AUTO_STOP_AFTER_MS = 15 * 60000;
+const LONG_RUN_MS = 12 * 3600000;
+const HOME_CHECK_MS = 60000;
+
+function lsGet(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+function lsSet(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+const fmtClockTime = ms => new Date(ms).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+const fmtDayTime = ms => new Date(ms).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+
+function workMode() { return lsGet('fieldlog_workMode') || 'road'; }
+function setWorkMode(m) {
+  lsSet('fieldlog_workMode', m);
+  renderWorkModeTabs();
+  if (m === 'home' && !lsGet('fieldlog_homeBase')) setHomeBaseHere();
+}
+async function setHomeBaseHere() {
+  const gps = await getGps();
+  if (!gps) { showToast('No GPS fix yet — try again outside', 'warn', 4000); return; }
+  lsSet('fieldlog_homeBase', { lat: gps.lat, lng: gps.lng, savedAt: Date.now() });
+  showToast('Home / shop saved right here', 'good', 3000);
+  renderWorkModeTabs();
+}
+function renderWorkModeTabs() {
+  const box = document.getElementById('workModeTabs');
+  if (!box) return;
+  const m = workMode();
+  const home = lsGet('fieldlog_homeBase');
+  box.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('is-on', b.dataset.mode === m));
+  const hint = document.getElementById('workModeHint');
+  if (hint) hint.innerHTML = m === 'home'
+    ? (home ? 'Your day ends at your saved home or shop. <button class="linkish" onclick="setHomeBaseHere()">Move it here</button>'
+            : 'Stand at your home or shop and <button class="linkish" onclick="setHomeBaseHere()">save it here</button>.')
+    : 'Your day ends back where you started this morning, like tonight\'s hotel.';
+}
+
+// First activity of the day = the start spot (the hotel, on the road)
+function noteDayStart(gps) {
+  if (!gps) return;
+  const d = lsGet('fieldlog_dayStart');
+  if (d && d.day === dayKey()) return;
+  lsSet('fieldlog_dayStart', { day: dayKey(), lat: gps.lat, lng: gps.lng, t: Date.now() });
+}
+function homeBase() {
+  if (workMode() === 'home') { const h = lsGet('fieldlog_homeBase'); if (h) return Object.assign({ label: 'your home or shop' }, h); }
+  const d = lsGet('fieldlog_dayStart');
+  return d ? Object.assign({ label: workMode() === 'home' ? 'where you started today' : 'the hotel (where you started today)' }, d) : null;
+}
+const nearBase = (g, base) => !!(g && base && distanceMeters(g, base) <= BASE_RADIUS_M);
+
+// Close a running entry at a set time and say on the entry how it was closed
+function closeSegmentAt(seg, endAt, endGps, why) {
+  seg.endedAt = endAt;
+  if (endGps) seg.endGps = endGps;
+  seg.note = (seg.note ? seg.note + ' · ' : '') + why;
+  seg.autoStop = { why, decidedAt: Date.now() };
+  if (segmentTickInterval) { clearInterval(segmentTickInterval); segmentTickInterval = null; }
+  if (driftCheckInterval) { clearInterval(driftCheckInterval); driftCheckInterval = null; }
+  if (stopWatchInterval) { clearInterval(stopWatchInterval); stopWatchInterval = null; }
+}
+
+async function stopAtBase(arr, byUser) {
+  const running = getRunningSegment();
+  hideBanner('homePrompt');
+  lsSet('fieldlog_homeArrival', null);
+  if (!running || running.id !== arr.segId) return;
+  const how = byUser ? 'Stopped from the "back at base" prompt' : 'Auto-stopped after 15 min with no answer';
+  if (running.type === 'workday' && running.leftSiteAt && running.leftSiteAt < arr.t) {
+    // Work ended when GPS saw you leave the site; the trip back becomes its own drive
+    closeSegmentAt(running, running.leftSiteAt, running.leftSiteGps, `${how}: GPS showed you left the job site at ${fmtClockTime(running.leftSiteAt)}`);
+    segments.push({
+      id: newSegId(), type: 'drive', startedAt: running.leftSiteAt, endedAt: arr.t,
+      startGps: running.leftSiteGps, endGps: arr.gps, startOdoPhoto: null, startOdoMiles: null,
+      endOdoPhoto: null, endOdoMiles: null, tripLevel: true,
+      note: `${how}: drive back to ${arr.label} added from GPS, ${fmtClockTime(running.leftSiteAt)} to ${fmtClockTime(arr.t)}. No odometer reading.`,
+      autoStop: { why: 'drive added from GPS', decidedAt: Date.now() }
+    });
+  } else {
+    closeSegmentAt(running, arr.t, arr.gps, `${how}: GPS showed you back at ${arr.label} at ${fmtClockTime(arr.t)}`);
+  }
+  renderSegments();
+  await autoSave();
+  await closeOutDay(arr.gps, arr.t);
+  showToast(`Day closed out at ${fmtClockTime(arr.t)} — the entry says it was GPS, and you can edit it`, 'info', 6000);
+}
+
+async function homeWatchTick() {
+  const running = getRunningSegment();
+  if (document.visibilityState === 'visible') lsSet('fieldlog_lastSeenAt', Date.now());
+  if (!running) { lsSet('fieldlog_homeArrival', null); hideBanner('homePrompt'); hideBanner('stalePrompt'); return; }
+  if (document.visibilityState !== 'visible') return;
+  if (checkStaleRunning(running)) return;
+  const arr = lsGet('fieldlog_homeArrival');
+  // Deadline is a timestamp, so it still fires if the phone slept through the 15 minutes
+  if (arr && arr.segId === running.id && !arr.snoozed && Date.now() >= arr.t + AUTO_STOP_AFTER_MS) { await stopAtBase(arr, false); return; }
+  const gps = await getGps();
+  if (!gps) return;
+  // Remember the moment a running workday left its job site
+  if (running.type === 'workday' && pinnedLocation && !running.leftSiteAt && distanceMeters(gps, pinnedLocation) > GEOFENCE_RADIUS_M) {
+    running.leftSiteAt = Date.now(); running.leftSiteGps = gps; scheduleAutoSave();
+  }
+  const base = homeBase();
+  if (!base) return;
+  // Working AT the hotel or the shop: being "back at base" says nothing — only your tap ends it
+  if (running.type === 'workday' && pinnedLocation && nearBase(pinnedLocation, base)) return;
+  if (!nearBase(gps, base)) {
+    if (!running.seenAwayAt) { running.seenAwayAt = Date.now(); scheduleAutoSave(); }
+    if (arr) { lsSet('fieldlog_homeArrival', null); hideBanner('homePrompt'); }
+    return;
+  }
+  const leftBase = running.seenAwayAt || (running.startGps && !nearBase(running.startGps, base));
+  if (!leftBase) return; // still at base since the morning tap — nothing to close
+  if (arr && arr.segId === running.id) { if (!arr.snoozed) showHomePrompt(arr); return; }
+  const a = { segId: running.id, t: Date.now(), gps, label: base.label };
+  lsSet('fieldlog_homeArrival', a);
+  showHomePrompt(a);
+}
+
+function hideBanner(id) { const el = document.getElementById(id); if (el) el.remove(); }
+function banner(id, html) {
+  let el = document.getElementById(id);
+  if (!el) { el = document.createElement('div'); el.id = id; el.className = 'base-banner'; document.body.appendChild(el); }
+  el.innerHTML = html;
+  return el;
+}
+function showHomePrompt(a) {
+  if (document.getElementById('homePrompt')) return;
+  const running = getRunningSegment();
+  const what = running && running.type === 'drive' ? 'Your drive is still running.' : 'Work is still on the clock.';
+  banner('homePrompt', `
+    <div class="bb-title">Back at ${esc(a.label)}?</div>
+    <div class="bb-text">${what} If you don't answer, the day closes on its own at ${fmtClockTime(a.t + AUTO_STOP_AFTER_MS)}, stopped at ${fmtClockTime(a.t)} when you got here.</div>
+    <div class="bb-row">
+      <button class="dash-btn dash-btn-drive" onclick="homeYes()">Done for the day</button>
+      <button class="action-btn-sm" onclick="homeNotYet()">Still working</button>
+    </div>`);
+}
+async function homeYes() { const a = lsGet('fieldlog_homeArrival'); if (a) await stopAtBase(a, true); }
+function homeNotYet() {
+  const a = lsGet('fieldlog_homeArrival');
+  if (a) { a.snoozed = true; lsSet('fieldlog_homeArrival', a); } // asks again once you leave and come back
+  hideBanner('homePrompt');
+}
+
+// Clock left running from an earlier day, or past 12 hours → ask, never guess
+let __prevSeenAt = +(lsGet('fieldlog_lastSeenAt') || 0);
+function checkStaleRunning(running) {
+  if (!running) return false;
+  const earlierDay = dayKey(running.startedAt) !== dayKey();
+  const long = Date.now() - running.startedAt > LONG_RUN_MS;
+  if (!earlierDay && !long) { hideBanner('stalePrompt'); return false; }
+  if (running.staleSnoozeUntil && Date.now() < running.staleSnoozeUntil) return false;
+  if (document.getElementById('stalePrompt')) return true;
+  const what = running.type === 'drive' ? 'A drive' : 'Work';
+  const lastSeen = __prevSeenAt > running.startedAt && __prevSeenAt < Date.now() - 10 * 60000 ? __prevSeenAt : 0;
+  const pad = n => String(n).padStart(2, '0');
+  const local = ms => { const d = new Date(ms); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+  banner('stalePrompt', `
+    <div class="bb-title">${what} has been running since ${fmtDayTime(running.startedAt)}</div>
+    <div class="bb-text">When did you stop?</div>
+    <div class="bb-row bb-col">
+      ${lastSeen ? `<button class="dash-btn dash-btn-drive" data-stale="last" onclick="staleStop(${lastSeen}, 'when you last had the app open')">When I last had the app open: ${fmtDayTime(lastSeen)}</button>` : ''}
+      <div class="bb-pick"><input type="datetime-local" id="staleWhen" min="${local(running.startedAt)}" max="${local(Date.now())}" value="${local(lastSeen || running.startedAt + 3600000)}">
+        <button class="action-btn-sm" onclick="staleStopPicked()">Stopped at this time</button></div>
+      <button class="action-btn-sm" onclick="staleStillWorking()">I'm still working</button>
+    </div>`);
+  return true;
+}
+async function staleStop(t, how) {
+  const running = getRunningSegment();
+  hideBanner('stalePrompt');
+  if (!running || !(t > running.startedAt) || t > Date.now()) return;
+  closeSegmentAt(running, t, null, `Clock was left running; stop time set to ${how} (${fmtDayTime(t)}) when the app was next opened`);
+  renderSegments(); updateDashboard(); refreshWeekAgg(true); renderDayFlow(true); refreshWeekStrip();
+  await autoSave();
+}
+function staleStopPicked() {
+  const v = document.getElementById('staleWhen').value;
+  const t = v ? new Date(v).getTime() : NaN;
+  if (isNaN(t)) return;
+  staleStop(t, 'the time you picked');
+}
+function staleStillWorking() {
+  const running = getRunningSegment();
+  if (running) { running.staleSnoozeUntil = Date.now() + 4 * 3600000; scheduleAutoSave(); }
+  hideBanner('stalePrompt');
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') lsSet('fieldlog_lastSeenAt', Date.now());
+  else { __prevSeenAt = +(lsGet('fieldlog_lastSeenAt') || 0); setTimeout(homeWatchTick, 1500); }
+});
+window.addEventListener('pagehide', () => lsSet('fieldlog_lastSeenAt', Date.now()));
+setTimeout(() => { renderWorkModeTabs(); homeWatchTick(); setInterval(homeWatchTick, HOME_CHECK_MS); }, 4000);
 
 async function dayLeaveSite() {
   await stopCurrentSegment();
@@ -3906,12 +4135,15 @@ async function autoCompleteServicesToday() {
 // night" (the only notification besides the morning "started driving").
 async function endOfDay() {
   if (getRunningSegment()) await stopCurrentSegment(); // capture final mileage / work time
+  await closeOutDay(await getGps(), Date.now());
+}
+
+async function closeOutDay(gps, whenMs) {
   await autoCompleteServicesToday(); // services close themselves; installs stay open
-  const gps = await getGps();
   localStorage.setItem('dayEndEmailDate', dayKey());
   localStorage.setItem('dayEndAt', String(Date.now()));
-  await sendDriveEmail('dayEnd', gps, Date.now()); // #2 — "back at the hotel"
-  await sendDayRecapEmail();                       // #3 — what got done + WO + photos
+  await sendDriveEmail('dayEnd', gps, whenMs); // #2 — "back at the hotel"
+  await sendDayRecapEmail();                    // #3 — what got done + WO + photos
   renderDayFlow(true);
   refreshWeekStrip();
   updateDashboard();
@@ -4736,7 +4968,7 @@ document.getElementById('photoInput').addEventListener('change', async function(
       loaded++;
       if (loaded === files.length) {
         renderPhotos();
-        scheduleAutoSave();
+        autoSave(); // evidence: save now, not after the 1.5 s debounce
         // Background AI description for each new photo (non-blocking)
         if (localStorage.getItem('anthropicApiKey')) {
           newPhotoIndices.forEach(i => autoDescribePhoto(i));
@@ -5640,7 +5872,7 @@ document.getElementById('receiptInput').addEventListener('change', async functio
       loaded++;
       if (loaded === files.length) {
         renderReceipts();
-        scheduleAutoSave();
+        autoSave(); // evidence: save now, not after the 1.5 s debounce
         // Background AI extraction (don't block the UI)
         if (localStorage.getItem('anthropicApiKey')) {
           addedIndices.forEach(i => autoExtractReceipt(i));
@@ -6977,7 +7209,7 @@ document.getElementById('gasInput').addEventListener('change', async function(e)
     renderReceipts();
     document.getElementById('receiptsSection').classList.remove('hidden');
     updateDashboard();
-    scheduleAutoSave();
+    autoSave();
   };
   reader.readAsDataURL(file);
 });
@@ -9066,7 +9298,7 @@ function addSelectedContacts() {
 let currentDraftId = null;
 let currentTripId = null;
 let autoSaveTimer = null;
-let autoSaveInFlight = false;
+let autoSaveInFlight = null; // the save currently running (a promise), or null
 
 // ── TRIP CONTROLLERS ──
 async function newTrip() {
@@ -10954,11 +11186,22 @@ function applyDraftState(s) {
   if (clockStopEl) clockStopEl.style.display = 'none';
 }
 
-async function autoSave() {
-  if (!db || autoSaveInFlight) return;
+// One save at a time. Changes made while a save is running are covered by ONE
+// follow-up save (never skipped — skipping is how photos taken mid-save used to vanish).
+let autoSaveQueued = null;
+function autoSave() {
+  if (!db) return Promise.resolve();
+  if (autoSaveInFlight) {
+    if (!autoSaveQueued) autoSaveQueued = autoSaveInFlight.then(() => { autoSaveQueued = null; return autoSave(); });
+    return autoSaveQueued;
+  }
+  autoSaveInFlight = writeDraftNow().finally(() => { autoSaveInFlight = null; });
+  return autoSaveInFlight;
+}
+
+async function writeDraftNow() {
   // Don't create a draft for a totally empty form
   if (!hasAnyContent()) return;
-  autoSaveInFlight = true;
   try {
     if (!currentDraftId) currentDraftId = 'draft_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const state = serializeCurrentState();
@@ -10977,8 +11220,6 @@ async function autoSave() {
     refreshDraftSelector();
   } catch (e) {
     console.warn('autosave failed:', e);
-  } finally {
-    autoSaveInFlight = false;
   }
 }
 
@@ -11837,7 +12078,9 @@ async function maybeShowEodBanner() {
   document.addEventListener('change', e => {
     if (e.target && e.target.matches && e.target.matches('input, textarea, select')) {
       if (e.target.id === 'apiKeyInput') return;
-      scheduleAutoSave();
+      // A finished field (receipt amount, note, odometer) saves right away — the app can be
+      // killed seconds after you tap out of it. Typing itself stays on the short debounce.
+      autoSave();
     }
   });
 

@@ -9227,6 +9227,39 @@ async function freezeCopy() {
   }
 }
 
+// Merge the same job from two devices. Entries are matched by their id (photos and receipts by
+// their journal id, older ones by time stamp). Kept: everything either side has. Where both have
+// the same entry, the copy from the more recently saved job wins — except that a photo-less
+// records-only backup never blanks out a photo this phone still has. Nothing is ever deleted.
+function mergeDraftRecords(mine, theirs) {
+  const theirsNewer = (theirs.savedAt || 0) > (mine.savedAt || 0);
+  const newer = theirsNewer ? theirs : mine, older = theirsNewer ? mine : theirs;
+  const st = JSON.parse(JSON.stringify(newer.state || {}));
+  const os = older.state || {};
+  const keys = {
+    segments: x => x.id,
+    photos: x => x.pid || x.stamp,
+    receipts: x => x.pid || (x.stamp + '|' + x.amount),
+    notes: x => (x.title || '') + '|' + (x.text || ''),
+    auditLog: x => x.at + '|' + (x.target || '') + '|' + (x.id || '')
+  };
+  const images = ['dataURL', 'annotatedURL', 'startOdoPhoto', 'endOdoPhoto'];
+  let added = 0;
+  for (const [f, kf] of Object.entries(keys)) {
+    const list = st[f] = st[f] || [];
+    const byKey = new Map(list.map(x => [kf(x), x]));
+    (os[f] || []).forEach(x => {
+      const k = kf(x);
+      const hit = byKey.get(k);
+      if (!hit) { list.push(JSON.parse(JSON.stringify(x))); byKey.set(k, list[list.length - 1]); added++; return; }
+      images.forEach(p => { if (!hit[p] && x[p]) hit[p] = x[p]; }); // never let an empty copy blank a photo
+    });
+  }
+  if (st.segments) st.segments.sort((a, b) => a.startedAt - b.startedAt);
+  const changed = added > 0 || (theirsNewer && JSON.stringify(theirs.state) !== JSON.stringify(mine.state));
+  return { changed, draft: Object.assign({}, newer, { state: st, savedAt: Math.max(mine.savedAt || 0, theirs.savedAt || 0) }) };
+}
+
 document.getElementById('importInput').addEventListener('change', async function(e) {
   const file = e.target.files[0];
   e.target.value = '';
@@ -9245,20 +9278,26 @@ document.getElementById('importInput').addEventListener('change', async function
       return;
     }
     // Finished jobs, open jobs (installs, and service calls marked done stay here too) and trips.
-    // Anything already on this phone is left alone, never overwritten.
+    // A job on both devices (phone and Surface) is MERGED: every entry from either side is kept,
+    // and where the same entry changed on both, the more recently saved copy wins.
     const existingIds = new Set((await dbGetAll()).map(j => j.id));
-    const existingDraftIds = new Set((await dbGetAllDrafts()).map(d => d.id));
+    const existingDrafts = new Map((await dbGetAllDrafts()).map(d => [d.id, d]));
     const existingTripIds = new Set((await dbGetAllTrips()).map(t => t.id));
-    let added = 0, skipped = 0, addedOpen = 0, skippedOpen = 0, addedTrips = 0;
+    let added = 0, skipped = 0, addedOpen = 0, skippedOpen = 0, mergedOpen = 0, addedTrips = 0;
     for (const job of backup.jobs) {
       if (!job.id || existingIds.has(job.id)) { skipped++; continue; }
       await dbPut(job);
       added++;
     }
     for (const d of (backup.drafts || [])) {
-      if (!d.id || existingDraftIds.has(d.id)) { skippedOpen++; continue; }
-      await dbPutDraft(d);
-      addedOpen++;
+      if (!d.id) { skippedOpen++; continue; }
+      const mine = existingDrafts.get(d.id);
+      if (!mine) { await dbPutDraft(d); addedOpen++; continue; }
+      const m = mergeDraftRecords(mine, d);
+      if (!m.changed) { skippedOpen++; continue; }
+      await dbPutDraft(m.draft);
+      if (d.id === currentDraftId) applyDraftState(m.draft.state);
+      mergedOpen++;
     }
     for (const t of (backup.trips || [])) {
       if (!t.id || existingTripIds.has(t.id)) continue;
@@ -9274,7 +9313,7 @@ document.getElementById('importInput').addEventListener('change', async function
     await refreshTripSelector();
     await refreshDraftSelector();
     refreshWeekAgg(true); refreshWeekStrip(); updateDashboard();
-    alert(`Restore complete.\n\nOpen jobs added: ${addedOpen}\nFinished jobs added: ${added}\nTrips added: ${addedTrips}\nAlready on this phone (left alone): ${skipped + skippedOpen}`);
+    alert(`Restore complete.\n\nOpen jobs added: ${addedOpen}\nOpen jobs merged with changes from the backup: ${mergedOpen}\nFinished jobs added: ${added}\nTrips added: ${addedTrips}\nAlready up to date (left alone): ${skipped + skippedOpen}`);
   };
   reader.readAsText(file);
 });

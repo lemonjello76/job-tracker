@@ -230,7 +230,7 @@ async function runPersona(browser, P) {
       await waitOdo(before + 1);
       const ok = await page.waitForFunction(() => getRunningSegment() && getRunningSegment().type === 'drive', null, { timeout: 8000 }).catch(() => null);
       if (!ok) {
-        const dbg = await page.evaluate(() => ({ busy: __flowBusy, quietMs: __flowQuietUntil - Date.now(), cls: document.body.className, running: getRunningSegment() && getRunningSegment().type,
+        const dbg = await page.evaluate(() => ({ busy: __flowBusy, quietMs: __flowQuietUntil ? __flowQuietUntil - performance.now() : 0, cls: document.body.className, running: getRunningSegment() && getRunningSegment().type,
           job: document.getElementById('client').value, segs: segments.length, btns: [...document.querySelectorAll('#dayFlowBox button')].map(b => b.textContent.trim().slice(0, 24)),
           stale: !!document.getElementById('stalePrompt'), home: !!document.getElementById('homePrompt'), overlays: document.querySelectorAll('#dayPickOverlay').length }));
         console.log('  DEBUG start-drive', JSON.stringify(dbg));

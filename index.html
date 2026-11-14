@@ -3727,14 +3727,27 @@ function renderDayFlow(force) {
 
 // A gloved double-tap must not start two drives, or land on the button that appears under the
 // finger: the big day buttons ignore taps while one is running, and for a beat after it finishes.
-let __flowBusy = false, __flowQuietUntil = 0; // timestamp, not a timer — nothing can leave the buttons stuck
+// The buttons stay dim through that beat too: a button that looks live must take the tap
+// (a quick START DRIVE right after STOP WORK used to vanish with no sign).
+// The beat runs on the steady stopwatch (performance.now), never the wall clock: a phone clock
+// re-sync can jump Date backward and would stretch the beat or leave the buttons stuck dim.
+const FLOW_QUIET_MS = 700;
+let __flowBusy = false, __flowQuietUntil = 0, __flowGen = 0;
 function guardFlow(fn) {
   return async function (...args) {
-    if (__flowBusy || Date.now() < __flowQuietUntil) return;
+    if (__flowBusy || performance.now() < __flowQuietUntil) return;
     __flowBusy = true;
     document.body.classList.add('flow-busy'); // buttons dim while the tap finishes (a GPS fix can take seconds)
     try { return await fn.apply(this, args); }
-    finally { __flowBusy = false; __flowQuietUntil = Date.now() + 700; document.body.classList.remove('flow-busy'); }
+    finally {
+      __flowBusy = false; __flowQuietUntil = performance.now() + FLOW_QUIET_MS;
+      const gen = ++__flowGen; // only the newest tap's timer may light the buttons back up
+      setTimeout(() => {
+        if (gen !== __flowGen || __flowBusy) return;
+        __flowQuietUntil = 0; // dim and dead end together
+        document.body.classList.remove('flow-busy');
+      }, FLOW_QUIET_MS);
+    }
   };
 }
 

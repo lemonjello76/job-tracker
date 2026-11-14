@@ -206,6 +206,27 @@ const doc = dom.window.document;
     else pass('drive-time integrity: implausible spans reduced, real hauls untouched');
   } catch (e) { fail('drive integrity check threw: ' + e.message.slice(0, 140)); }
 
+  // 2g. day buttons must LOOK dead for exactly as long as they ARE dead.
+  // Bug 11/13/26: the buttons un-dimmed when a tap finished but still ignored taps for
+  // the 700 ms quiet beat, so a quick START DRIVE after STOP WORK vanished with no sign.
+  try {
+    const body = win.document.body;
+    let ran = 0;
+    const tap = win.guardFlow(async () => { ran++; });
+    await new Promise(r => setTimeout(r, 900)); // let the button clicks above clear their own beat
+    await tap();
+    const dimAfter = body.classList.contains('flow-busy');
+    await tap(); // inside the quiet beat: ignored, and the buttons must still be dim
+    await new Promise(r => setTimeout(r, 900));
+    const dimLater = body.classList.contains('flow-busy');
+    await tap(); // after the beat: must go through
+    await new Promise(r => setTimeout(r, 900));
+    if (!dimAfter) fail('day buttons un-dim while taps are still being ignored (quiet beat)');
+    else if (dimLater) fail('day buttons stay dim after the quiet beat ended');
+    else if (ran !== 2) fail('guardFlow ran ' + ran + ' times, expected 2 (one ignored inside the beat)');
+    else pass('day buttons stay dim through the double-tap beat, then come back');
+  } catch (e) { fail('tap guard check threw: ' + e.message.slice(0, 140)); }
+
   if (failed) { console.error('\nSMOKE TEST FAILED'); process.exit(1); }
   console.log('\nAll checks passed.');
   process.exit(0);

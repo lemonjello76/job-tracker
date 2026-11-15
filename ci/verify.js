@@ -246,6 +246,47 @@ const doc = dom.window.document;
     }
   } catch (e) { fail('light mode check threw: ' + e.message.slice(0, 140)); }
 
+  // 2i. location log: logs only while the day is open, never logs a failed fix,
+  // asks after a 1-mile move, saves the answer, and lands on the report.
+  try {
+    let fix = null; // what the fake GPS hands back next (null = no signal)
+    Object.defineProperty(win.navigator, 'geolocation', { configurable: true, value: {
+      getCurrentPosition(ok, bad) { const f = fix; setTimeout(() => f ? ok({ coords: { latitude: f.lat, longitude: f.lng, accuracy: 12 }, timestamp: f.t }) : bad({ code: 2 }), 0); }
+    } });
+    const realRunning = win.getRunningSegment;
+    win.getRunningSegment = () => undefined; // earlier checks leave a clock running; start this one idle
+    const day = win.dayKey();
+    const key = 'fieldlog_trail_' + day;
+    win.localStorage.removeItem(key);
+    win.localStorage.removeItem('fieldlog_dayStart');
+    const base = Date.now() - 3600000;
+    fix = { lat: 31.3382, lng: -94.7291, t: base };
+    await win.trailCapture('open');
+    const closedLogged = (JSON.parse(win.localStorage.getItem(key) || '[]')).length;
+    win.localStorage.setItem('fieldlog_dayStart', JSON.stringify({ day, lat: 31.3382, lng: -94.7291, t: base - 60000 }));
+    win.localStorage.removeItem('dayEndAt');
+    await win.trailCapture('open');
+    fix = null;
+    await win.trailCapture('tick');
+    const afterNoSignal = JSON.parse(win.localStorage.getItem(key) || '[]');
+    fix = { lat: 31.3672, lng: -94.7291, t: base + 600000 }; // ~2 miles north
+    await win.trailCapture('open');
+    const prompt = win.document.getElementById('trailMovedPrompt');
+    const pts = JSON.parse(win.localStorage.getItem(key) || '[]');
+    if (prompt) await win.trailMovedAnswer('none', pts[pts.length - 1].t);
+    const answered = JSON.parse(win.localStorage.getItem(key) || '[]').pop();
+    const rep = win.trailReportHtml(day);
+    if (closedLogged !== 0) fail('location log: logged before the day was opened');
+    else if (afterNoSignal.length !== 1) fail('location log: expected 1 point after open + failed fix, got ' + afterNoSignal.length);
+    else if (pts.length !== 2) fail('location log: 2-mile move not logged (' + pts.length + ' points)');
+    else if (!prompt) fail('location log: no "you\'ve moved" prompt after a 2-mile move');
+    else if (!answered || answered.answer !== 'none' || win.document.getElementById('trailMovedPrompt')) fail('location log: prompt answer not saved / prompt not closed');
+    else if (!/Location log — 2 GPS fixes/.test(rep) || !/Answered: not working/.test(rep)) fail('location log: report section missing or wrong');
+    else pass('location log: day-open only, no fake fixes, asks after a move, lands on the report');
+    win.localStorage.removeItem(key); win.localStorage.removeItem('fieldlog_dayStart');
+    win.getRunningSegment = realRunning;
+  } catch (e) { fail('location log check threw: ' + e.message.slice(0, 140)); }
+
   if (failed) { console.error('\nSMOKE TEST FAILED'); process.exit(1); }
   console.log('\nAll checks passed.');
   process.exit(0);

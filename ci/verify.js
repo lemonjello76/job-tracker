@@ -227,6 +227,25 @@ const doc = dom.window.document;
     else pass('day buttons stay dim through the double-tap beat, then come back');
   } catch (e) { fail('tap guard check threw: ' + e.message.slice(0, 140)); }
 
+  // 2h. light / dark switch: flips the page, relabels the button, and is remembered.
+  try {
+    const root = win.document.documentElement, btn = win.document.getElementById('themeBtn');
+    if (!btn) fail('light mode: header switch (#themeBtn) missing');
+    else {
+      const startDark = root.getAttribute('data-theme') !== 'light';
+      win.toggleTheme();
+      const nowLight = root.getAttribute('data-theme') === 'light';
+      const saved = win.localStorage.getItem('theme');
+      const label = btn.textContent;
+      win.toggleTheme();
+      const backDark = root.getAttribute('data-theme') !== 'light' && win.localStorage.getItem('theme') === 'dark' && btn.textContent === 'Light';
+      if (!startDark) fail('light mode: app did not start dark by default');
+      else if (!nowLight || saved !== 'light' || label !== 'Dark') fail('light mode: switch did not flip to light (theme=' + saved + ', label=' + label + ')');
+      else if (!backDark) fail('light mode: switch did not flip back to dark');
+      else pass('light / dark switch flips, relabels and remembers');
+    }
+  } catch (e) { fail('light mode check threw: ' + e.message.slice(0, 140)); }
+
   if (failed) { console.error('\nSMOKE TEST FAILED'); process.exit(1); }
   console.log('\nAll checks passed.');
   process.exit(0);
